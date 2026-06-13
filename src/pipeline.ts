@@ -11,6 +11,7 @@ function extractCode(raw: string): string {
 
 export type Session = {
   description: string;
+  mp3Path?: string;
   turns: Turn[];      // full conversation history
   currentCode: string;
 };
@@ -21,12 +22,12 @@ export type PipelineResult = {
   session: Session;
 };
 
-export async function startSession(description: string): Promise<PipelineResult> {
+export async function startSession(description: string, mp3Path?: string): Promise<PipelineResult> {
   console.log(`\n[LLM] Generating sketch with ${CODE_MODEL}...`);
 
   const userTurn: Turn = {
     role: "user",
-    content: buildCodeGenPrompt({ userDescription: description }),
+    content: buildCodeGenPrompt({ userDescription: description, mp3Path }),
   };
 
   const raw = await callLLM(SYSTEM_PROMPT, [userTurn]);
@@ -41,6 +42,7 @@ export async function startSession(description: string): Promise<PipelineResult>
 
   const session: Session = {
     description,
+    mp3Path,
     turns: [userTurn, { role: "assistant", content: code }],
     currentCode: code,
   };

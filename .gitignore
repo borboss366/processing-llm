@@ -1,4 +1,5 @@
 .env
+music/
 node_modules/
 .node_modules/
 built/*

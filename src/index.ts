@@ -27,10 +27,15 @@ async function main(): Promise<void> {
       if (description === "") continue;
       if (description === "quit" || description === "exit") break;
 
+      const mp3Input = await rl.question(
+        'MP3 file path for audio sync (or press Enter to skip):\n> '
+      );
+      const mp3Path = mp3Input.trim() || undefined;
+
       let session: Session | null = null;
 
       try {
-        const result = await startSession(description);
+        const result = await startSession(description, mp3Path);
         session = result.session;
         printRunResult(result.run.exitCode, result.sketch.file);
       } catch (err) {
