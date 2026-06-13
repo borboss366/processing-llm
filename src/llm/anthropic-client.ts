@@ -1,12 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
+const client = new Anthropic();
 
 export const CODE_MODEL = "claude-opus-4-7";
 
-export async function generateCode(
+export type Turn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export async function callLLM(
   systemPrompt: string,
-  userPrompt: string
+  turns: Turn[]
 ): Promise<string> {
   const response = await client.messages.create({
     model: CODE_MODEL,
@@ -15,11 +20,10 @@ export async function generateCode(
       {
         type: "text",
         text: systemPrompt,
-        // Cache the static system prompt — kicks in once it exceeds ~4096 tokens
         cache_control: { type: "ephemeral" },
       },
     ],
-    messages: [{ role: "user", content: userPrompt }],
+    messages: turns,
   });
 
   const textBlock = response.content.find(
@@ -29,7 +33,7 @@ export async function generateCode(
 
   const cached = response.usage.cache_read_input_tokens ?? 0;
   if (cached > 0) {
-    console.log(`[LLM] Cache hit: ${cached} tokens served from cache`);
+    console.log(`[LLM] Cache hit: ${cached} tokens`);
   }
 
   return textBlock.text;
@@ -39,7 +43,7 @@ export function checkApiKey(): void {
   if (!process.env["ANTHROPIC_API_KEY"]) {
     throw new Error(
       "ANTHROPIC_API_KEY is not set.\n" +
-        "Export it with: export ANTHROPIC_API_KEY=sk-ant-..."
+        "Add it to your .env file: ANTHROPIC_API_KEY=sk-ant-..."
     );
   }
 }

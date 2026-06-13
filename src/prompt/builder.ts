@@ -21,4 +21,10 @@ export function buildCodeGenPrompt(ctx: PromptContext): string {
 Output only the Processing source code. Nothing else.`;
 }
 
+export function buildRefinementPrompt(modification: string): string {
+  return `Modify the sketch as follows: "${modification}"
+
+Output only the complete modified Processing source code. Nothing else.`;
+}
+
 export { SYSTEM_PROMPT };
