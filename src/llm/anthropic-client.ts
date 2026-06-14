@@ -15,7 +15,7 @@ export async function callLLM(
 ): Promise<string> {
   const response = await client.messages.create({
     model: CODE_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16000,
     system: [
       {
         type: "text",

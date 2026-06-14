@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import type { WrittenSketch } from "./sketch-writer.js";
 
@@ -14,15 +14,23 @@ let activeProc: ReturnType<typeof spawn> | null = null;
 
 export function killActiveSketch(): void {
   if (activeProc) {
-    activeProc.kill();
+    if (activeProc.pid) {
+      try {
+        process.kill(-activeProc.pid, "SIGKILL"); // kill entire process group (CLI + Java sketch child)
+      } catch {}
+    }
     activeProc = null;
   }
+  // Fallback: kill any orphaned Processing processes from a previous server run
+  spawnSync("pkill", ["-9", "-f", "Processing.app/Contents/MacOS/Processing"], { stdio: "ignore" });
 }
 
 export function launchSketch(sketch: WrittenSketch): void {
   killActiveSketch();
   const sketchPath = resolve(sketch.dir);
-  const proc = spawn(PROCESSING_BIN, ["cli", `--sketch=${sketchPath}`, "--run"]);
+  const proc = spawn(PROCESSING_BIN, ["cli", `--sketch=${sketchPath}`, "--run"], {
+    detached: true, // make CLI a process group leader so we can kill it + its Java child together
+  });
   activeProc = proc;
   proc.stdout.on("data", (chunk: Buffer) => process.stdout.write(chunk));
   proc.stderr.on("data", (chunk: Buffer) => process.stderr.write(chunk));

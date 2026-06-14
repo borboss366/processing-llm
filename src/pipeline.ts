@@ -1,7 +1,12 @@
 import { callLLM, CODE_MODEL, type Turn } from "./llm/anthropic-client.js";
 import { buildCodeGenPrompt, buildRefinementPrompt, SYSTEM_PROMPT } from "./prompt/builder.js";
-import { writeSketch, type WrittenSketch } from "./processing/sketch-writer.js";
+import { retrieveExamples } from "./rag/retriever.js";
+import { writeSketch, type WrittenSketch, type SketchAssets } from "./processing/sketch-writer.js";
 import { runSketch, launchSketch, type RunResult } from "./processing/sketch-runner.js";
+import { preprocessImage, type ImageData } from "./image/preprocessor.js";
+import { extname, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 function extractCode(raw: string): string {
   const fenceMatch = raw.match(/```(?:java|processing|pde)?\s*([\s\S]+?)```/);
@@ -9,10 +14,32 @@ function extractCode(raw: string): string {
   return raw.trim();
 }
 
+function extractEffects(code: string): string[] {
+  const match = code.match(/\/\/\s*EFFECTS:\s*(.+)/);
+  if (!match?.[1]) return [];
+  return match[1].split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function extractParams(code: string): Record<string, number> {
+  const match = code.match(/\/\/\s*PARAMS:\s*(.+)/);
+  if (!match?.[1]) return {};
+  const result: Record<string, number> = {};
+  for (const entry of match[1].split(',')) {
+    const [name, val] = entry.trim().split('=');
+    if (name?.trim()) result[name.trim()] = parseFloat(val ?? '0.5') || 0.5;
+  }
+  return result;
+}
+
 export type Session = {
   description: string;
   mp3Path?: string;
-  turns: Turn[];      // full conversation history
+  liveInput?: boolean;
+  imagePath?: string;
+  imageData?: ImageData;
+  effects: string[];
+  params: Record<string, number>;
+  turns: Turn[];
   currentCode: string;
 };
 
@@ -22,12 +49,37 @@ export type PipelineResult = {
   session: Session;
 };
 
-export async function startSession(description: string, mp3Path?: string): Promise<PipelineResult> {
+export async function startSession(description: string, mp3Path?: string, imagePath?: string): Promise<PipelineResult> {
   console.log(`\n[LLM] Generating sketch with ${CODE_MODEL}...`);
+
+  const ragExamples = retrieveExamples(description);
+  if (ragExamples.length) console.log(`[RAG] Injecting ${ragExamples.length} example(s)`);
+
+  let imageData: ImageData | undefined;
+  let assets: SketchAssets | undefined;
+
+  if (imagePath) {
+    console.log(`[IMG] Preprocessing image → ${imagePath}`);
+    const svgDir = await mkdtemp(join(tmpdir(), "proc-blobs-"));
+    try {
+      imageData = preprocessImage(imagePath, svgDir);
+      console.log(`[IMG] Palette: ${imageData.palette.length} colors, Contours: ${imageData.contours.length}, Blobs: ${imageData.blobSvgs.length} SVGs`);
+      assets = { imageData, imagePath, svgDir };
+    } catch (e) {
+      await rm(svgDir, { recursive: true }).catch(() => {});
+      throw e;
+    }
+  }
 
   const userTurn: Turn = {
     role: "user",
-    content: buildCodeGenPrompt({ userDescription: description, mp3Path }),
+    content: buildCodeGenPrompt({
+      userDescription: description,
+      ragExamples,
+      ...(mp3Path !== undefined ? { mp3Path } : {}),
+      ...(imageData !== undefined ? { imageData } : {}),
+      ...(imagePath !== undefined ? { imageExt: extname(imagePath) } : {}),
+    }),
   };
 
   const raw = await callLLM(SYSTEM_PROMPT, [userTurn]);
@@ -35,14 +87,19 @@ export async function startSession(description: string, mp3Path?: string): Promi
 
   console.log(`[LLM] Generated ${code.split("\n").length} lines`);
 
-  const sketch = await writeSketch(code);
+  const sketch = await writeSketch(code, assets);
+  if (assets) await rm(assets.svgDir, { recursive: true }).catch(() => {});
   console.log(`[FS]  Wrote sketch → ${sketch.file}`);
 
   const run = await runSketch(sketch);
 
   const session: Session = {
     description,
-    mp3Path,
+    ...(mp3Path !== undefined ? { mp3Path } : {}),
+    ...(imagePath !== undefined ? { imagePath } : {}),
+    ...(imageData !== undefined ? { imageData } : {}),
+    effects: extractEffects(code),
+    params: extractParams(code),
     turns: [userTurn, { role: "assistant", content: code }],
     currentCode: code,
   };
@@ -57,13 +114,41 @@ export type WebGenerateResult = {
 
 export async function generateAndLaunch(
   description: string,
-  mp3Path?: string
+  mp3Path?: string,
+  liveInput?: boolean,
+  imagePath?: string,
 ): Promise<WebGenerateResult> {
   console.log(`\n[LLM] Generating sketch with ${CODE_MODEL}...`);
 
+  const ragExamples = retrieveExamples(description);
+  if (ragExamples.length) console.log(`[RAG] Injecting ${ragExamples.length} example(s)`);
+
+  let imageData: ImageData | undefined;
+  let assets: SketchAssets | undefined;
+
+  if (imagePath) {
+    console.log(`[IMG] Preprocessing image → ${imagePath}`);
+    const svgDir = await mkdtemp(join(tmpdir(), "proc-blobs-"));
+    try {
+      imageData = preprocessImage(imagePath, svgDir);
+      console.log(`[IMG] Palette: ${imageData.palette.length} colors, Contours: ${imageData.contours.length}, Blobs: ${imageData.blobSvgs.length} SVGs`);
+      assets = { imageData, imagePath, svgDir };
+    } catch (e) {
+      await rm(svgDir, { recursive: true }).catch(() => {});
+      throw e;
+    }
+  }
+
   const userTurn: Turn = {
     role: "user",
-    content: buildCodeGenPrompt({ userDescription: description, mp3Path }),
+    content: buildCodeGenPrompt({
+      userDescription: description,
+      ragExamples,
+      ...(mp3Path !== undefined ? { mp3Path } : {}),
+      ...(liveInput !== undefined ? { liveInput } : {}),
+      ...(imageData !== undefined ? { imageData } : {}),
+      ...(imagePath !== undefined ? { imageExt: extname(imagePath) } : {}),
+    }),
   };
 
   const raw = await callLLM(SYSTEM_PROMPT, [userTurn]);
@@ -71,14 +156,20 @@ export async function generateAndLaunch(
 
   console.log(`[LLM] Generated ${code.split("\n").length} lines`);
 
-  const sketch = await writeSketch(code);
+  const sketch = await writeSketch(code, assets);
+  if (assets) await rm(assets.svgDir, { recursive: true }).catch(() => {});
   console.log(`[FS]  Wrote sketch → ${sketch.file}`);
 
   launchSketch(sketch);
 
   const session: Session = {
     description,
-    mp3Path,
+    ...(mp3Path !== undefined ? { mp3Path } : {}),
+    ...(liveInput !== undefined ? { liveInput } : {}),
+    ...(imagePath !== undefined ? { imagePath } : {}),
+    ...(imageData !== undefined ? { imageData } : {}),
+    effects: extractEffects(code),
+    params: extractParams(code),
     turns: [userTurn, { role: "assistant", content: code }],
     currentCode: code,
   };
@@ -110,11 +201,31 @@ export async function refineAndLaunch(
 
   const updatedSession: Session = {
     ...session,
+    effects: extractEffects(code),
+    params: extractParams(code),
     turns: [...turns, { role: "assistant", content: code }],
     currentCode: code,
   };
 
   return { sketch, session: updatedSession };
+}
+
+export async function relaunchSession(session: Session): Promise<WrittenSketch> {
+  let assets: SketchAssets | undefined;
+  if (session.imagePath && session.imageData) {
+    const svgDir = await mkdtemp(join(tmpdir(), "proc-blobs-"));
+    try {
+      preprocessImage(session.imagePath, svgDir);
+      assets = { imageData: session.imageData, imagePath: session.imagePath, svgDir };
+    } catch {
+      await rm(svgDir, { recursive: true }).catch(() => {});
+    }
+  }
+  const sketch = await writeSketch(session.currentCode, assets);
+  if (assets) await rm(assets.svgDir, { recursive: true }).catch(() => {});
+  console.log(`[FS]  Wrote sketch → ${sketch.file}`);
+  launchSketch(sketch);
+  return sketch;
 }
 
 export async function refineSession(
@@ -141,6 +252,8 @@ export async function refineSession(
 
   const updatedSession: Session = {
     ...session,
+    effects: extractEffects(code),
+    params: extractParams(code),
     turns: [...turns, { role: "assistant", content: code }],
     currentCode: code,
   };

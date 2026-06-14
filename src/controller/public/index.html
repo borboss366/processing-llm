@@ -199,6 +199,56 @@
     .pad-label { font-size: 0.65rem; color: #333; letter-spacing: 0.2em; text-transform: uppercase; }
     .pad-label.active { color: #0f0; }
 
+    /* ── params ──────────────────────────────────────── */
+    .params {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .param-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .param-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .param-name {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: #555;
+      text-transform: uppercase;
+    }
+    .param-val {
+      font-size: 0.75rem;
+      color: #0ff;
+      min-width: 36px;
+      text-align: right;
+    }
+    .param-slider {
+      width: 100%;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 2px;
+      background: #222;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .param-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #0ff;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .param-slider:hover::-webkit-slider-thumb { background: #fff; }
+
     .link-btn {
       background: none; border: none; color: #555; font-family: inherit;
       font-size: 0.7rem; letter-spacing: 0.15em; cursor: pointer; text-decoration: underline;
@@ -235,6 +285,9 @@
   <!-- Step 1: File picker -->
   <div class="step active" id="step-files">
     <div class="step-title">Music Library</div>
+    <div style="margin-bottom:4px">
+      <button class="btn btn-primary" onclick="selectLiveInput()" style="width:100%">⬤ Live Input (BlackHole)</button>
+    </div>
     <div id="file-list"><div class="empty">Loading...</div></div>
 
     <div class="sessions-section" id="sessions-section" style="display:none">
@@ -245,7 +298,7 @@
 
   <!-- Step 2: Metadata + prompt -->
   <div class="step" id="step-meta">
-    <div class="step-title">Track Info</div>
+    <div class="step-title" id="meta-step-title">Track Info</div>
     <div id="meta-view">
       <div id="cover-placeholder">♫</div>
       <div class="meta-info">
@@ -258,6 +311,21 @@
     </div>
     <label for="prompt-input">Describe the visuals</label>
     <textarea id="prompt-input" placeholder="e.g. pulsing neon grid that reacts to bass, psychedelic tunnel, particle explosion..."></textarea>
+
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <label for="image-input">Source image (optional — drives palette, contours &amp; blobs)</label>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <label class="btn btn-ghost" style="cursor:pointer; padding:10px 18px;">
+          Choose image
+          <input type="file" id="image-input" accept="image/*" style="display:none" onchange="onImageSelect(this)">
+        </label>
+        <span id="image-label" style="font-size:0.75rem; color:#555;">no file selected</span>
+        <button id="image-clear" class="link-btn" style="display:none" onclick="clearImage()">clear</button>
+      </div>
+      <canvas id="image-preview" width="200" height="120"
+        style="display:none; border:1px solid #222; border-radius:4px; object-fit:contain; background:#111;"></canvas>
+    </div>
+
     <div class="row">
       <button class="btn btn-primary" id="generate-btn" onclick="generate()">Generate Sketch</button>
       <button class="btn btn-ghost" onclick="goTo('step-files')">← Back</button>
@@ -276,16 +344,8 @@
   <div class="step" id="step-controller">
     <div class="step-title">Now Playing</div>
     <div class="success-msg" id="success-msg"></div>
-    <div class="pads" id="pads">
-      <div class="pad-wrap">
-        <button class="pad" id="effect1" onclick="toggle('effect1')">Effect 1</button>
-        <span class="pad-label" id="label-effect1">off</span>
-      </div>
-      <div class="pad-wrap">
-        <button class="pad" id="effect2" onclick="toggle('effect2')">Effect 2</button>
-        <span class="pad-label" id="label-effect2">off</span>
-      </div>
-    </div>
+    <div class="params" id="params"></div>
+    <div class="pads" id="pads"></div>
 
     <div style="border-top:1px solid #1a1a1a; padding-top:20px; display:flex; flex-direction:column; gap:12px;">
       <label for="refine-input">Modify the sketch</label>
@@ -303,6 +363,8 @@
   <script>
     let selectedFile = null;
     let currentSessionId = null;
+    let liveInput = false;
+    let selectedImage = null;
 
     // ── navigation ─────────────────────────────────────────
     function goTo(stepId) {
@@ -324,10 +386,26 @@
       ).join('');
     }
 
+    // ── live input ─────────────────────────────────────────
+    function selectLiveInput() {
+      liveInput = true;
+      selectedFile = null;
+      clearImage();
+      document.getElementById('header-sub').textContent = 'live input';
+      document.getElementById('meta-step-title').textContent = 'Live Input';
+      document.getElementById('meta-view').style.display = 'none';
+      document.getElementById('prompt-input').placeholder =
+        'e.g. pulsing plasma that reacts to bass, geometric tunnel, particle storm...';
+      goTo('step-meta');
+    }
+
     // ── select track ───────────────────────────────────────
     async function selectFile(filename) {
+      liveInput = false;
       selectedFile = filename;
       document.getElementById('header-sub').textContent = filename;
+      document.getElementById('meta-step-title').textContent = 'Track Info';
+      document.getElementById('meta-view').style.display = 'flex';
       goTo('step-meta');
 
       // reset metadata
@@ -369,6 +447,38 @@
       } catch (_) {}
     }
 
+    // ── image picker ───────────────────────────────────────
+    function onImageSelect(input) {
+      const file = input.files[0];
+      if (!file) return;
+      selectedImage = file;
+      document.getElementById('image-label').textContent = file.name;
+      document.getElementById('image-clear').style.display = 'inline';
+      const canvas = document.getElementById('image-preview');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        canvas.style.display = 'block';
+        const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        const x = (canvas.width - w) / 2, y = (canvas.height - h) / 2;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, x, y, w, h);
+        URL.revokeObjectURL(img.src);
+      };
+      img.src = URL.createObjectURL(file);
+    }
+
+    function clearImage() {
+      selectedImage = null;
+      document.getElementById('image-input').value = '';
+      document.getElementById('image-label').textContent = 'no file selected';
+      document.getElementById('image-clear').style.display = 'none';
+      const canvas = document.getElementById('image-preview');
+      canvas.style.display = 'none';
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    }
+
     // ── generate ───────────────────────────────────────────
     async function generate() {
       const description = document.getElementById('prompt-input').value.trim();
@@ -379,18 +489,22 @@
       goTo('step-generating');
 
       try {
-        const res = await fetch('/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description, mp3File: selectedFile }),
-        });
+        const form = new FormData();
+        form.append('description', description);
+        if (selectedFile) form.append('mp3File', selectedFile);
+        if (liveInput) form.append('liveInput', '1');
+        if (selectedImage) form.append('image', selectedImage);
+
+        const res = await fetch('/generate', { method: 'POST', body: form });
         const data = await res.json();
 
         if (data.sessionId) {
           currentSessionId = data.sessionId;
-          const trackName = selectedFile ? selectedFile.replace(/\.mp3$/i, '') : null;
+          const trackName = liveInput ? 'live input' : (selectedFile ? selectedFile.replace(/\.mp3$/i, '') : null);
           document.getElementById('success-msg').textContent =
             trackName ? `Sketch launched · ${trackName}` : 'Sketch launched';
+          renderParams(data.params);
+          renderEffects(data.effects);
           goTo('step-controller');
         } else {
           alert('Generation failed: ' + (data.error ?? 'unknown error'));
@@ -420,6 +534,8 @@
           currentSessionId = data.sessionId;
           document.getElementById('refine-input').value = '';
           document.getElementById('success-msg').textContent = 'Sketch refined and relaunched';
+          renderParams(data.params);
+          renderEffects(data.effects);
         } else {
           alert('Refine failed: ' + (data.error ?? 'unknown error'));
         }
@@ -429,6 +545,55 @@
         btn.disabled = false;
         btn.textContent = 'Refine Sketch';
       }
+    }
+
+    // ── effects ────────────────────────────────────────────
+    function camelLabel(name) {
+      return name.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+    }
+
+    function renderEffects(effects) {
+      const pads = document.getElementById('pads');
+      if (!effects || !effects.length) { pads.innerHTML = ''; return; }
+      pads.innerHTML = effects.map(name => `
+        <div class="pad-wrap">
+          <button class="pad" id="${name}" onclick="toggle('${name}')">${camelLabel(name)}</button>
+          <span class="pad-label" id="label-${name}">off</span>
+        </div>`).join('');
+    }
+
+    // ── params ─────────────────────────────────────────────
+    let paramDebounce = {};
+
+    function renderParams(params) {
+      const container = document.getElementById('params');
+      const entries = Object.entries(params ?? {});
+      if (!entries.length) { container.innerHTML = ''; return; }
+      container.innerHTML = entries.map(([name, val]) => {
+        const pct = Math.round(val * 100);
+        return `
+        <div class="param-wrap">
+          <div class="param-header">
+            <span class="param-name">${camelLabel(name)}</span>
+            <span class="param-val" id="val-${name}">${pct}%</span>
+          </div>
+          <input type="range" class="param-slider" id="slider-${name}"
+            min="0" max="100" value="${pct}"
+            oninput="onSlider('${name}', this.value)">
+        </div>`;
+      }).join('');
+    }
+
+    async function onSlider(name, rawVal) {
+      document.getElementById(`val-${name}`).textContent = rawVal + '%';
+      clearTimeout(paramDebounce[name]);
+      paramDebounce[name] = setTimeout(async () => {
+        await fetch(`/param/${name}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: rawVal / 100 }),
+        });
+      }, 40);
     }
 
     // ── DJ toggles ─────────────────────────────────────────
@@ -464,22 +629,37 @@
         const list = document.getElementById('session-list');
         list.innerHTML = sessions.map(s => {
           const mp3Label = s.mp3Path ? `<span class="session-meta">${s.mp3Path.split('/').pop()}</span>` : '';
-          return `<div class="session-item" onclick='restoreSession(${JSON.stringify(s.sessionId)}, ${JSON.stringify(s.description)}, ${JSON.stringify(s.mp3Path)})'>
+          const effectsLabel = s.effects?.length ? `<span class="session-meta">${s.effects.join(', ')}</span>` : '';
+          return `<div class="session-item" onclick='restoreSession(${JSON.stringify(s.sessionId)}, ${JSON.stringify(s.description)}, ${JSON.stringify(s.mp3Path)}, ${JSON.stringify(s.effects ?? [])}, ${JSON.stringify(s.params ?? {})})'>
             <span class="session-desc">${s.description}</span>
-            ${mp3Label}
+            ${mp3Label}${effectsLabel}
           </div>`;
         }).join('');
         section.style.display = 'flex';
       } catch (_) {}
     }
 
-    function restoreSession(sessionId, description, mp3Path) {
+    async function restoreSession(sessionId, description, mp3Path, effects, params) {
       currentSessionId = sessionId;
       const trackName = mp3Path ? mp3Path.split('/').pop().replace(/\.mp3$/i, '') : null;
       document.getElementById('header-sub').textContent = trackName ?? description;
-      document.getElementById('success-msg').textContent =
-        trackName ? `Session restored · ${trackName}` : 'Session restored';
-      goTo('step-controller');
+      goTo('step-generating');
+      try {
+        const res = await fetch('/relaunch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = await res.json();
+        document.getElementById('success-msg').textContent =
+          trackName ? `Session restored · ${trackName}` : 'Session restored';
+        renderParams(data.params ?? params);
+        renderEffects(data.effects ?? effects);
+        goTo('step-controller');
+      } catch (err) {
+        alert('Relaunch error: ' + err);
+        goTo('step-files');
+      }
     }
 
     setInterval(pollState, 400);

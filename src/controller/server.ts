@@ -4,7 +4,8 @@ import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { parseFile } from "music-metadata";
-import { generateAndLaunch, refineAndLaunch } from "../pipeline.js";
+import multer from "multer";
+import { generateAndLaunch, refineAndLaunch, relaunchSession } from "../pipeline.js";
 import { sendOsc, OSC_PORT } from "../osc/client.js";
 import { loadSessions, saveSessions } from "../sessions/store.js";
 
@@ -19,10 +20,22 @@ export const MUSIC_DIR = path.resolve(
 
 // ── State ──────────────────────────────────────────────────────────────────
 
-const toggleState: Record<string, boolean> = {
-  effect1: false,
-  effect2: false,
-};
+const toggleState: Record<string, boolean> = {};
+const paramState: Record<string, number> = {};
+
+function resetEffects(effects: string[]): void {
+  for (const key of Object.keys(toggleState)) delete toggleState[key];
+  for (const e of effects) toggleState[e] = false;
+}
+
+function resetParams(params: Record<string, number>): void {
+  for (const key of Object.keys(paramState)) delete paramState[key];
+  Object.assign(paramState, params);
+}
+
+export const UPLOADS_DIR = path.resolve(process.cwd(), "assets/uploads");
+
+const upload = multer({ dest: path.join(process.cwd(), "tmp_uploads") });
 
 // ── App ────────────────────────────────────────────────────────────────────
 
@@ -77,27 +90,41 @@ export async function startControllerServer(): Promise<void> {
 
   /**
    * POST /generate
-   * Body: { description: string, mp3File?: string }
+   * Multipart body: description (text), mp3File? (text), liveInput? (text), image? (file)
    * Returns: { sessionId, file }
    */
-  app.post("/generate", async (req, res) => {
-    const { description, mp3File } = req.body as {
+  app.post("/generate", upload.single("image"), async (req, res) => {
+    const { description, mp3File, liveInput } = req.body as {
       description?: string;
       mp3File?: string;
+      liveInput?: string;
     };
     if (!description?.trim()) {
+      if (req.file) await fs.unlink(req.file.path).catch(() => {});
       res.status(400).json({ error: "description required" });
       return;
     }
-    const mp3Path = mp3File
+    const isLive = liveInput === "true" || liveInput === "1";
+    const mp3Path = !isLive && mp3File
       ? path.join(MUSIC_DIR, path.basename(mp3File))
       : undefined;
+    const tempPath = req.file?.path;
+    let imagePath: string | undefined;
+    if (tempPath && req.file) {
+      await fs.mkdir(UPLOADS_DIR, { recursive: true });
+      const ext = path.extname(req.file.originalname) || ".png";
+      imagePath = path.join(UPLOADS_DIR, `${randomUUID()}${ext}`);
+      await fs.copyFile(tempPath, imagePath);
+      await fs.unlink(tempPath).catch(() => {});
+    }
     try {
-      const result = await generateAndLaunch(description.trim(), mp3Path);
+      const result = await generateAndLaunch(description.trim(), mp3Path, isLive, imagePath);
       const sessionId = randomUUID();
       sessions.set(sessionId, result.session);
       await saveSessions(sessions);
-      res.json({ sessionId, file: result.sketch.file });
+      resetEffects(result.session.effects);
+      resetParams(result.session.params);
+      res.json({ sessionId, file: result.sketch.file, effects: result.session.effects, params: result.session.params });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
@@ -126,7 +153,35 @@ export async function startControllerServer(): Promise<void> {
       const result = await refineAndLaunch(session, modification.trim());
       sessions.set(sessionId, result.session);
       await saveSessions(sessions);
-      res.json({ sessionId, file: result.sketch.file });
+      resetEffects(result.session.effects);
+      resetParams(result.session.params);
+      res.json({ sessionId, file: result.sketch.file, effects: result.session.effects, params: result.session.params });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  /**
+   * POST /relaunch
+   * Body: { sessionId: string }
+   * Re-launches the sketch using the stored code — no LLM call.
+   */
+  app.post("/relaunch", async (req, res) => {
+    const { sessionId } = req.body as { sessionId?: string };
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
+    const session = sessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: "session not found" });
+      return;
+    }
+    try {
+      const sketch = await relaunchSession(session);
+      resetEffects(session.effects ?? []);
+      resetParams(session.params ?? {});
+      res.json({ sessionId, file: sketch.file, effects: session.effects ?? [], params: session.params ?? {} });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
@@ -141,6 +196,8 @@ export async function startControllerServer(): Promise<void> {
       sessionId: id,
       description: s.description,
       mp3Path: s.mp3Path ?? null,
+      effects: s.effects ?? [],
+      params: s.params ?? {},
     }));
     res.json(list);
   });
@@ -158,6 +215,22 @@ export async function startControllerServer(): Promise<void> {
     toggleState[name] = !(toggleState[name] ?? false);
     sendOsc(`/${name}`, toggleState[name] ? 1 : 0);
     res.json(toggleState);
+  });
+
+  // ── DJ params ──────────────────────────────────────────────────────────
+
+  /** GET /params — current param values */
+  app.get("/params", (_req, res) => {
+    res.json(paramState);
+  });
+
+  /** POST /param/:name — set a float param (0–1) and push via OSC */
+  app.post("/param/:name", (req, res) => {
+    const { name } = req.params;
+    const value = Math.max(0, Math.min(1, parseFloat(req.body.value ?? 0)));
+    paramState[name] = value;
+    sendOsc(`/${name}`, value);
+    res.json(paramState);
   });
 
   // ──────────────────────────────────────────────────────────────────────
