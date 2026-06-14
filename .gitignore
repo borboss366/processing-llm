@@ -1,4 +1,5 @@
 .env
+.sessions.json
 music/
 sketches/
 node_modules/

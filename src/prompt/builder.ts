@@ -49,7 +49,30 @@ In draw():
   }
 
 Use smoothedAmp (0–1) for continuous motion, bassEnergy for bass-reactive effects,
-and onBeat for pulse events. Always guard analysis inside if (song.isPlaying()).`;
+and onBeat for pulse events. Always guard analysis inside if (song.isPlaying()).
+
+DJ controller integration via OSC — ALWAYS include this in every sketch, no exceptions:
+
+Add these imports and globals at the top (outside setup/draw):
+  import oscP5.*;
+  import netP5.*;
+  OscP5 oscP5;
+  boolean effect1 = false;
+  boolean effect2 = false;
+
+In setup(), start the OSC listener on port 12000:
+  oscP5 = new OscP5(this, 12000);
+
+Add this event handler (outside draw):
+  void oscEvent(OscMessage msg) {
+    if (msg.checkAddrPattern("/effect1")) effect1 = msg.get(0).intValue() == 1;
+    if (msg.checkAddrPattern("/effect2")) effect2 = msg.get(0).intValue() == 1;
+  }
+
+Use effect1 and effect2 booleans to toggle distinct visual effects (e.g. colour palette swap,
+particle mode change, overlay, invert, strobe). Make the effect visually obvious when toggled.
+Do NOT poll HTTP — OSC messages are pushed from the server automatically.`;
+
 
 export function buildCodeGenPrompt(ctx: PromptContext): string {
   const audioLine = ctx.mp3Path != null

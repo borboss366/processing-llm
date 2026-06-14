@@ -10,6 +10,30 @@ export type RunResult = {
   stderr: string;
 };
 
+let activeProc: ReturnType<typeof spawn> | null = null;
+
+export function killActiveSketch(): void {
+  if (activeProc) {
+    activeProc.kill();
+    activeProc = null;
+  }
+}
+
+export function launchSketch(sketch: WrittenSketch): void {
+  killActiveSketch();
+  const sketchPath = resolve(sketch.dir);
+  const proc = spawn(PROCESSING_BIN, ["cli", `--sketch=${sketchPath}`, "--run"]);
+  activeProc = proc;
+  proc.stdout.on("data", (chunk: Buffer) => process.stdout.write(chunk));
+  proc.stderr.on("data", (chunk: Buffer) => process.stderr.write(chunk));
+  proc.on("close", (code) => {
+    if (activeProc === proc) activeProc = null;
+    if (code !== 0 && code !== null) console.error(`[Processing] exited with code ${code}`);
+  });
+  proc.on("error", (err) => console.error(`[Processing] failed to start: ${err.message}`));
+  proc.unref();
+}
+
 export async function runSketch(sketch: WrittenSketch): Promise<RunResult> {
   const sketchPath = resolve(sketch.dir);
 
