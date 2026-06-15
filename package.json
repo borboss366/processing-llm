@@ -7,6 +7,7 @@
   "scripts": {
     "server": "tsx src/server.ts",
     "dev": "tsx src/index.ts",
+    "demo:audio": "tsx src/agents/demo-audio.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
+    "@google/adk": "^1.2.0",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
     "dotenv": "^17.4.2",

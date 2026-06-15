@@ -5,6 +5,7 @@ import { writeSketch, type WrittenSketch, type SketchAssets } from "./processing
 import { runSketch, launchSketch, type RunResult } from "./processing/sketch-runner.js";
 import { preprocessImage, type ImageData } from "./image/preprocessor.js";
 import { analyzeImage } from "./llm/vision-client.js";
+import { analyzeAudio, type AudioAnalysis } from "./audio/analyzer.js";
 import { extname, join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -40,6 +41,7 @@ export type Session = {
   imageData?: ImageData;
   visionDescription?: string;
   imageDescription?: string;
+  audioAnalysis?: AudioAnalysis;
   effects: string[];
   params: Record<string, number>;
   turns: Turn[];
@@ -138,24 +140,40 @@ export async function generateAndLaunch(
 
   let imageData: ImageData | undefined;
   let visionDescription: string | undefined;
+  let audioAnalysis: AudioAnalysis | undefined;
   let assets: SketchAssets | undefined;
 
+  // Run image preprocessing + vision + audio analysis in parallel
+  const parallelTasks: Promise<void>[] = [];
+
   if (imagePath) {
-    console.log(`[IMG] Preprocessing image + vision analysis → ${imagePath}`);
     const svgDir = await mkdtemp(join(tmpdir(), "proc-blobs-"));
-    try {
-      [imageData, visionDescription] = await Promise.all([
+    parallelTasks.push(
+      Promise.all([
         Promise.resolve(preprocessImage(imagePath, svgDir)),
         analyzeImage(imagePath).catch(e => { console.warn(`[Vision] ${e}`); return undefined; }),
-      ]);
-      console.log(`[IMG] Palette: ${imageData.palette.length} colors, Contours: ${imageData.contours.length}, Blobs: ${imageData.blobSvgs.length} SVGs`);
-      if (visionDescription) console.log(`[Vision] ${visionDescription.slice(0, 80)}…`);
-      assets = { imageData, imagePath, svgDir };
-    } catch (e) {
-      await rm(svgDir, { recursive: true }).catch(() => {});
-      throw e;
-    }
+      ]).then(([data, vision]) => {
+        imageData = data;
+        visionDescription = vision ?? undefined;
+        assets = { imageData, imagePath, svgDir };
+        console.log(`[IMG] Palette: ${data.palette.length} colors, Contours: ${data.contours.length}, Blobs: ${data.blobSvgs.length} SVGs`);
+        if (visionDescription) console.log(`[Vision] ${visionDescription.slice(0, 80)}…`);
+      }).catch(async e => { await rm(svgDir, { recursive: true }).catch(() => {}); throw e; })
+    );
   }
+
+  if (mp3Path) {
+    parallelTasks.push(
+      Promise.resolve(analyzeAudio(mp3Path, 90))
+        .then(a => {
+          audioAnalysis = a;
+          console.log(`[Audio] ${a.bpm} BPM · ${a.keyLabel} (${Math.round(a.keyConfidence * 100)}% confidence)`);
+        })
+        .catch(e => console.warn(`[Audio] Analysis failed: ${e}`))
+    );
+  }
+
+  if (parallelTasks.length > 0) await Promise.all(parallelTasks);
 
   const userTurn: Turn = {
     role: "user",
@@ -168,6 +186,7 @@ export async function generateAndLaunch(
       ...(imagePath !== undefined ? { imageExt: extname(imagePath) } : {}),
       ...(visionDescription !== undefined ? { visionDescription } : {}),
       ...(imageDescription !== undefined ? { imageDescription } : {}),
+      ...(audioAnalysis !== undefined ? { audioAnalysis } : {}),
     }),
   };
 
@@ -190,6 +209,7 @@ export async function generateAndLaunch(
     ...(imageData !== undefined ? { imageData } : {}),
     ...(visionDescription !== undefined ? { visionDescription } : {}),
     ...(imageDescription !== undefined ? { imageDescription } : {}),
+    ...(audioAnalysis !== undefined ? { audioAnalysis } : {}),
     effects: extractEffects(code),
     params: extractParams(code),
     turns: [userTurn, { role: "assistant", content: code }],

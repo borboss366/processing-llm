@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ImageData } from "../image/preprocessor.js";
+import type { AudioAnalysis } from "../audio/analyzer.js";
 
 export type PromptContext = {
   userDescription: string;
@@ -12,6 +13,7 @@ export type PromptContext = {
   imageExt?: string;
   visionDescription?: string;
   imageDescription?: string;
+  audioAnalysis?: AudioAnalysis;
 };
 
 // ── Rage faces catalog ────────────────────────────────────────────────────────
@@ -358,12 +360,20 @@ export function buildCodeGenPrompt(ctx: PromptContext): string {
     ? `\n\n${FACES_SECTION}`
     : "";
 
+  let audioContextLine = "";
+  if (ctx.audioAnalysis) {
+    const a = ctx.audioAnalysis;
+    audioContextLine = `\nTrack analysis: ${a.bpm} BPM · ${a.keyLabel} (confidence ${Math.round(a.keyConfidence * 100)}%) · ${a.durationSeconds}s\n`
+      + `Use the BPM to time animations (one beat = ${(60 / a.bpm).toFixed(3)}s). `
+      + `${a.scale === "minor" ? "Minor key — lean toward darker, more tense or melancholic visuals." : "Major key — lean toward brighter, more energetic or uplifting visuals."}\n`;
+  }
+
   const imageSection = ctx.imageData
     ? `\n\n${buildImageDataSection(ctx.imageData, ctx.imageExt ?? ".png", ctx.visionDescription, ctx.imageDescription)}`
     : "";
 
   return `Create a Processing sketch for the following description:
-${audioLine}
+${audioLine}${audioContextLine}
 "${ctx.userDescription}"
 ${ragSection}${facesSection}${imageSection}
 Output only the Processing source code. Nothing else.`;
