@@ -324,6 +324,11 @@
       </div>
       <canvas id="image-preview" width="200" height="120"
         style="display:none; border:1px solid #222; border-radius:4px; object-fit:contain; background:#111;"></canvas>
+      <div id="image-desc-wrap" style="display:none; flex-direction:column; gap:6px;">
+        <label for="image-desc-input">What's in this image? <span style="color:#444">(optional — gives the sketch narrative context)</span></label>
+        <textarea id="image-desc-input" style="min-height:56px"
+          placeholder="e.g. coral reef organisms, overlapping kelp fronds, a dense crowd seen from above…"></textarea>
+      </div>
     </div>
 
     <div class="row">
@@ -467,6 +472,7 @@
         URL.revokeObjectURL(img.src);
       };
       img.src = URL.createObjectURL(file);
+      document.getElementById('image-desc-wrap').style.display = 'flex';
     }
 
     function clearImage() {
@@ -477,6 +483,8 @@
       const canvas = document.getElementById('image-preview');
       canvas.style.display = 'none';
       canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+      document.getElementById('image-desc-wrap').style.display = 'none';
+      document.getElementById('image-desc-input').value = '';
     }
 
     // ── generate ───────────────────────────────────────────
@@ -494,6 +502,8 @@
         if (selectedFile) form.append('mp3File', selectedFile);
         if (liveInput) form.append('liveInput', '1');
         if (selectedImage) form.append('image', selectedImage);
+        const imageDesc = document.getElementById('image-desc-input').value.trim();
+        if (imageDesc) form.append('imageDescription', imageDesc);
 
         const res = await fetch('/generate', { method: 'POST', body: form });
         const data = await res.json();

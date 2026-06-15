@@ -12,6 +12,8 @@ export type BlobSvg = {
   cy: number;
   area: number;
   color: { r: number; g: number; b: number };
+  /** 64 equally arc-length-spaced points, normalised 0–1 image coords. Same length for every blob. */
+  morphPoints: number[][];
 };
 
 export type ImageData = {

@@ -94,10 +94,11 @@ export async function startControllerServer(): Promise<void> {
    * Returns: { sessionId, file }
    */
   app.post("/generate", upload.single("image"), async (req, res) => {
-    const { description, mp3File, liveInput } = req.body as {
+    const { description, mp3File, liveInput, imageDescription } = req.body as {
       description?: string;
       mp3File?: string;
       liveInput?: string;
+      imageDescription?: string;
     };
     if (!description?.trim()) {
       if (req.file) await fs.unlink(req.file.path).catch(() => {});
@@ -118,7 +119,7 @@ export async function startControllerServer(): Promise<void> {
       await fs.unlink(tempPath).catch(() => {});
     }
     try {
-      const result = await generateAndLaunch(description.trim(), mp3Path, isLive, imagePath);
+      const result = await generateAndLaunch(description.trim(), mp3Path, isLive, imagePath, imageDescription?.trim() || undefined);
       const sessionId = randomUUID();
       sessions.set(sessionId, result.session);
       await saveSessions(sessions);

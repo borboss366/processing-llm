@@ -10,6 +10,8 @@ export type PromptContext = {
   ragExamples?: string[];
   imageData?: ImageData;
   imageExt?: string;
+  visionDescription?: string;
+  imageDescription?: string;
 };
 
 // ── Rage faces catalog ────────────────────────────────────────────────────────
@@ -185,7 +187,12 @@ OSC effects & parameters — ALWAYS include in every sketch, no exceptions:
 Do NOT poll HTTP — OSC messages are pushed from the server automatically.`;
 
 
-function buildImageDataSection(data: ImageData, imageExt: string): string {
+function buildImageDataSection(
+  data: ImageData,
+  imageExt: string,
+  visionDescription?: string,
+  imageDescription?: string,
+): string {
   const paletteDesc = data.palette
     .map(c => `rgb(${c.r},${c.g},${c.b}) ${Math.round(c.weight * 100)}%`)
     .join(", ");
@@ -196,7 +203,14 @@ function buildImageDataSection(data: ImageData, imageExt: string): string {
 
   const n = data.blobSvgs.length;
 
-  return `
+  const contextLines: string[] = [];
+  if (visionDescription) contextLines.push(`Vision analysis: "${visionDescription}"`);
+  if (imageDescription) contextLines.push(`Creator's description: "${imageDescription}"`);
+  const contextBlock = contextLines.length
+    ? `\nImage context — use this to inform the theme, mood, and narrative of the animation:\n${contextLines.join("\n")}\n`
+    : "";
+
+  return `${contextBlock}
 The sketch's data/ folder contains extracted data from a source image (${data.imageWidth}×${data.imageHeight}px):
 
 Files:
@@ -272,7 +286,55 @@ IMPORTANT rules for blob SVG usage:
 - Drive motion with noise() for organic, non-repeating float and morph.
 - If audio is present, modulate sc (scale) and ox/oy offsets with smoothedAmp or bassEnergy.
 
-Use the palette as the overall colour scheme. Animate contours as particle trails or path followers. Let the blob SVGs be the primary floating, morphing, expanding visual elements.`;
+─── Shape morphing between blobs ───
+Every blob in blobSvgs has a "morphPoints" array: exactly 64 normalised [x,y] points
+resampled at equal arc-length intervals. Every blob has the same count, so you can
+lerp point-by-point between any two for smooth shape morphing.
+
+Load morph points AND colors in setup():
+  final int MORPH_N = 64;
+  float[][][] morphPts   = new float[${n}][MORPH_N][2];
+  color[]     blobColors = new color[${n}];
+  for (int i = 0; i < ${n}; i++) {
+    JSONObject meta = blobSvgs.getJSONObject(i);
+    JSONObject col  = meta.getJSONObject("color");
+    blobColors[i]   = color(col.getInt("r"), col.getInt("g"), col.getInt("b"));
+    JSONArray mp    = meta.getJSONArray("morphPoints");
+    for (int j = 0; j < MORPH_N; j++) {
+      morphPts[i][j][0] = mp.getJSONArray(j).getFloat(0);
+      morphPts[i][j][1] = mp.getJSONArray(j).getFloat(1);
+    }
+  }
+
+Draw a morphed shape interpolating both shape AND color:
+  void drawMorph(float[][] ptsA, float[][] ptsB, color colA, color colB, float t) {
+    fill(lerpColor(colA, colB, t));
+    noStroke();
+    int n = ptsA.length;
+    beginShape();
+    curveVertex(lerp(ptsA[n-1][0], ptsB[n-1][0], t) * width,
+                lerp(ptsA[n-1][1], ptsB[n-1][1], t) * height);
+    for (int i = 0; i < n; i++) {
+      curveVertex(lerp(ptsA[i][0], ptsB[i][0], t) * width,
+                  lerp(ptsA[i][1], ptsB[i][1], t) * height);
+    }
+    curveVertex(lerp(ptsA[0][0], ptsB[0][0], t) * width,
+                lerp(ptsA[0][1], ptsB[0][1], t) * height);
+    endShape(CLOSE);
+  }
+
+Cycle through all blobs (A→B→C→A…) with ease-in-out, color transitions included:
+  int fromIdx = (int(frameCount / 120)) % ${n};
+  int toIdx   = (fromIdx + 1) % ${n};
+  float raw   = (frameCount % 120) / 120.0;
+  float t     = raw < 0.5 ? 2*raw*raw : 1 - pow(-2*raw+2,2)/2;
+  drawMorph(morphPts[fromIdx], morphPts[toIdx], blobColors[fromIdx], blobColors[toIdx], t);
+
+When drawing blobs as SVGs (not morphing), always use the blob's own color:
+  fill(blobColors[i]);
+  shape(blobs[i], ...);
+
+Use the palette as the overall colour scheme. Animate contours as particle trails or path followers. Let the blob SVGs float and morph as the primary visual elements.`;
 }
 
 export function buildCodeGenPrompt(ctx: PromptContext): string {
@@ -297,7 +359,7 @@ export function buildCodeGenPrompt(ctx: PromptContext): string {
     : "";
 
   const imageSection = ctx.imageData
-    ? `\n\n${buildImageDataSection(ctx.imageData, ctx.imageExt ?? ".png")}`
+    ? `\n\n${buildImageDataSection(ctx.imageData, ctx.imageExt ?? ".png", ctx.visionDescription, ctx.imageDescription)}`
     : "";
 
   return `Create a Processing sketch for the following description:

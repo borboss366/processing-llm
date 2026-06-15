@@ -4,6 +4,7 @@ import { retrieveExamples } from "./rag/retriever.js";
 import { writeSketch, type WrittenSketch, type SketchAssets } from "./processing/sketch-writer.js";
 import { runSketch, launchSketch, type RunResult } from "./processing/sketch-runner.js";
 import { preprocessImage, type ImageData } from "./image/preprocessor.js";
+import { analyzeImage } from "./llm/vision-client.js";
 import { extname, join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -37,6 +38,8 @@ export type Session = {
   liveInput?: boolean;
   imagePath?: string;
   imageData?: ImageData;
+  visionDescription?: string;
+  imageDescription?: string;
   effects: string[];
   params: Record<string, number>;
   turns: Turn[];
@@ -49,21 +52,26 @@ export type PipelineResult = {
   session: Session;
 };
 
-export async function startSession(description: string, mp3Path?: string, imagePath?: string): Promise<PipelineResult> {
+export async function startSession(description: string, mp3Path?: string, imagePath?: string, imageDescription?: string): Promise<PipelineResult> {
   console.log(`\n[LLM] Generating sketch with ${CODE_MODEL}...`);
 
   const ragExamples = retrieveExamples(description);
   if (ragExamples.length) console.log(`[RAG] Injecting ${ragExamples.length} example(s)`);
 
   let imageData: ImageData | undefined;
+  let visionDescription: string | undefined;
   let assets: SketchAssets | undefined;
 
   if (imagePath) {
-    console.log(`[IMG] Preprocessing image → ${imagePath}`);
+    console.log(`[IMG] Preprocessing image + vision analysis → ${imagePath}`);
     const svgDir = await mkdtemp(join(tmpdir(), "proc-blobs-"));
     try {
-      imageData = preprocessImage(imagePath, svgDir);
+      [imageData, visionDescription] = await Promise.all([
+        Promise.resolve(preprocessImage(imagePath, svgDir)),
+        analyzeImage(imagePath).catch(e => { console.warn(`[Vision] ${e}`); return undefined; }),
+      ]);
       console.log(`[IMG] Palette: ${imageData.palette.length} colors, Contours: ${imageData.contours.length}, Blobs: ${imageData.blobSvgs.length} SVGs`);
+      if (visionDescription) console.log(`[Vision] ${visionDescription.slice(0, 80)}…`);
       assets = { imageData, imagePath, svgDir };
     } catch (e) {
       await rm(svgDir, { recursive: true }).catch(() => {});
@@ -79,6 +87,8 @@ export async function startSession(description: string, mp3Path?: string, imageP
       ...(mp3Path !== undefined ? { mp3Path } : {}),
       ...(imageData !== undefined ? { imageData } : {}),
       ...(imagePath !== undefined ? { imageExt: extname(imagePath) } : {}),
+      ...(visionDescription !== undefined ? { visionDescription } : {}),
+      ...(imageDescription !== undefined ? { imageDescription } : {}),
     }),
   };
 
@@ -98,6 +108,8 @@ export async function startSession(description: string, mp3Path?: string, imageP
     ...(mp3Path !== undefined ? { mp3Path } : {}),
     ...(imagePath !== undefined ? { imagePath } : {}),
     ...(imageData !== undefined ? { imageData } : {}),
+    ...(visionDescription !== undefined ? { visionDescription } : {}),
+    ...(imageDescription !== undefined ? { imageDescription } : {}),
     effects: extractEffects(code),
     params: extractParams(code),
     turns: [userTurn, { role: "assistant", content: code }],
@@ -117,6 +129,7 @@ export async function generateAndLaunch(
   mp3Path?: string,
   liveInput?: boolean,
   imagePath?: string,
+  imageDescription?: string,
 ): Promise<WebGenerateResult> {
   console.log(`\n[LLM] Generating sketch with ${CODE_MODEL}...`);
 
@@ -124,14 +137,19 @@ export async function generateAndLaunch(
   if (ragExamples.length) console.log(`[RAG] Injecting ${ragExamples.length} example(s)`);
 
   let imageData: ImageData | undefined;
+  let visionDescription: string | undefined;
   let assets: SketchAssets | undefined;
 
   if (imagePath) {
-    console.log(`[IMG] Preprocessing image → ${imagePath}`);
+    console.log(`[IMG] Preprocessing image + vision analysis → ${imagePath}`);
     const svgDir = await mkdtemp(join(tmpdir(), "proc-blobs-"));
     try {
-      imageData = preprocessImage(imagePath, svgDir);
+      [imageData, visionDescription] = await Promise.all([
+        Promise.resolve(preprocessImage(imagePath, svgDir)),
+        analyzeImage(imagePath).catch(e => { console.warn(`[Vision] ${e}`); return undefined; }),
+      ]);
       console.log(`[IMG] Palette: ${imageData.palette.length} colors, Contours: ${imageData.contours.length}, Blobs: ${imageData.blobSvgs.length} SVGs`);
+      if (visionDescription) console.log(`[Vision] ${visionDescription.slice(0, 80)}…`);
       assets = { imageData, imagePath, svgDir };
     } catch (e) {
       await rm(svgDir, { recursive: true }).catch(() => {});
@@ -148,6 +166,8 @@ export async function generateAndLaunch(
       ...(liveInput !== undefined ? { liveInput } : {}),
       ...(imageData !== undefined ? { imageData } : {}),
       ...(imagePath !== undefined ? { imageExt: extname(imagePath) } : {}),
+      ...(visionDescription !== undefined ? { visionDescription } : {}),
+      ...(imageDescription !== undefined ? { imageDescription } : {}),
     }),
   };
 
@@ -168,6 +188,8 @@ export async function generateAndLaunch(
     ...(liveInput !== undefined ? { liveInput } : {}),
     ...(imagePath !== undefined ? { imagePath } : {}),
     ...(imageData !== undefined ? { imageData } : {}),
+    ...(visionDescription !== undefined ? { visionDescription } : {}),
+    ...(imageDescription !== undefined ? { imageDescription } : {}),
     effects: extractEffects(code),
     params: extractParams(code),
     turns: [userTurn, { role: "assistant", content: code }],

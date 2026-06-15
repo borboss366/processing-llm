@@ -82,6 +82,35 @@ def _catmull_to_svg(pts):
     return " ".join(segs)
 
 
+MORPH_N = 64  # fixed point count for every blob — enables direct lerp morphing
+
+def _resample_contour(contour, img_w, img_h, n=MORPH_N):
+    """
+    Resample a raw contour (CHAIN_APPROX_NONE) to exactly n equally arc-length-spaced
+    points, normalised to 0–1 image coordinates.
+    Same n for every blob so Processing can lerp point-by-point between any two.
+    """
+    pts = contour.reshape(-1, 2).astype(float)
+    diffs = np.diff(pts, axis=0)
+    seg_lens = np.sqrt((diffs ** 2).sum(axis=1))
+    cum = np.concatenate([[0.0], np.cumsum(seg_lens)])
+    total = cum[-1]
+    if total < 1e-6:
+        p0 = [round(float(pts[0][0]) / img_w, 4), round(float(pts[0][1]) / img_h, 4)]
+        return [p0] * n
+
+    targets = np.linspace(0.0, total, n, endpoint=False)
+    result = []
+    for d in targets:
+        idx = int(np.searchsorted(cum, d, side="right")) - 1
+        idx = max(0, min(idx, len(pts) - 2))
+        seg = cum[idx + 1] - cum[idx]
+        t = (d - cum[idx]) / seg if seg > 1e-8 else 0.0
+        p = pts[idx] + t * (pts[idx + 1] - pts[idx])
+        result.append([round(float(p[0]) / img_w, 4), round(float(p[1]) / img_h, 4)])
+    return result
+
+
 def extract_blob_svgs(img_bgr, img_gray, img_w, img_h, max_blobs=8, output_dir=None):
     """
     Detect filled blob regions, vectorize each outline as a smooth SVG,
@@ -147,6 +176,7 @@ def extract_blob_svgs(img_bgr, img_gray, img_w, img_h, max_blobs=8, output_dir=N
             "cy": round((y + h / 2) / img_h, 4),
             "area": round(norm_area, 4),
             "color": {"r": r, "g": g, "b": b},
+            "morphPoints": _resample_contour(c, img_w, img_h, MORPH_N),
         })
 
     return result
