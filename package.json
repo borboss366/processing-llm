@@ -8,6 +8,7 @@
     "server": "tsx src/server.ts",
     "dev": "tsx src/index.ts",
     "demo:audio": "tsx src/agents/demo-audio.ts",
+    "module:api": "tsx src/modules/api-generator.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },

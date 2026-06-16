@@ -31,7 +31,7 @@ export class AudioInputAgent extends BaseAgent {
   }
 
   protected async *runAsyncImpl(ctx: InvocationContext): AsyncGenerator<Event, void, void> {
-    const input = ctx.session.state["audioInput"] as AudioInputMode | undefined;
+    const input = ctx.session.state["app:audioInput"] as AudioInputMode | undefined;
 
     if (!input) {
       yield createEvent({
@@ -71,8 +71,8 @@ export class AudioInputAgent extends BaseAgent {
         author: this.name,
         actions: createEventActions({
           stateDelta: {
-            audioFilePath: filePath,
-            audioInputMode: input.type,
+            "app:audioFilePath": filePath,
+            "app:audioInputMode": input.type,
           },
         }),
         content: {

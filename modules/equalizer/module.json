@@ -1,0 +1,42 @@
+{
+  "id": "equalizer",
+  "name": "Equalizer",
+  "description": "FFT frequency bar visualizer with spring physics. Bars react to live audio with configurable inertia.",
+  "version": "1.0.0",
+  "oscPrefix": "eq",
+
+  "layout": {
+    "x":           { "default": 0.5,             "range": [0, 1],    "description": "Horizontal anchor position (0=left, 1=right)" },
+    "y":           { "default": 1.0,             "range": [0, 1],    "description": "Vertical anchor position (0=top, 1=bottom)" },
+    "width":       { "default": 1.0,             "range": [0.1, 1],  "description": "Width as fraction of canvas" },
+    "height":      { "default": 0.35,            "range": [0.05, 1], "description": "Max bar height as fraction of canvas" },
+    "anchor":      { "default": "bottom-center", "values": ["top-left", "top-center", "top-right", "center", "bottom-left", "bottom-center", "bottom-right"] },
+    "orientation": { "default": "bottom-up",     "values": ["bottom-up", "top-down", "center-out"] },
+    "zOrder":      { "default": 0,               "range": [0, 100],  "description": "Draw order — lower renders first (behind)" }
+  },
+
+  "physics": {
+    "springStiffness":   { "default": 0.3,   "range": [0.05, 0.7],    "description": "Bar response speed — soft=liquid, stiff=snappy", "osc": true },
+    "springStiffnessUp": { "default": 0.5,   "range": [0.1,  0.9],    "description": "Attack spring — how fast bars rise on a hit",   "osc": true },
+    "damping":           { "default": 0.8,   "range": [0.55, 0.97],   "description": "Energy loss per frame — high=overdamped/viscous", "osc": true },
+    "gravity":           { "default": 0.002, "range": [0.0001, 0.005],"description": "Constant downward pull on bars",                 "osc": true },
+    "fluidDrag":         { "default": 0.02,  "range": [0.0,  0.08],   "description": "Velocity-squared drag — enhances liquid feel",   "osc": true }
+  },
+
+  "params": {
+    "barColor":      { "default": "#00ffff", "type": "color",  "description": "Bar fill colour",                      "osc": true },
+    "peakColor":     { "default": "#ffffff", "type": "color",  "description": "Peak hold indicator colour",            "osc": true },
+    "glowIntensity": { "default": 0.5,       "range": [0, 1],  "description": "Bloom/glow strength",                  "osc": true },
+    "barCount":      { "default": 32,        "range": [8, 128],"description": "Number of frequency bands shown", "type": "int", "osc": false },
+    "barGap":        { "default": 0.15,      "range": [0, 0.5],"description": "Gap between bars as fraction of bar width", "osc": true },
+    "smoothing":     { "default": 0.8,       "range": [0, 0.95],"description": "FFT smoothing — higher = silkier motion", "osc": true },
+    "fftGain":       { "default": 1.0,       "range": [0.1, 5], "description": "FFT amplitude scale — tune if bars are too short or tall", "osc": true }
+  },
+
+  "effects": {
+    "mirror":    { "default": false, "description": "Mirror bars left-right symmetrically",          "osc": true },
+    "rainbow":   { "default": false, "description": "Color each bar by its frequency position",       "osc": true },
+    "peakHold":  { "default": true,  "description": "Show a floating peak indicator per bar",         "osc": true },
+    "filled":    { "default": true,  "description": "Filled bars vs outline-only bars",               "osc": true }
+  }
+}

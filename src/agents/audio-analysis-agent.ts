@@ -16,7 +16,7 @@ export class AudioAnalysisAgent extends BaseAgent {
   }
 
   protected async *runAsyncImpl(ctx: InvocationContext): AsyncGenerator<Event, void, void> {
-    const filePath = ctx.session.state["audioFilePath"] as string | undefined;
+    const filePath = ctx.session.state["app:audioFilePath"] as string | undefined;
 
     if (!filePath) {
       yield createEvent({
@@ -35,7 +35,7 @@ export class AudioAnalysisAgent extends BaseAgent {
 
       yield createEvent({
         author: this.name,
-        actions: createEventActions({ stateDelta: { audioAnalysis: analysis } }),
+        actions: createEventActions({ stateDelta: { "app:audioAnalysis": analysis } }),
         content: {
           role: "model",
           parts: [{ text: `${analysis.bpm} BPM · ${analysis.keyLabel} · ${analysis.durationSeconds}s` }],

@@ -2,54 +2,22 @@ import "dotenv/config";
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import {
-  Runner,
-  InMemorySessionService,
-  InMemoryArtifactService,
-  InMemoryMemoryService,
-  createEvent,
-  createEventActions,
-} from "@google/adk";
-import { AudioInputAgent } from "./audio-input-agent.js";
-import { AudioAnalysisAgent } from "./audio-analysis-agent.js";
-import type { AudioInputMode } from "./audio-input-agent.js";
-import type { AudioAnalysis } from "../audio/analyzer.js";
+  runPipeline, resolveAudioInput, analyse, configureMood, assembleAndLaunch,
+  type AudioInputMode, type PipelineState,
+} from "../pipeline/audio.js";
 
-// ── Shared session state ──────────────────────────────────────────────────────
-const APP = "demo-audio";
-const USER = "u1";
+// ── State ─────────────────────────────────────────────────────────────────────
 
-const sessionService = new InMemorySessionService();
-const artifactService = new InMemoryArtifactService();
-const memoryService = new InMemoryMemoryService();
+let currentInput: AudioInputMode = process.argv[2]
+  ? { type: "file", mp3Path: process.argv[2] }
+  : { type: "blackhole", durationSeconds: 30 };
 
-function makeRunner(agent: AudioInputAgent | AudioAnalysisAgent) {
-  return new Runner({ appName: APP, agent, sessionService, artifactService, memoryService });
-}
+let state: PipelineState | undefined;
 
-// Each agent has its own runner but they share the same sessionService
-const inputRunner   = makeRunner(new AudioInputAgent());
-const analysisRunner = makeRunner(new AudioAnalysisAgent());
+// ── Display ───────────────────────────────────────────────────────────────────
 
-const session = await sessionService.createSession({ appName: APP, userId: USER });
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-async function runAgent(runner: Runner): Promise<void> {
-  for await (const event of runner.runAsync({
-    userId: USER,
-    sessionId: session.id,
-    newMessage: { role: "user", parts: [{ text: "go" }] },
-  })) {
-    const e = event as any;
-    const analysis: AudioAnalysis | undefined = e.actions?.stateDelta?.audioAnalysis;
-    if (analysis) printAnalysis(analysis);
-    if (e.content?.parts?.[0]?.text &&
-        !e.content.parts[0].text.startsWith("[audio_")) {
-      console.log(`  ${e.content.parts[0].text}`);
-    }
-  }
-}
-
-function printAnalysis(a: AudioAnalysis) {
+function printAnalysis(s: PipelineState) {
+  const a = s.audioAnalysis;
   const topBands = (Object.entries(a.bandEnergies) as [string, number][])
     .sort((x, y) => y[1] - x[1])
     .slice(0, 3)
@@ -58,44 +26,89 @@ function printAnalysis(a: AudioAnalysis) {
 
   console.log("\n─────────────────────────────────────────");
   console.log(`  BPM              : ${a.bpm}`);
-  console.log(`  Key              : ${a.keyLabel} (${Math.round(a.keyConfidence * 100)}% confidence)`);
+  console.log(`  Key              : ${a.keyLabel} (${Math.round(a.keyConfidence * 100)}%)`);
   console.log(`  Duration         : ${a.durationSeconds}s`);
   console.log(`  Spectral centroid: ${a.spectralCentroid} Hz`);
   console.log(`  Harmonic ratio   : ${Math.round(a.harmonicRatio * 100)}% harmonic`);
   console.log(`  Dominant band    : ${a.dominantBand}`);
   console.log(`  Top bands        : ${topBands}`);
-  console.log("─────────────────────────────────────────\n");
+  console.log("─────────────────────────────────────────");
 }
 
-async function setInput(mode: AudioInputMode) {
-  const current = await sessionService.getSession({ appName: APP, userId: USER, sessionId: session.id });
-  if (!current) return;
-  await sessionService.appendEvent({
-    session: current,
-    event: createEvent({ author: "system", actions: createEventActions({ stateDelta: { audioInput: mode } }) }),
-  });
+function printConfigs(s: PipelineState) {
+  console.log("\n── Module configs ────────────────────────");
+  for (const [id, params] of Object.entries(s.moduleConfigs)) {
+    console.log(`  [${id}]`);
+    for (const [addr, val] of Object.entries(params))
+      console.log(`    ${addr.padEnd(30)} ${val}`);
+  }
+  console.log("──────────────────────────────────────────\n");
 }
 
-// ── CLI loop ──────────────────────────────────────────────────────────────────
-const mp3Arg = process.argv[2];
-const initialMode: AudioInputMode = mp3Arg
-  ? { type: "file", mp3Path: mp3Arg }
-  : { type: "blackhole", durationSeconds: 30 };
+// ── Commands ──────────────────────────────────────────────────────────────────
 
-await setInput(initialMode);
+async function cmdAll() {
+  state = await runPipeline(currentInput);
+  printAnalysis(state);
+  printConfigs(state);
+}
+
+async function cmdInput() {
+  const { filePath, mode } = await resolveAudioInput(currentInput);
+  if (state) { state.audioFilePath = filePath; state.audioInputMode = mode; }
+  else state = { audioFilePath: filePath, audioInputMode: mode, audioAnalysis: undefined as any, moduleConfigs: {}, activeModules: [] };
+  console.log(`  Audio ready: ${filePath} (${mode})`);
+}
+
+async function cmdAnalysis() {
+  if (!state?.audioFilePath) { console.log("  Run input first (i)"); return; }
+  state.audioAnalysis = analyse(state.audioFilePath);
+  printAnalysis(state);
+}
+
+async function cmdMood() {
+  if (!state?.audioAnalysis) { console.log("  Run analysis first (a)"); return; }
+  state.moduleConfigs = await configureMood(state.audioAnalysis, state.activeModules);
+  printConfigs(state);
+}
+
+async function cmdAssemble() {
+  if (!state?.moduleConfigs || Object.keys(state.moduleConfigs).length === 0) {
+    console.log("  Run mood config first (m)"); return;
+  }
+  state.sketchPath = await assembleAndLaunch(state);
+}
+
+async function cmdSwitchFile(path: string) {
+  currentInput = { type: "file", mp3Path: path };
+  state = await runPipeline(currentInput, state?.activeModules);
+  printAnalysis(state);
+  printConfigs(state);
+}
+
+async function cmdSwitchBlackHole(secs: number) {
+  currentInput = { type: "blackhole", durationSeconds: secs };
+  state = await runPipeline(currentInput, state?.activeModules);
+  printAnalysis(state);
+  printConfigs(state);
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 console.log("\nCommands:");
-console.log("  [Enter]       re-run both agents");
-console.log("  i             re-run input only  (new capture / reload file)");
+console.log("  [Enter]       run full pipeline");
+console.log("  i             re-run input only");
 console.log("  a             re-run analysis only");
+console.log("  m             re-run mood config only");
+console.log("  s             assemble + launch sketch");
 console.log("  f <path>      switch to a file");
 console.log("  b [seconds]   switch to BlackHole capture");
 console.log("  q             quit\n");
 
-// Run both once at startup
-console.log("Running initial analysis...");
-await runAgent(inputRunner);
-await runAgent(analysisRunner);
+console.log("Running initial pipeline...");
+state = await runPipeline(currentInput);
+printAnalysis(state);
+printConfigs(state);
 
 const rl = readline.createInterface({ input: stdin, output: stdout });
 
@@ -103,27 +116,17 @@ while (true) {
   const line = (await rl.question("> ")).trim();
 
   if (line === "q" || line === "quit") break;
-
-  if (line === "" ) {
-    await runAgent(inputRunner);
-    await runAgent(analysisRunner);
-  } else if (line === "i") {
-    await runAgent(inputRunner);
-  } else if (line === "a") {
-    await runAgent(analysisRunner);
-  } else if (line.startsWith("f ")) {
-    const path = line.slice(2).trim();
-    await setInput({ type: "file", mp3Path: path });
-    await runAgent(inputRunner);
-    await runAgent(analysisRunner);
-  } else if (line.startsWith("b")) {
+  else if (line === "")          await cmdAll();
+  else if (line === "i")         await cmdInput();
+  else if (line === "a")         await cmdAnalysis();
+  else if (line === "m")         await cmdMood();
+  else if (line === "s")         await cmdAssemble();
+  else if (line.startsWith("f ")) await cmdSwitchFile(line.slice(2).trim());
+  else if (line.startsWith("b")) {
     const secs = parseInt(line.split(" ")[1] ?? "30");
-    await setInput({ type: "blackhole", durationSeconds: isNaN(secs) ? 30 : secs });
-    await runAgent(inputRunner);
-    await runAgent(analysisRunner);
-  } else {
-    console.log("Unknown command.");
+    await cmdSwitchBlackHole(isNaN(secs) ? 30 : secs);
   }
+  else console.log("  Unknown command.");
 }
 
 rl.close();

@@ -5,6 +5,8 @@ import "./anthropic-llm.js";
 import { LlmAgent, InMemoryRunner, SequentialAgent } from "@google/adk";
 import { AudioInputAgent } from "./audio-input-agent.js";
 import { AudioAnalysisAgent } from "./audio-analysis-agent.js";
+import { MoodParameterAgent } from "./mood-parameter-agent.js";
+import { AssemblerAgent } from "./assembler-agent.js";
 
 export const sketchAgent = new LlmAgent({
   name: "sketch_agent",
@@ -15,12 +17,17 @@ When given a task, output ONLY valid Processing source code — no markdown, no 
 The sketch must include void setup() and void draw() and be self-contained and runnable as-is.`,
 });
 
-// Audio pipeline: resolve source → analyse → done
-// Results land in session state as `audioFilePath` and `audioAnalysis`
+// Audio pipeline: resolve source → analyse → configure modules
+// State after completion: audioFilePath, audioAnalysis, moduleConfigs
 export const audioPipeline = new SequentialAgent({
   name: "audio_pipeline",
-  description: "Resolves an audio source (file or BlackHole) then extracts BPM and key.",
-  subAgents: [new AudioInputAgent(), new AudioAnalysisAgent()],
+  description: "Resolves audio source, extracts BPM/key/character, then configures module parameters to match the mood.",
+  subAgents: [
+    new AudioInputAgent(),
+    new AudioAnalysisAgent(),
+    new MoodParameterAgent(),
+    new AssemblerAgent(),
+  ],
 });
 
 export const runner = new InMemoryRunner({
