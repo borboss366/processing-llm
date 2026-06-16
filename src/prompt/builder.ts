@@ -363,9 +363,40 @@ export function buildCodeGenPrompt(ctx: PromptContext): string {
   let audioContextLine = "";
   if (ctx.audioAnalysis) {
     const a = ctx.audioAnalysis;
-    audioContextLine = `\nTrack analysis: ${a.bpm} BPM · ${a.keyLabel} (confidence ${Math.round(a.keyConfidence * 100)}%) · ${a.durationSeconds}s\n`
-      + `Use the BPM to time animations (one beat = ${(60 / a.bpm).toFixed(3)}s). `
-      + `${a.scale === "minor" ? "Minor key — lean toward darker, more tense or melancholic visuals." : "Major key — lean toward brighter, more energetic or uplifting visuals."}\n`;
+
+    // Spectral centroid → human-readable brightness
+    const brightness = a.spectralCentroid < 800  ? "very dark/warm (sub 800 Hz)"
+                     : a.spectralCentroid < 1800 ? "warm/mid (800–1800 Hz)"
+                     : a.spectralCentroid < 3500 ? "neutral/mid-bright (1800–3500 Hz)"
+                     : a.spectralCentroid < 6000 ? "bright (3500–6000 Hz)"
+                     :                             "very bright/harsh (6000+ Hz)";
+
+    // Harmonic ratio → character description
+    const character = a.harmonicRatio > 0.7 ? "mostly harmonic/melodic — favour smooth, flowing, organic shapes"
+                    : a.harmonicRatio < 0.3 ? "mostly percussive — favour sharp impacts, angular geometry, particle bursts"
+                    :                         "balanced harmonic/percussive — mix fluid motion with sharp beat impacts";
+
+    // Dominant band → emphasis hint
+    const bandHints: Record<string, string> = {
+      sub_bass:  "sub-bass dominant — emphasise slow, massive, low-frequency rumble in visuals",
+      bass:      "bass dominant — ground the animation in heavy, weighty, rhythmic motion",
+      low_mid:   "low-mid dominant — warm body; mid-scale shapes with physical weight",
+      mid:       "mid dominant — balanced presence; versatile, melodic shapes work well",
+      high_mid:  "high-mid dominant — detailed, articulate; fine textures and sharp edges",
+      high:      "high-frequency dominant — bright, airy, sparkling; fine particles and thin lines",
+    };
+    const bandHint = bandHints[a.dominantBand] ?? "";
+
+    audioContextLine = `
+Track analysis: ${a.bpm} BPM · ${a.keyLabel} (${Math.round(a.keyConfidence * 100)}% confidence) · ${a.durationSeconds}s
+Brightness: ${brightness}
+Character: ${character}
+Frequency emphasis: ${bandHint}
+${a.scale === "minor"
+  ? "Minor key — lean toward darker, more tense or melancholic visuals."
+  : "Major key — lean toward brighter, more energetic or uplifting visuals."}
+One beat = ${(60 / a.bpm).toFixed(3)}s — use this to time transitions, pulses, and loops.
+`;
   }
 
   const imageSection = ctx.imageData

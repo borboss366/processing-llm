@@ -59,9 +59,58 @@ def detect_key(y: np.ndarray, sr: int) -> tuple[str, str, float]:
 def detect_bpm(y: np.ndarray, sr: int) -> float:
     """Returns estimated BPM, rounded to one decimal place."""
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    # beat_track returns an ndarray in newer librosa versions
     bpm = float(np.atleast_1d(tempo)[0])
     return round(bpm, 1)
+
+
+# ── Frequency bands ────────────────────────────────────────────────────────────
+
+_BANDS = {
+    "sub_bass":  (20,   60),
+    "bass":      (60,   250),
+    "low_mid":   (250,  500),
+    "mid":       (500,  2000),
+    "high_mid":  (2000, 4000),
+    "high":      (4000, 20000),
+}
+
+
+def detect_spectral_centroid(y: np.ndarray, sr: int) -> float:
+    """Average spectral centroid in Hz — perceived brightness of the sound."""
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+    return round(float(np.mean(centroid)), 1)
+
+
+def detect_harmonic_ratio(y: np.ndarray) -> float:
+    """
+    Ratio of harmonic energy to total energy (0 = fully percussive, 1 = fully harmonic).
+    Uses librosa's HPSS (Harmonic-Percussive Source Separation).
+    """
+    y_harmonic, y_percussive = librosa.effects.hpss(y)
+    harmonic_energy   = float(np.mean(y_harmonic   ** 2))
+    percussive_energy = float(np.mean(y_percussive ** 2))
+    total = harmonic_energy + percussive_energy + 1e-10
+    return round(harmonic_energy / total, 3)
+
+
+def detect_band_energies(y: np.ndarray, sr: int) -> tuple[dict[str, float], str]:
+    """
+    Returns (band_energies, dominant_band).
+    band_energies: relative energy (0–1) per named band, sums to 1.
+    dominant_band: name of the band with the most energy.
+    """
+    S = np.abs(librosa.stft(y)) ** 2
+    freqs = librosa.fft_frequencies(sr=sr)
+
+    raw: dict[str, float] = {}
+    for name, (lo, hi) in _BANDS.items():
+        mask = (freqs >= lo) & (freqs < hi)
+        raw[name] = float(np.mean(S[mask, :])) if mask.any() else 0.0
+
+    total = sum(raw.values()) + 1e-10
+    energies = {k: round(v / total, 4) for k, v in raw.items()}
+    dominant = max(energies, key=energies.__getitem__)
+    return energies, dominant
 
 
 def main() -> None:
@@ -77,16 +126,23 @@ def main() -> None:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
 
-    bpm = detect_bpm(y, sr)
-    root, scale, confidence = detect_key(y, sr)
+    bpm                      = detect_bpm(y, sr)
+    root, scale, confidence  = detect_key(y, sr)
+    spectral_centroid        = detect_spectral_centroid(y, sr)
+    harmonic_ratio           = detect_harmonic_ratio(y)
+    band_energies, dominant  = detect_band_energies(y, sr)
 
     print(json.dumps({
-        "bpm": bpm,
-        "key": root,
-        "scale": scale,              # "major" or "minor"
-        "keyLabel": f"{root} {scale}",
-        "keyConfidence": confidence,
+        "bpm":             bpm,
+        "key":             root,
+        "scale":           scale,
+        "keyLabel":        f"{root} {scale}",
+        "keyConfidence":   confidence,
         "durationSeconds": round(float(len(y) / sr), 1),
+        "spectralCentroid": spectral_centroid,
+        "harmonicRatio":    harmonic_ratio,
+        "dominantBand":     dominant,
+        "bandEnergies":     band_energies,
     }))
 
 

@@ -2,13 +2,23 @@ import { spawnSync } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+export type BandName = "sub_bass" | "bass" | "low_mid" | "mid" | "high_mid" | "high";
+
 export type AudioAnalysis = {
   bpm: number;
-  key: string;           // e.g. "A"
+  key: string;
   scale: "major" | "minor";
-  keyLabel: string;      // e.g. "A minor"
-  keyConfidence: number; // 0–1
+  keyLabel: string;
+  keyConfidence: number;
   durationSeconds: number;
+  /** Average spectral centroid in Hz — perceived brightness (low = warm/dark, high = bright/harsh) */
+  spectralCentroid: number;
+  /** 0 = fully percussive, 1 = fully harmonic/melodic */
+  harmonicRatio: number;
+  /** Frequency band carrying the most energy */
+  dominantBand: BandName;
+  /** Relative energy per band, sums to 1 */
+  bandEnergies: Record<BandName, number>;
 };
 
 const SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), "analyze.py");
