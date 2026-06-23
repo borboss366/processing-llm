@@ -42,15 +42,15 @@ export async function writeSketch(code: string, assets?: SketchAssets): Promise<
   await mkdir(dataDir, { recursive: true });
   await writeFile(file, code, "utf8");
 
-  // Symlink SVG faces into data/ individually
-  try {
-    const svgs = (await readdir(FACES_DIR)).filter(f => f.endsWith(".svg"));
-    await Promise.all(
-      svgs.map(svg => symlink(join(FACES_DIR, svg), join(dataDir, svg)).catch(() => {}))
-    );
-  } catch {}
-
   if (assets) {
+    // Symlink SVG faces into data/ — only when the sketch uses image features
+    try {
+      const svgs = (await readdir(FACES_DIR)).filter(f => f.endsWith(".svg"));
+      await Promise.all(
+        svgs.map(svg => symlink(join(FACES_DIR, svg), join(dataDir, svg)).catch(() => {}))
+      );
+    } catch {}
+
     // Write JSON feature data
     await writeFile(
       join(dataDir, "image_data.json"),

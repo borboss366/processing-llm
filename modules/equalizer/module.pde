@@ -200,18 +200,25 @@ float eq_peakY(float peakH) {
 
 // ── OSC handler snippet (assembler injects into oscEvent) ─────────────────────
 // eq_osc(msg) — call this from the main oscEvent function
+color eq_parseHex(String s) {
+  if (s.startsWith("#")) s = s.substring(1);
+  return unhex("FF" + s);
+}
+
 void eq_osc(OscMessage msg) {
-  if (msg.checkAddrPattern("/eq/springK"))    eqSpringK     = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/springKUp"))  eqSpringKUp   = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/damping"))    eqDamping     = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/gravity"))    eqGravity     = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/fluidDrag"))  eqFluidDrag   = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/glow"))       eqGlow        = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/barGap"))     eqBarGap      = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/smoothing"))  eqSmoothing   = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/fftGain"))    eqFftGain     = msg.get(0).floatValue();
-  if (msg.checkAddrPattern("/eq/mirror"))     eqMirror      = msg.get(0).intValue() == 1;
-  if (msg.checkAddrPattern("/eq/rainbow"))    eqRainbow     = msg.get(0).intValue() == 1;
-  if (msg.checkAddrPattern("/eq/peakHold"))   eqPeakHold    = msg.get(0).intValue() == 1;
-  if (msg.checkAddrPattern("/eq/filled"))     eqFilled      = msg.get(0).intValue() == 1;
+  if (msg.checkAddrPattern("/eq/springStiffness"))    eqSpringK     = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/springStiffnessUp"))  eqSpringKUp   = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/damping"))            eqDamping     = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/gravity"))            eqGravity     = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/fluidDrag"))          eqFluidDrag   = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/glowIntensity"))      eqGlow        = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/barGap"))             eqBarGap      = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/smoothing"))          eqSmoothing   = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/fftGain"))            eqFftGain     = msg.get(0).floatValue();
+  if (msg.checkAddrPattern("/eq/barColor"))           eqBarColor    = eq_parseHex(msg.get(0).stringValue());
+  if (msg.checkAddrPattern("/eq/peakColor"))          eqPeakColor   = eq_parseHex(msg.get(0).stringValue());
+  if (msg.checkAddrPattern("/eq/mirror"))             eqMirror      = msg.get(0).intValue() == 1;
+  if (msg.checkAddrPattern("/eq/rainbow"))            eqRainbow     = msg.get(0).intValue() == 1;
+  if (msg.checkAddrPattern("/eq/peakHold"))           eqPeakHold    = msg.get(0).intValue() == 1;
+  if (msg.checkAddrPattern("/eq/filled"))             eqFilled      = msg.get(0).intValue() == 1;
 }

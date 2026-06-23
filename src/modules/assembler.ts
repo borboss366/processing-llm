@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateApiFromPath } from "./api-generator.js";
-import type { ModuleApi, ParamType } from "./types.js";
+import type { ModuleApi, ParamType, Renderer } from "./types.js";
 import type { ModuleConfigs } from "../agents/mood-parameter-agent.js";
 
 // ── Value formatting ──────────────────────────────────────────────────────────
@@ -12,8 +12,20 @@ function formatValue(value: unknown, type: ParamType): string {
     case "int":     return String(Math.round(Number(value)));
     case "color":   return String(value);   // "#rrggbb" — valid Processing hex literal
     case "float":   return String(value);
+    case "string":  return typeof value === "string" ? value : String(value);   // template wraps with quotes
     default:        return typeof value === "string" ? value : String(value);
   }
+}
+
+// Renderer strictness — assembler picks the strictest demand across modules
+const RENDERER_RANK: Record<Renderer, number> = { JAVA2D: 0, P2D: 1, P3D: 2 };
+
+function pickRenderer(apis: ModuleApi[]): Renderer {
+  let best: Renderer = "JAVA2D";
+  for (const api of apis) {
+    if (api.renderer && RENDERER_RANK[api.renderer] > RENDERER_RANK[best]) best = api.renderer;
+  }
+  return best;
 }
 
 // ── Template substitution ─────────────────────────────────────────────────────
@@ -142,9 +154,19 @@ export type AssemblyOptions = {
   modulesDir: string;
   liveInput?: boolean;
   mp3Path?: string;
+  oscPort?: number;
 };
 
-export type AssembledSketch = { code: string };
+export type ManifestEntry = {
+  id: string;
+  name: string;
+  oscPrefix: string;
+  description: string;
+};
+export type AssembledSketch = {
+  code: string;
+  manifest: { moduleIds: string[]; modules: ManifestEntry[]; oscPort: number };
+};
 
 export function assembleSketch(opts: AssemblyOptions): AssembledSketch {
   const { moduleIds, configs, modulesDir, liveInput = true, mp3Path } = opts;
@@ -166,6 +188,8 @@ export function assembleSketch(opts: AssemblyOptions): AssembledSketch {
     return zA - zB;
   });
 
+  const oscPort = opts.oscPort ?? 12000;
+
   const lines: string[] = [
     effectsComment(apis),
     paramsComment(apis, configs),
@@ -175,6 +199,16 @@ export function assembleSketch(opts: AssemblyOptions): AssembledSketch {
     audioGlobals(liveInput),
     "",
     "OscP5 oscP5;",
+    "",
+    // Per-module enable flags + lifecycle OSC handler
+    "// ── Module enable flags (default ON, toggle via /modules/<id>/enabled 0|1)",
+    ...modules.map(m => `boolean ${m.api.oscPrefix}Enabled = true;`),
+    "",
+    "void moduleEnableOsc(OscMessage msg) {",
+    ...modules.map(m =>
+      `  if (msg.checkAddrPattern("/modules/${m.api.id}/enabled")) ${m.api.oscPrefix}Enabled = msg.get(0).intValue() == 1;`
+    ),
+    "}",
     "",
     // Module code blocks
     ...modules.flatMap(m => [
@@ -186,9 +220,12 @@ export function assembleSketch(opts: AssemblyOptions): AssembledSketch {
     ]),
     // setup()
     `void setup() {`,
-    `  size(800, 600);`,
+    (() => {
+      const r = pickRenderer(apis);
+      return r === "JAVA2D" ? `  size(800, 600);` : `  size(800, 600, ${r});`;
+    })(),
     `  colorMode(RGB, 255);`,
-    `  oscP5 = new OscP5(this, 12000);`,
+    `  oscP5 = new OscP5(this, ${oscPort});`,
     audioSetup(liveInput, mp3Path),
     ...apis.map(api => `  ${api.oscPrefix}_setup();`),
     `}`,
@@ -197,11 +234,12 @@ export function assembleSketch(opts: AssemblyOptions): AssembledSketch {
     `void draw() {`,
     `  background(0);`,
     audioUpdate(liveInput),
-    ...drawOrder.map(m => `  ${m.api.oscPrefix}_draw();`),
+    ...drawOrder.map(m => `  if (${m.api.oscPrefix}Enabled) ${m.api.oscPrefix}_draw();`),
     `}`,
     "",
-    // oscEvent()
+    // oscEvent() — system enable msgs go first, then each module's own handler
     `void oscEvent(OscMessage msg) {`,
+    `  moduleEnableOsc(msg);`,
     ...apis.map(api => `  ${api.oscPrefix}_osc(msg);`),
     `}`,
     "",
@@ -215,5 +253,16 @@ export function assembleSketch(opts: AssemblyOptions): AssembledSketch {
     ] : []),
   ];
 
-  return { code: lines.join("\n") };
+  const manifest = {
+    moduleIds: apis.map(a => a.id),
+    modules: apis.map(a => ({
+      id:          a.id,
+      name:        a.name,
+      oscPrefix:   a.oscPrefix,
+      description: a.description,
+    })),
+    oscPort,
+  };
+
+  return { code: lines.join("\n"), manifest };
 }

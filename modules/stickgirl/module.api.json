@@ -1,0 +1,230 @@
+{
+  "id": "stickgirl",
+  "name": "Stick Girl",
+  "description": "Orange/red dancing stick figure on the right side of the screen, audio-reactive.",
+  "oscPrefix": "girl",
+  "oscParams": [
+    {
+      "address": "/girl/bodyColor",
+      "name": "bodyColor",
+      "label": "Body Color",
+      "section": "params",
+      "type": "color",
+      "default": "#ff6020",
+      "description": "Orange-red colour for body, head, skirt"
+    },
+    {
+      "address": "/girl/hairColor",
+      "name": "hairColor",
+      "label": "Hair Color",
+      "section": "params",
+      "type": "color",
+      "default": "#ff3000",
+      "description": "Red colour for hair and ponytail"
+    },
+    {
+      "address": "/girl/baseSize",
+      "name": "baseSize",
+      "label": "Base Size",
+      "section": "params",
+      "type": "int",
+      "default": 80,
+      "description": "Half-height of the figure in pixels at rest",
+      "range": [
+        30,
+        200
+      ]
+    },
+    {
+      "address": "/girl/swayStrength",
+      "name": "swayStrength",
+      "label": "Sway Strength",
+      "section": "params",
+      "type": "int",
+      "default": 1,
+      "description": "Multiplier for bass-driven horizontal hip shake",
+      "range": [
+        0,
+        3
+      ]
+    },
+    {
+      "address": "/girl/jumpStrength",
+      "name": "jumpStrength",
+      "label": "Jump Strength",
+      "section": "params",
+      "type": "int",
+      "default": 6,
+      "description": "Initial upward velocity on beat",
+      "range": [
+        0,
+        20
+      ]
+    },
+    {
+      "address": "/girl/armSwingRate",
+      "name": "armSwingRate",
+      "label": "Arm Swing Rate",
+      "section": "params",
+      "type": "float",
+      "default": 0.08,
+      "description": "Arm swing speed — radians per frame",
+      "range": [
+        0.01,
+        0.5
+      ]
+    },
+    {
+      "address": "/girl/bassSmoothing",
+      "name": "bassSmoothing",
+      "label": "Bass Smoothing",
+      "section": "params",
+      "type": "float",
+      "default": 0.07,
+      "description": "lerp factor toward bassEnergy",
+      "range": [
+        0.02,
+        0.3
+      ]
+    },
+    {
+      "address": "/girl/hipShake",
+      "name": "hipShake",
+      "label": "Hip Shake",
+      "section": "effects",
+      "type": "boolean",
+      "default": true,
+      "description": "Hips wiggle horizontally with smoothed bass"
+    },
+    {
+      "address": "/girl/bounceOnBeat",
+      "name": "bounceOnBeat",
+      "label": "Bounce On Beat",
+      "section": "effects",
+      "type": "boolean",
+      "default": true,
+      "description": "Whole figure jumps up on beat"
+    }
+  ],
+  "controller": [
+    {
+      "id": "params",
+      "title": "Parameters",
+      "controls": [
+        {
+          "type": "color",
+          "label": "Body Color",
+          "address": "/girl/bodyColor",
+          "default": "#ff6020"
+        },
+        {
+          "type": "color",
+          "label": "Hair Color",
+          "address": "/girl/hairColor",
+          "default": "#ff3000"
+        },
+        {
+          "type": "slider",
+          "label": "Base Size",
+          "address": "/girl/baseSize",
+          "min": 30,
+          "max": 200,
+          "step": 1,
+          "default": 80
+        },
+        {
+          "type": "slider",
+          "label": "Sway Strength",
+          "address": "/girl/swayStrength",
+          "min": 0,
+          "max": 3,
+          "step": 1,
+          "default": 1
+        },
+        {
+          "type": "slider",
+          "label": "Jump Strength",
+          "address": "/girl/jumpStrength",
+          "min": 0,
+          "max": 20,
+          "step": 1,
+          "default": 6
+        },
+        {
+          "type": "slider",
+          "label": "Arm Swing Rate",
+          "address": "/girl/armSwingRate",
+          "min": 0.01,
+          "max": 0.5,
+          "step": 0.01,
+          "default": 0.08
+        },
+        {
+          "type": "slider",
+          "label": "Bass Smoothing",
+          "address": "/girl/bassSmoothing",
+          "min": 0.02,
+          "max": 0.3,
+          "step": 0.01,
+          "default": 0.07
+        }
+      ]
+    },
+    {
+      "id": "effects",
+      "title": "Effects",
+      "controls": [
+        {
+          "type": "toggle",
+          "label": "Hip Shake",
+          "address": "/girl/hipShake",
+          "default": true
+        },
+        {
+          "type": "toggle",
+          "label": "Bounce On Beat",
+          "address": "/girl/bounceOnBeat",
+          "default": true
+        }
+      ]
+    }
+  ],
+  "baked": [
+    {
+      "name": "x",
+      "value": 0.85,
+      "type": "float",
+      "description": "Horizontal anchor (0=left, 1=right)"
+    },
+    {
+      "name": "y",
+      "value": 0.5,
+      "type": "float",
+      "description": "Vertical anchor (0=top, 1=bottom)"
+    },
+    {
+      "name": "width",
+      "value": 0.2,
+      "type": "float",
+      "description": "Subject width as fraction of canvas"
+    },
+    {
+      "name": "height",
+      "value": 0.6,
+      "type": "float",
+      "description": "Subject height as fraction of canvas"
+    },
+    {
+      "name": "anchor",
+      "value": "center",
+      "type": "string",
+      "description": ""
+    },
+    {
+      "name": "zOrder",
+      "value": 5,
+      "type": "int",
+      "description": "Draw order — lower renders behind"
+    }
+  ]
+}

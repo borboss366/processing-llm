@@ -1,0 +1,81 @@
+{
+  "id": "fireworks",
+  "name": "Fireworks",
+  "description": "Audio-reactive particle-burst fireworks that pop at random positions on the canvas, max 3 simultaneously.",
+  "version": "1.0.0",
+  "oscPrefix": "fw",
+
+  "layout": {
+    "x": { "default": 0.0, "range": [0, 1], "description": "Horizontal anchor (0=left, 1=right)" },
+    "y": { "default": 0.0, "range": [0, 1], "description": "Vertical anchor (0=top, 1=bottom)" },
+    "width": { "default": 1.0, "range": [0.05, 1], "description": "Bounding box width as fraction of canvas" },
+    "height": { "default": 1.0, "range": [0.05, 1], "description": "Bounding box height as fraction of canvas" },
+    "anchor": {
+      "default": "top-left",
+      "values": ["top-left", "top-center", "top-right", "center", "bottom-left", "bottom-center", "bottom-right"]
+    },
+    "zOrder": { "default": 20, "range": [-100, 100], "description": "Draw order — lower renders behind" }
+  },
+
+  "physics": {},
+
+  "params": {
+    "baseColor": {
+      "default": "#ffd060",
+      "type": "color",
+      "description": "Default firework colour (used unless rainbowMode is on)",
+      "osc": true
+    },
+    "particleCount": {
+      "default": 60,
+      "range": [10, 200],
+      "type": "int",
+      "description": "Particles per firework — baked at assembly",
+      "osc": false
+    },
+    "burstSpeed": {
+      "default": 4.0,
+      "range": [1, 10],
+      "description": "Initial outward velocity of particles",
+      "osc": true
+    },
+    "lifespan": {
+      "default": 70,
+      "range": [30, 180],
+      "type": "int",
+      "description": "Frames each firework lives",
+      "osc": true
+    },
+    "gravity": {
+      "default": 0.15,
+      "range": [0, 0.6],
+      "description": "Downward pull on each particle per frame",
+      "osc": true
+    },
+    "spawnRate": {
+      "default": 0.02,
+      "range": [0, 0.3],
+      "description": "Per-frame chance of spawning in an idle slot at silence",
+      "osc": true
+    },
+    "bassSpawnBoost": {
+      "default": 5.0,
+      "range": [0, 15],
+      "description": "Adds bassEnergy * this to spawn chance",
+      "osc": true
+    }
+  },
+
+  "effects": {
+    "spawnOnBeat": {
+      "default": true,
+      "description": "Force-spawn one firework on every onBeat (if a slot is idle)",
+      "osc": true
+    },
+    "rainbowMode": {
+      "default": false,
+      "description": "Pick random RGB per spawn instead of baseColor",
+      "osc": true
+    }
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "id": "plane",
+  "name": "Plane",
+  "description": "A small airplane that flies back and forth across the top of the canvas, reacting to live audio.",
+  "oscPrefix": "plane",
+  "oscParams": [
+    {
+      "address": "/plane/planeColor",
+      "name": "planeColor",
+      "label": "Plane Color",
+      "section": "params",
+      "type": "color",
+      "default": "#e0e0e0",
+      "description": "Aircraft fill colour"
+    },
+    {
+      "address": "/plane/planeSize",
+      "name": "planeSize",
+      "label": "Plane Size",
+      "section": "params",
+      "type": "int",
+      "default": 40,
+      "description": "Half-length of fuselage in pixels",
+      "range": [
+        20,
+        120
+      ]
+    },
+    {
+      "address": "/plane/baseSpeed",
+      "name": "baseSpeed",
+      "label": "Base Speed",
+      "section": "params",
+      "type": "float",
+      "default": 3,
+      "description": "Horizontal speed at rest, pixels per frame",
+      "range": [
+        0.5,
+        10
+      ]
+    },
+    {
+      "address": "/plane/speedBoost",
+      "name": "speedBoost",
+      "label": "Speed Boost",
+      "section": "params",
+      "type": "float",
+      "default": 1.5,
+      "description": "Multiplier on speed by smoothedLevel",
+      "range": [
+        0,
+        4
+      ]
+    },
+    {
+      "address": "/plane/bobAmplitude",
+      "name": "bobAmplitude",
+      "label": "Bob Amplitude",
+      "section": "params",
+      "type": "int",
+      "default": 8,
+      "description": "Vertical bob amplitude on bass",
+      "range": [
+        0,
+        30
+      ]
+    },
+    {
+      "address": "/plane/bassSmoothing",
+      "name": "bassSmoothing",
+      "label": "Bass Smoothing",
+      "section": "params",
+      "type": "float",
+      "default": 0.07,
+      "description": "lerp factor toward bassEnergy",
+      "range": [
+        0.02,
+        0.3
+      ]
+    },
+    {
+      "address": "/plane/dipOnBeat",
+      "name": "dipOnBeat",
+      "label": "Dip On Beat",
+      "section": "effects",
+      "type": "boolean",
+      "default": true,
+      "description": "Plane dips momentarily on each beat"
+    }
+  ],
+  "controller": [
+    {
+      "id": "params",
+      "title": "Parameters",
+      "controls": [
+        {
+          "type": "color",
+          "label": "Plane Color",
+          "address": "/plane/planeColor",
+          "default": "#e0e0e0"
+        },
+        {
+          "type": "slider",
+          "label": "Plane Size",
+          "address": "/plane/planeSize",
+          "min": 20,
+          "max": 120,
+          "step": 1,
+          "default": 40
+        },
+        {
+          "type": "slider",
+          "label": "Base Speed",
+          "address": "/plane/baseSpeed",
+          "min": 0.5,
+          "max": 10,
+          "step": 0,
+          "default": 3
+        },
+        {
+          "type": "slider",
+          "label": "Speed Boost",
+          "address": "/plane/speedBoost",
+          "min": 0,
+          "max": 4,
+          "step": 0,
+          "default": 1.5
+        },
+        {
+          "type": "slider",
+          "label": "Bob Amplitude",
+          "address": "/plane/bobAmplitude",
+          "min": 0,
+          "max": 30,
+          "step": 1,
+          "default": 8
+        },
+        {
+          "type": "slider",
+          "label": "Bass Smoothing",
+          "address": "/plane/bassSmoothing",
+          "min": 0.02,
+          "max": 0.3,
+          "step": 0.01,
+          "default": 0.07
+        }
+      ]
+    },
+    {
+      "id": "effects",
+      "title": "Effects",
+      "controls": [
+        {
+          "type": "toggle",
+          "label": "Dip On Beat",
+          "address": "/plane/dipOnBeat",
+          "default": true
+        }
+      ]
+    }
+  ],
+  "baked": [
+    {
+      "name": "x",
+      "value": 0,
+      "type": "int",
+      "description": "Horizontal anchor (0=left, 1=right)"
+    },
+    {
+      "name": "y",
+      "value": 0.05,
+      "type": "float",
+      "description": "Vertical anchor (0=top, 1=bottom)"
+    },
+    {
+      "name": "width",
+      "value": 1,
+      "type": "float",
+      "description": "Width as fraction of canvas"
+    },
+    {
+      "name": "height",
+      "value": 0.15,
+      "type": "float",
+      "description": "Height as fraction of canvas"
+    },
+    {
+      "name": "anchor",
+      "value": "top-left",
+      "type": "string",
+      "description": ""
+    },
+    {
+      "name": "zOrder",
+      "value": 10,
+      "type": "int",
+      "description": "Draw order — lower renders behind"
+    }
+  ]
+}

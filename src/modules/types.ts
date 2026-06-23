@@ -1,6 +1,8 @@
 // ── Raw module.json shape ─────────────────────────────────────────────────────
 
-export type ParamType = "float" | "int" | "boolean" | "color";
+export type ParamType = "float" | "int" | "boolean" | "color" | "string";
+
+export type Renderer = "JAVA2D" | "P2D" | "P3D";
 
 export type RawParam = {
   default: number | boolean | string;
@@ -17,6 +19,7 @@ export type RawModuleJson = {
   description: string;
   version: string;
   oscPrefix: string;
+  renderer?: Renderer;        // sketch renderer hint — assembler picks the strictest across modules
   layout:  Record<string, RawParam>;
   physics: Record<string, RawParam>;
   params:  Record<string, RawParam>;
@@ -60,6 +63,7 @@ export type ModuleApi = {
   name: string;
   description: string;
   oscPrefix: string;
+  renderer?: Renderer;
   oscParams: OscParam[];        // live-controllable params → OSC
   controller: ControlSection[]; // grouped for the web controller UI
   baked: BakedParam[];          // layout + osc:false params → assembler only

@@ -41,8 +41,9 @@ export async function resolveAudioInput(
   input: AudioInputMode,
 ): Promise<{ filePath: string; mode: "file" | "blackhole" }> {
   if (input.type === "file") {
-    console.log(`[Input] File: ${input.mp3Path}`);
-    return { filePath: input.mp3Path, mode: "file" };
+    const filePath = resolve(input.mp3Path);
+    console.log(`[Input] File: ${filePath}`);
+    return { filePath, mode: "file" };
   }
 
   const duration = input.durationSeconds ?? 30;

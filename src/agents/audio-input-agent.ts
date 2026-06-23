@@ -1,7 +1,7 @@
 import { BaseAgent, createEvent, createEventActions } from "@google/adk";
 import type { InvocationContext, Event } from "@google/adk";
 import { spawnSync } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CAPTURE_SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), "../audio/capture.py");
@@ -46,7 +46,7 @@ export class AudioInputAgent extends BaseAgent {
       let filePath: string;
 
       if (input.type === "file") {
-        filePath = input.mp3Path;
+        filePath = isAbsolute(input.mp3Path) ? input.mp3Path : resolve(input.mp3Path);
         console.log(`[AudioInputAgent] Using file: ${filePath}`);
       } else {
         // Capture from BlackHole

@@ -1,0 +1,32 @@
+{
+  "id": "spinfan",
+  "name": "Spin Fan",
+  "description": "A ceiling fan with three continuously-rotating arms.",
+  "version": "1.0.0",
+  "oscPrefix": "spinfan",
+
+  "layout": {
+    "x": { "default": 0.9, "range": [0, 1], "description": "Horizontal anchor (0=left, 1=right)" },
+    "y": { "default": 0.15, "range": [0, 1], "description": "Vertical anchor (0=top, 1=bottom)" },
+    "width": { "default": 0.2, "range": [0.05, 1], "description": "Subject width as fraction of canvas" },
+    "height": { "default": 0.3, "range": [0.05, 1], "description": "Subject height as fraction of canvas" },
+    "anchor": { "default": "center", "values": ["top-left", "top-center", "top-right", "center", "bottom-left", "bottom-center", "bottom-right"] },
+    "zOrder": { "default": 0, "range": [-100, 100], "description": "Draw order — lower renders behind" }
+  },
+
+  "physics": {},
+
+  "params": {
+    "armColor":       { "default": "#d4a76a", "type": "color", "description": "Arm / blade fill colour", "osc": true },
+    "hubColor":       { "default": "#332218", "type": "color", "description": "Hub / centre colour", "osc": true },
+    "baseSize":       { "default": 60, "type": "int", "range": [20, 200], "description": "Half-extent of the subject in pixels", "osc": true },
+    "armLength":      { "default": 0.9, "range": [0.3, 1.5], "description": "Arm length as fraction of baseSize", "osc": true },
+    "spinRate":       { "default": 0.03, "range": [0.005, 0.15], "description": "Base rotation speed (radians per frame). DEFAULT 0.03 is correct — do NOT increase.", "osc": true },
+    "spinBoost":      { "default": 1.5, "range": [0, 4], "description": "Volume-driven spin acceleration multiplier", "osc": true },
+    "bassSmoothing":  { "default": 0.07, "range": [0.02, 0.3], "description": "lerp factor toward bassEnergy", "osc": true }
+  },
+
+  "effects": {
+    "bassBoost": { "default": true, "description": "Bass also accelerates the spin", "osc": true }
+  }
+}

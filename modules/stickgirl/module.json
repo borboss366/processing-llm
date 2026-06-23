@@ -1,0 +1,77 @@
+{
+  "id": "stickgirl",
+  "name": "Stick Girl",
+  "description": "Orange/red dancing stick figure on the right side of the screen, audio-reactive.",
+  "version": "1.0.0",
+  "oscPrefix": "girl",
+
+  "layout": {
+    "x": { "default": 0.85, "range": [0, 1], "description": "Horizontal anchor (0=left, 1=right)" },
+    "y": { "default": 0.5, "range": [0, 1], "description": "Vertical anchor (0=top, 1=bottom)" },
+    "width": { "default": 0.2, "range": [0.05, 1], "description": "Subject width as fraction of canvas" },
+    "height": { "default": 0.6, "range": [0.05, 1], "description": "Subject height as fraction of canvas" },
+    "anchor": { "default": "center", "values": ["top-left", "top-center", "top-right", "center", "bottom-left", "bottom-center", "bottom-right"] },
+    "zOrder": { "default": 5, "range": [-100, 100], "description": "Draw order — lower renders behind" }
+  },
+
+  "physics": {},
+
+  "params": {
+    "bodyColor": {
+      "default": "#ff6020",
+      "type": "color",
+      "description": "Orange-red colour for body, head, skirt",
+      "osc": true
+    },
+    "hairColor": {
+      "default": "#ff3000",
+      "type": "color",
+      "description": "Red colour for hair and ponytail",
+      "osc": true
+    },
+    "baseSize": {
+      "default": 80,
+      "range": [30, 200],
+      "type": "int",
+      "description": "Half-height of the figure in pixels at rest",
+      "osc": true
+    },
+    "swayStrength": {
+      "default": 1.0,
+      "range": [0, 3],
+      "description": "Multiplier for bass-driven horizontal hip shake",
+      "osc": true
+    },
+    "jumpStrength": {
+      "default": 6.0,
+      "range": [0, 20],
+      "description": "Initial upward velocity on beat",
+      "osc": true
+    },
+    "armSwingRate": {
+      "default": 0.08,
+      "range": [0.01, 0.5],
+      "description": "Arm swing speed — radians per frame",
+      "osc": true
+    },
+    "bassSmoothing": {
+      "default": 0.07,
+      "range": [0.02, 0.3],
+      "description": "lerp factor toward bassEnergy",
+      "osc": true
+    }
+  },
+
+  "effects": {
+    "hipShake": {
+      "default": true,
+      "description": "Hips wiggle horizontally with smoothed bass",
+      "osc": true
+    },
+    "bounceOnBeat": {
+      "default": true,
+      "description": "Whole figure jumps up on beat",
+      "osc": true
+    }
+  }
+}

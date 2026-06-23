@@ -18,6 +18,7 @@ function inferType(p: RawParam): ParamType {
   if (p.type) return p.type;
   if (typeof p.default === "boolean") return "boolean";
   if (typeof p.default === "string" && p.default.startsWith("#")) return "color";
+  if (typeof p.default === "string") return "string";
   if (p.range && Number.isInteger(p.range[0]) && Number.isInteger(p.range[1])
       && Number.isInteger(p.default)) return "int";
   return "float";
@@ -72,7 +73,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
 };
 
 export function generateApi(moduleJson: RawModuleJson): ModuleApi {
-  const { id, name, description, oscPrefix } = moduleJson;
+  const { id, name, description, oscPrefix, renderer } = moduleJson;
 
   const oscParams:  OscParam[]       = [];
   const sections:   ControlSection[] = [];
@@ -121,7 +122,10 @@ export function generateApi(moduleJson: RawModuleJson): ModuleApi {
     }
   }
 
-  return { id, name, description, oscPrefix, oscParams, controller: sections, baked };
+  return {
+    id, name, description, oscPrefix, oscParams, controller: sections, baked,
+    ...(renderer ? { renderer } : {}),
+  };
 }
 
 // ── Load from file ────────────────────────────────────────────────────────────
