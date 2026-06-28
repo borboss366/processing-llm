@@ -1,487 +1,318 @@
+/**
+ * VJ controller server — minimal backend for the two-window browser MVP.
+ *
+ * Responsibilities:
+ *   - Serve generated p5 modules from web/app/loaded-modules/ at /loaded/*
+ *   - Browser-modules REST endpoints: load / unload / trigger / enable /
+ *     preset-next / preset-prev, with state replay on WS connect.
+ *   - WebSocket bridge at /ws with browser-to-browser relay so render and
+ *     controller windows can talk directly.
+ *   - /osc — pure WS broadcast (modules consume it client-side).
+ *   - Pad mapping persistence (/mappings GET/POST → .mappings.json).
+ *   - Mood pipeline: /mood/classify (deterministic rules over window stats)
+ *     and /mood/pick-preset (LLM ranks preset descriptions for a mood).
+ */
+
 import express from "express";
+import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { existsSync, mkdirSync, writeFileSync, copyFileSync, readdirSync, renameSync, rmSync } from "node:fs";
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseFile } from "music-metadata";
-import multer from "multer";
-import { generateAndLaunch, refineAndLaunch, relaunchSession } from "../pipeline.js";
-import { sendOsc, OSC_PORT } from "../osc/client.js";
-import { loadSessions, saveSessions } from "../sessions/store.js";
-import { assembleSketch } from "../modules/assembler.js";
-import { generateModule } from "../modules/qwen-generator.js";
-import { ARCHETYPES, getArchetype, defaultPrefix } from "../modules/archetypes.js";
+import { WebSocketServer, WebSocket } from "ws";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const CONTROLLER_PORT = 3000;
 
-export const MUSIC_DIR = path.resolve(
-  process.cwd(),
-  process.env["MUSIC_DIR"] ?? "music"
-);
-
-// ── State ──────────────────────────────────────────────────────────────────
-
-const toggleState: Record<string, boolean> = {};
-const paramState: Record<string, number> = {};
-
-function resetEffects(effects: string[]): void {
-  for (const key of Object.keys(toggleState)) delete toggleState[key];
-  for (const e of effects) toggleState[e] = false;
-}
-
-function resetParams(params: Record<string, number>): void {
-  for (const key of Object.keys(paramState)) delete paramState[key];
-  Object.assign(paramState, params);
-}
-
-export const UPLOADS_DIR = path.resolve(process.cwd(), "assets/uploads");
-
-const upload = multer({ dest: path.join(process.cwd(), "tmp_uploads") });
-
-// ── App ────────────────────────────────────────────────────────────────────
-
 export async function startControllerServer(): Promise<void> {
-  const sessions = await loadSessions();
-  console.log(`[Server] Loaded ${sessions.size} saved session(s)`);
-
   const app = express();
-  app.use(express.json());
-  app.use(express.static(path.join(__dirname, "public")));
+  app.use(express.json({ limit: "1mb" }));
 
-  // ── Music browser ──────────────────────────────────────────────────────
+  // Generated p5 modules — served as static .js, hot-imported by browsers.
+  const LOADED_MODULES_DIR = path.resolve(process.cwd(), "web/app/loaded-modules");
+  mkdirSync(LOADED_MODULES_DIR, { recursive: true });
+  app.use("/loaded", express.static(LOADED_MODULES_DIR));
 
-  app.get("/music", async (_req, res) => {
-    try {
-      const entries = await fs.readdir(MUSIC_DIR);
-      const mp3s = entries.filter((f) => f.toLowerCase().endsWith(".mp3")).sort();
-      res.json(mp3s);
-    } catch {
-      res.json([]);
-    }
-  });
+  // ── WebSocket bridge ──────────────────────────────────────────────────
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  const browsers = new Set<WebSocket>();
 
-  app.get("/music/metadata", async (req, res) => {
-    const file = req.query["file"];
-    if (typeof file !== "string") {
-      res.status(400).json({ error: "file query param required" });
-      return;
-    }
-    const filepath = path.join(MUSIC_DIR, path.basename(file));
-    try {
-      const meta = await parseFile(filepath, { duration: true });
-      const pic = meta.common.picture?.[0];
-      const cover = pic
-        ? `data:${pic.format};base64,${Buffer.from(pic.data).toString("base64")}`
-        : null;
-      res.json({
-        title: meta.common.title ?? null,
-        artist: meta.common.artist ?? null,
-        album: meta.common.album ?? null,
-        year: meta.common.year ?? null,
-        genre: meta.common.genre?.[0] ?? null,
-        duration: meta.format.duration ?? null,
-        cover,
-      });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
+  // Source of truth for which modules are loaded across all browsers.
+  // Replayed to fresh connections so a page refresh doesn't lose state.
+  const loadedModuleIds = new Set<string>();
+  const browserModuleEnabled: Record<string, boolean> = {};
 
-  // ── Sketch generation ──────────────────────────────────────────────────
+  const MAPPINGS_FILE = path.resolve(process.cwd(), ".mappings.json");
 
-  /**
-   * POST /generate
-   * Multipart body: description (text), mp3File? (text), liveInput? (text), image? (file)
-   * Returns: { sessionId, file }
-   */
-  app.post("/generate", upload.single("image"), async (req, res) => {
-    const { description, mp3File, liveInput, imageDescription } = req.body as {
-      description?: string;
-      mp3File?: string;
-      liveInput?: string;
-      imageDescription?: string;
-    };
-    if (!description?.trim()) {
-      if (req.file) await fs.unlink(req.file.path).catch(() => {});
-      res.status(400).json({ error: "description required" });
-      return;
-    }
-    const isLive = liveInput === "true" || liveInput === "1";
-    const mp3Path = !isLive && mp3File
-      ? path.join(MUSIC_DIR, path.basename(mp3File))
-      : undefined;
-    const tempPath = req.file?.path;
-    let imagePath: string | undefined;
-    if (tempPath && req.file) {
-      await fs.mkdir(UPLOADS_DIR, { recursive: true });
-      const ext = path.extname(req.file.originalname) || ".png";
-      imagePath = path.join(UPLOADS_DIR, `${randomUUID()}${ext}`);
-      await fs.copyFile(tempPath, imagePath);
-      await fs.unlink(tempPath).catch(() => {});
-    }
-    try {
-      const result = await generateAndLaunch(description.trim(), mp3Path, isLive, imagePath, imageDescription?.trim() || undefined);
-      const sessionId = randomUUID();
-      sessions.set(sessionId, result.session);
-      await saveSessions(sessions);
-      resetEffects(result.session.effects);
-      resetParams(result.session.params);
-      res.json({ sessionId, file: result.sketch.file, effects: result.session.effects, params: result.session.params });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /**
-   * POST /refine
-   * Body: { sessionId: string, modification: string }
-   * Returns: { sessionId, file }
-   */
-  app.post("/refine", async (req, res) => {
-    const { sessionId, modification } = req.body as {
-      sessionId?: string;
-      modification?: string;
-    };
-    if (!sessionId || !modification?.trim()) {
-      res.status(400).json({ error: "sessionId and modification required" });
-      return;
-    }
-    const session = sessions.get(sessionId);
-    if (!session) {
-      res.status(404).json({ error: "session not found" });
-      return;
-    }
-    try {
-      const result = await refineAndLaunch(session, modification.trim());
-      sessions.set(sessionId, result.session);
-      await saveSessions(sessions);
-      resetEffects(result.session.effects);
-      resetParams(result.session.params);
-      res.json({ sessionId, file: result.sketch.file, effects: result.session.effects, params: result.session.params });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /**
-   * POST /relaunch
-   * Body: { sessionId: string }
-   * Re-launches the sketch using the stored code — no LLM call.
-   */
-  app.post("/relaunch", async (req, res) => {
-    const { sessionId } = req.body as { sessionId?: string };
-    if (!sessionId) {
-      res.status(400).json({ error: "sessionId required" });
-      return;
-    }
-    const session = sessions.get(sessionId);
-    if (!session) {
-      res.status(404).json({ error: "session not found" });
-      return;
-    }
-    try {
-      const sketch = await relaunchSession(session);
-      resetEffects(session.effects ?? []);
-      resetParams(session.params ?? {});
-      res.json({ sessionId, file: sketch.file, effects: session.effects ?? [], params: session.params ?? {} });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /**
-   * GET /sessions
-   * Returns list of active session IDs with descriptions.
-   */
-  app.get("/sessions", (_req, res) => {
-    const list = Array.from(sessions.entries()).map(([id, s]) => ({
-      sessionId: id,
-      description: s.description,
-      mp3Path: s.mp3Path ?? null,
-      effects: s.effects ?? [],
-      params: s.params ?? {},
-    }));
-    res.json(list);
-  });
-
-  // ── DJ toggles ─────────────────────────────────────────────────────────
-
-  /** GET /state — current toggle states */
-  app.get("/state", (_req, res) => {
-    res.json(toggleState);
-  });
-
-  /** POST /toggle/:name — flip a toggle and push via OSC */
-  app.post("/toggle/:name", (req, res) => {
-    const { name } = req.params;
-    toggleState[name] = !(toggleState[name] ?? false);
-    sendOsc(`/${name}`, toggleState[name] ? 1 : 0);
-    res.json(toggleState);
-  });
-
-  // ── DJ params ──────────────────────────────────────────────────────────
-
-  /** GET /params — current param values */
-  app.get("/params", (_req, res) => {
-    res.json(paramState);
-  });
-
-  /** POST /param/:name — set a float param (0–1) and push via OSC */
-  app.post("/param/:name", (req, res) => {
-    const { name } = req.params;
-    const value = Math.max(0, Math.min(1, parseFloat(req.body.value ?? 0)));
-    paramState[name] = value;
-    sendOsc(`/${name}`, value);
-    res.json(paramState);
-  });
-
-  // ── Modules console ────────────────────────────────────────────────────
-
-  type LoadedManifest = {
-    moduleIds: string[];
-    modules: Array<{ id: string; name: string; oscPrefix: string; description: string }>;
-    oscPort: number;
-  };
-  let currentManifest: LoadedManifest | null = null;
-  const moduleEnabled: Record<string, boolean> = {};
-
-  const MODULES_DIR = path.resolve(process.cwd(), "modules");
-
-  /** GET /modules — list ALL modules available on disk */
-  app.get("/modules", async (_req, res) => {
-    try {
-      const entries = await fs.readdir(MODULES_DIR, { withFileTypes: true });
-      const out: Array<{ id: string; name: string; description: string; oscPrefix: string }> = [];
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name === "sandbox") continue;
-        try {
-          const raw = await fs.readFile(path.join(MODULES_DIR, entry.name, "module.json"), "utf8");
-          const m = JSON.parse(raw);
-          out.push({ id: m.id, name: m.name, description: m.description, oscPrefix: m.oscPrefix });
-        } catch {}
+  wss.on("connection", async (ws) => {
+    browsers.add(ws);
+    ws.on("close", () => browsers.delete(ws));
+    // Browser-to-browser relay. The ws lib delivers `raw` as a Buffer; force
+    // .toString("utf8") so receivers get a TEXT frame and JSON.parse works.
+    ws.on("message", (raw) => {
+      const text = (raw as Buffer).toString("utf8");
+      for (const other of browsers) {
+        if (other !== ws && other.readyState === 1) other.send(text);
       }
-      res.json(out);
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /** GET /modules/loaded — manifest of modules in the currently-running sketch */
-  app.get("/modules/loaded", (_req, res) => {
-    if (!currentManifest) { res.json({ moduleIds: [], modules: [], oscPort: 12000 }); return; }
-    const withState = currentManifest.modules.map(m => ({
-      ...m, enabled: moduleEnabled[m.id] ?? true,
-    }));
-    res.json({ ...currentManifest, modules: withState });
-  });
-
-  /** POST /modules/manifest — launcher posts the list of modules just assembled */
-  app.post("/modules/manifest", (req, res) => {
-    const m = req.body as LoadedManifest;
-    if (!m?.moduleIds || !Array.isArray(m.moduleIds)) {
-      res.status(400).json({ error: "moduleIds[] required" });
-      return;
-    }
-    currentManifest = m;
-    // Reset enabled state on a new launch
-    for (const id of m.moduleIds) moduleEnabled[id] = true;
-    res.json({ ok: true, loaded: m.moduleIds.length });
-  });
-
-  /** POST /modules/:id/enabled — body {enabled:bool}, sends /modules/<id>/enabled */
-  app.post("/modules/:id/enabled", (req, res) => {
-    const { id } = req.params;
-    const enabled = !!req.body.enabled;
-    moduleEnabled[id] = enabled;
-    sendOsc(`/modules/${id}/enabled`, enabled ? 1 : 0);
-    res.json({ id, enabled });
-  });
-
-  // ── Module generation + preview (sandbox) ─────────────────────────────
-  const PROCESSING_BIN = "/Applications/Processing.app/Contents/MacOS/Processing";
-  const PREVIEW_OSC_PORT = 12001;
-  const SANDBOX_DIR = path.join(MODULES_DIR, "sandbox");
-  let previewProc: ReturnType<typeof spawn> | null = null;
-
-  /** GET /modules/sandbox — list modules in modules/sandbox/ */
-  app.get("/modules/sandbox", async (_req, res) => {
-    try {
-      if (!existsSync(SANDBOX_DIR)) { res.json([]); return; }
-      const dirs = (await fs.readdir(SANDBOX_DIR, { withFileTypes: true }))
-        .filter(d => d.isDirectory());
-      const out: Array<{ id: string; name: string; description: string }> = [];
-      for (const d of dirs) {
-        try {
-          const raw = await fs.readFile(path.join(SANDBOX_DIR, d.name, "module.json"), "utf8");
-          const m = JSON.parse(raw);
-          out.push({ id: m.id, name: m.name, description: m.description });
-        } catch {}
-      }
-      res.json(out);
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /** POST /modules/generate { id, prompt, mode? } — runs qwen, saves to modules/sandbox/<id>/.
-   *  mode "brief" runs a two-stage flow (expand → generate); "detailed" runs one stage as before. */
-  app.post("/modules/generate", async (req, res) => {
-    const { id, prompt, mode } = req.body as { id?: string; prompt?: string; mode?: "brief" | "detailed" };
-    if (!id?.trim() || !prompt?.trim()) {
-      res.status(400).json({ error: "id and prompt required" });
-      return;
-    }
-    if (!/^[a-z][a-z0-9-]{0,30}$/.test(id)) {
-      res.status(400).json({ error: "id must be lowercase, kebab-case, start with a letter" });
-      return;
+    });
+    ws.send(JSON.stringify({ type: "log", level: "info", text: "controller connected" }));
+    for (const id of loadedModuleIds) {
+      ws.send(JSON.stringify({ type: "module-load", id }));
     }
     try {
-      const twoStage = mode === "brief";
-      const result = await generateModule(id.trim(), prompt.trim(), { twoStage });
-      res.json(result);
+      const raw = await fs.readFile(MAPPINGS_FILE, "utf8");
+      ws.send(JSON.stringify({ type: "mapping-update", mapping: JSON.parse(raw) }));
+    } catch { /* no mapping yet, controller falls back to its default */ }
+  });
+
+  function wsBroadcast(msg: Record<string, unknown>): void {
+    const text = JSON.stringify(msg);
+    for (const ws of browsers) {
+      if (ws.readyState === 1) ws.send(text);
+    }
+  }
+
+  // ── /osc — pure WS broadcast (browser registry consumes /<prefix>/<param>) ─
+  app.post("/osc", (req, res) => {
+    const { address, value } = req.body as { address?: string; value?: unknown };
+    if (typeof address !== "string" || !address.startsWith("/")) {
+      res.status(400).json({ error: "address must start with '/'" });
+      return;
+    }
+    let oscValue: number | string | boolean;
+    if (typeof value === "number" || typeof value === "boolean") {
+      oscValue = value;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed === "") { res.status(400).json({ error: "value required" }); return; }
+      const asNum = Number(trimmed);
+      oscValue = (!Number.isNaN(asNum) && /^-?\d+(\.\d+)?$/.test(trimmed)) ? asNum : trimmed;
+    } else {
+      res.status(400).json({ error: "value must be number, boolean, or string" });
+      return;
+    }
+    wsBroadcast({ type: "osc", address, value: oscValue });
+    res.json({ ok: true, address, value: oscValue });
+  });
+
+  // ── Browser-module REST endpoints ─────────────────────────────────────
+  app.get("/browser-modules", async (_req, res) => {
+    try {
+      const entries = await fs.readdir(LOADED_MODULES_DIR);
+      res.json(entries.filter((f) => f.endsWith(".js")).map((f) => f.replace(/\.js$/, "")));
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
   });
 
-  /** POST /modules/preview { id } — assembles ONLY this sandboxed module
-   *  and launches it as a standalone Processing window on OSC port 12001. */
-  app.post("/modules/preview", async (req, res) => {
+  app.post("/browser-modules/load", (req, res) => {
     const { id } = req.body as { id?: string };
-    if (!id?.trim()) { res.status(400).json({ error: "id required" }); return; }
-
-    const moduleDir = path.join(SANDBOX_DIR, id);
-    if (!existsSync(path.join(moduleDir, "module.json"))) {
-      res.status(404).json({ error: `sandbox module '${id}' not found` });
+    if (!id || !/^[a-z][a-z0-9-]{0,30}$/.test(id)) {
+      res.status(400).json({ error: "id required (lowercase kebab-case)" });
       return;
     }
+    loadedModuleIds.add(id);
+    wsBroadcast({ type: "module-load", id });
+    res.json({ ok: true, id, loaded: [...loadedModuleIds] });
+  });
 
+  app.post("/browser-modules/unload", (req, res) => {
+    const { id } = req.body as { id?: string };
+    if (!id) { res.status(400).json({ error: "id required" }); return; }
+    loadedModuleIds.delete(id);
+    wsBroadcast({ type: "module-unload", id });
+    res.json({ ok: true, id });
+  });
+
+  app.get("/browser-modules/loaded", (_req, res) => {
+    res.json([...loadedModuleIds]);
+  });
+
+  app.post("/browser-modules/trigger", (req, res) => {
+    const { id, args } = req.body as { id?: string; args?: Record<string, unknown> };
+    if (!id) { res.status(400).json({ error: "id required" }); return; }
+    wsBroadcast({ type: "trigger", id, args: args ?? null });
+    res.json({ ok: true, id });
+  });
+
+  app.post("/browser-modules/enable", (req, res) => {
+    const { id, enabled } = req.body as { id?: string; enabled?: boolean };
+    if (!id) { res.status(400).json({ error: "id required" }); return; }
+    browserModuleEnabled[id] = !!enabled;
+    wsBroadcast({ type: "module-enable", id, enabled: !!enabled });
+    res.json({ ok: true, id, enabled: !!enabled });
+  });
+
+  app.get("/browser-modules/enabled-state", (_req, res) => {
+    res.json(browserModuleEnabled);
+  });
+
+  app.post("/browser-modules/preset-next", (_req, res) => {
+    wsBroadcast({ type: "preset-next" });
+    res.json({ ok: true });
+  });
+
+  app.post("/browser-modules/preset-prev", (_req, res) => {
+    wsBroadcast({ type: "preset-prev" });
+    res.json({ ok: true });
+  });
+
+  // ── Mappings persistence ──────────────────────────────────────────────
+  app.get("/mappings", async (_req, res) => {
     try {
-      const { code, manifest } = assembleSketch({
-        moduleIds: [id],
-        configs:   {},
-        modulesDir: SANDBOX_DIR,
-        liveInput: true,
-        oscPort:   PREVIEW_OSC_PORT,
-      });
-
-      const sketchDir = path.join(process.cwd(), "sketches", "preview");
-      mkdirSync(sketchDir, { recursive: true });
-      writeFileSync(path.join(sketchDir, "preview.pde"), code);
-      writeFileSync(path.join(sketchDir, "manifest.json"), JSON.stringify(manifest, null, 2));
-
-      // Copy module assets, namespaced under data/<id>/
-      const moduleAssets = path.join(moduleDir, "data");
-      if (existsSync(moduleAssets)) {
-        const dst = path.join(sketchDir, "data", id);
-        mkdirSync(dst, { recursive: true });
-        for (const f of readdirSync(moduleAssets)) {
-          copyFileSync(path.join(moduleAssets, f), path.join(dst, f));
-        }
-      }
-
-      // Kill any previous preview
-      if (previewProc) {
-        try { previewProc.kill("SIGKILL"); } catch {}
-        previewProc = null;
-      }
-
-      // Launch
-      const proc = spawn(PROCESSING_BIN, ["cli", `--sketch=${sketchDir}`, "--run"], {
-        detached: true,
-      });
-      previewProc = proc;
-      proc.on("close", () => { if (previewProc === proc) previewProc = null; });
-      proc.unref();
-
-      res.json({ ok: true, id, oscPort: PREVIEW_OSC_PORT, sketchDir });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
+      const raw = await fs.readFile(MAPPINGS_FILE, "utf8");
+      res.json({ ok: true, mapping: JSON.parse(raw) });
+    } catch (err: any) {
+      if (err.code === "ENOENT") res.json({ ok: true, mapping: null });
+      else res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  /** POST /modules/promote/:id — move modules/sandbox/<id>/ → modules/<id>/ */
-  app.post("/modules/promote/:id", (req, res) => {
-    const id  = req.params.id;
-    const src = path.join(SANDBOX_DIR, id);
-    const dst = path.join(MODULES_DIR, id);
-    if (!existsSync(src))  { res.status(404).json({ error: "sandbox module not found" }); return; }
-    if (existsSync(dst))   { res.status(409).json({ error: `modules/${id} already exists — delete it first or rename in sandbox` }); return; }
-    try {
-      renameSync(src, dst);
-      res.json({ ok: true, from: src, to: dst });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /** GET /modules/archetypes — list available archetypes for the UI dropdown */
-  app.get("/modules/archetypes", (_req, res) => {
-    res.json(ARCHETYPES.map(a => ({
-      id: a.id,
-      name: a.name,
-      description: a.description,
-      fields: a.fields,
-    })));
-  });
-
-  /** POST /modules/generate-archetype { archetypeId, id, inputs } — qwen with a pre-built archetype prompt */
-  app.post("/modules/generate-archetype", async (req, res) => {
-    const { archetypeId, id, inputs } = req.body as {
-      archetypeId?: string;
-      id?: string;
-      inputs?: Record<string, string | number>;
-    };
-    if (!archetypeId?.trim() || !id?.trim() || !inputs) {
-      res.status(400).json({ error: "archetypeId, id, and inputs required" });
-      return;
-    }
-    const arch = getArchetype(archetypeId);
-    if (!arch) { res.status(404).json({ error: `unknown archetype: ${archetypeId}` }); return; }
-    if (!/^[a-z][a-z0-9-]{0,30}$/.test(id)) {
-      res.status(400).json({ error: "id must be lowercase, kebab-case, start with a letter" });
+  app.post("/mappings", async (req, res) => {
+    const mapping = req.body;
+    if (!mapping || typeof mapping !== "object" || !mapping.pads) {
+      res.status(400).json({ ok: false, error: "body must have a `pads` object" });
       return;
     }
     try {
-      const prefix = defaultPrefix(id);
-      const prompt = arch.buildPrompt(id, prefix, inputs);
-      const result = await generateModule(id, prompt, { twoStage: false });
-      res.json({ ...result, archetypeId, archetypePrompt: prompt });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  /** DELETE /modules/sandbox/:id — discard a sandboxed module */
-  app.delete("/modules/sandbox/:id", (req, res) => {
-    const id  = req.params.id;
-    const dir = path.join(SANDBOX_DIR, id);
-    if (!existsSync(dir)) { res.status(404).json({ error: "sandbox module not found" }); return; }
-    try {
-      rmSync(dir, { recursive: true, force: true });
+      await fs.writeFile(MAPPINGS_FILE, JSON.stringify(mapping, null, 2), "utf8");
+      wsBroadcast({ type: "mapping-update", mapping });
       res.json({ ok: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // ──────────────────────────────────────────────────────────────────────
+  // ── Mood classifier (deterministic rules over rich window stats) ──────
+  const OLLAMA_URL = process.env["OLLAMA_HOST"]
+    ? `http://${process.env["OLLAMA_HOST"]}/api/generate`
+    : "http://localhost:11434/api/generate";
+  const MOOD_CHOICES = ["hype", "mellow", "dark", "dreamy", "punchy", "chill"] as const;
+  type Mood = typeof MOOD_CHOICES[number];
+  type WindowStats = {
+    mean_level: number; mean_bass: number; mean_mid: number; mean_treble: number;
+    mean_centroid: number; mean_beatsPerSec: number;
+    dynRange: number;
+    rawPeak?: number;
+  };
 
-  app.listen(CONTROLLER_PORT, () => {
-    console.log(`[Server] http://localhost:${CONTROLLER_PORT}`);
-    console.log(`[Server] Music folder → ${MUSIC_DIR}`);
-    console.log(`[OSC]    Sending to localhost:${OSC_PORT}`);
-    console.log(`\nREST API:`);
-    console.log(`  GET  /music`);
-    console.log(`  GET  /music/metadata?file=<name>`);
-    console.log(`  POST /generate          { description, mp3File? }`);
-    console.log(`  POST /refine            { sessionId, modification }`);
-    console.log(`  GET  /sessions`);
-    console.log(`  GET  /state`);
-    console.log(`  POST /toggle/:name`);
+  function classifyMoodFromRules(f: WindowStats): { mood: Mood; rule: string } {
+    const lvl  = f.mean_level;        // normalised [0,1]
+    const bass = f.mean_bass;
+    const mid  = f.mean_mid;
+    const tre  = f.mean_treble;
+    const bri  = f.mean_centroid;     // absolute brightness
+    const bps  = f.mean_beatsPerSec;  // absolute rate
+    const dyn  = f.dynRange;
+    const rawPeak = f.rawPeak ?? 1;
+
+    if (rawPeak < 0.05)
+      return { mood: "chill",  rule: "true silence (rawPeak<0.05)" };
+    if (bass > 0.6 && bri < 0.25 && tre < 0.30)
+      return { mood: "dark",   rule: "heavy lows + dim + no treble" };
+    if (bri > 0.45 && tre > 0.35 && bass < 0.45 && bps < 1.5)
+      return { mood: "dreamy", rule: "bright + airy + soft lows" };
+    if (bass > 0.6 && lvl > 0.45 && bps >= 1.5)
+      return { mood: "hype",   rule: "loud bass + fast beats" };
+    if (mid > 0.45 && dyn > 0.20 && lvl > 0.4)
+      return { mood: "punchy", rule: "dynamic mid-heavy" };
+    if (lvl < 0.3 && bps < 1.0)
+      return { mood: "chill",  rule: "low energy + slow" };
+    return { mood: "mellow",   rule: "fallback" };
+  }
+
+  app.post("/mood/classify", async (req, res) => {
+    const b = req.body as Partial<WindowStats>;
+    const features: WindowStats = {
+      mean_level:       Number(b?.mean_level)       || 0,
+      mean_bass:        Number(b?.mean_bass)        || 0,
+      mean_mid:         Number(b?.mean_mid)         || 0,
+      mean_treble:      Number(b?.mean_treble)      || 0,
+      mean_centroid:    Number(b?.mean_centroid)    || 0,
+      mean_beatsPerSec: Number(b?.mean_beatsPerSec) || 0,
+      dynRange:         Number(b?.dynRange)         || 0,
+      rawPeak:          Number(b?.rawPeak)          || 0,
+    };
+    const t0 = Date.now();
+    const { mood, rule } = classifyMoodFromRules(features);
+    res.json({ ok: true, mood, rule, features, ms: Date.now() - t0 });
   });
+
+  // ── Preset descriptions + LLM-based mood→preset selection ────────────
+  const PRESET_DESC_DIR = path.resolve(process.cwd(), "web/app/preset-descriptions");
+  type PresetDesc = { name: string; description: string; slug: string };
+
+  async function loadPresetDescriptions(): Promise<PresetDesc[]> {
+    try {
+      const files = (await fs.readdir(PRESET_DESC_DIR)).filter(f => f.endsWith(".md"));
+      const out: PresetDesc[] = [];
+      for (const f of files) {
+        const raw = await fs.readFile(path.join(PRESET_DESC_DIR, f), "utf8");
+        const m = /^---\s*\nname:\s*(.+?)\n---\s*\n([\s\S]+)$/.exec(raw);
+        if (!m) continue;
+        let name = m[1].trim();
+        if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith("'") && name.endsWith("'"))) {
+          try { name = JSON.parse(name); } catch {}
+        }
+        out.push({ name, description: m[2].trim(), slug: f.replace(/\.md$/, "") });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  app.get("/presets/descriptions", async (_req, res) => {
+    const list = await loadPresetDescriptions();
+    res.json({ ok: true, count: list.length, presets: list });
+  });
+
+  app.post("/mood/pick-preset", async (req, res) => {
+    const mood = String(req.body?.mood ?? "").trim().toLowerCase();
+    if (!mood) { res.status(400).json({ ok: false, error: "mood required" }); return; }
+
+    const list = await loadPresetDescriptions();
+    if (!list.length) {
+      res.json({ ok: false, error: "no preset descriptions yet — run scripts/bootstrap-preset-descriptions.mjs" });
+      return;
+    }
+    const items = list.slice(0, 150);
+    const catalogue = items.map((p, i) => `${i + 1}. ${p.name} — ${p.description}`).join("\n");
+    const prompt =
+      `You are a VJ picking a music visualization for the current mood.\n\n` +
+      `Available presets (numbered):\n${catalogue}\n\n` +
+      `Current music mood: ${mood}\n\n` +
+      `Pick the SINGLE preset number that best matches this mood. ` +
+      `Output ONLY the number, nothing else.`;
+    const t0 = Date.now();
+    try {
+      const r = await fetch(OLLAMA_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen3:8b", prompt, stream: false, think: false, keep_alive: -1,
+          options: { num_predict: 12, temperature: 0.4, stop: ["\n"] },
+        }),
+      });
+      const j = await r.json() as { response?: string };
+      const raw = (j.response ?? "").trim();
+      const nm = /(\d+)/.exec(raw);
+      const idx = nm ? Math.max(1, Math.min(items.length, parseInt(nm[1], 10))) - 1 : 0;
+      const pick = items[idx];
+      res.json({ ok: true, preset: pick.name, slug: pick.slug, description: pick.description, raw, ms: Date.now() - t0 });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err), ms: Date.now() - t0 });
+    }
+  });
+
+  httpServer.listen(CONTROLLER_PORT, () => {
+    console.log(`[Server] http://localhost:${CONTROLLER_PORT}`);
+    console.log(`[Server] WS bridge → ws://localhost:${CONTROLLER_PORT}/ws`);
+    console.log(`[Server] Loaded modules → ${LOADED_MODULES_DIR}`);
+  });
+
+  // Silence the unused-but-imported warning while letting Mood type carry
+  void MOOD_CHOICES;
 }

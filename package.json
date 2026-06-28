@@ -1,16 +1,12 @@
 {
   "name": "processing-llm",
   "version": "1.0.0",
-  "description": "LLM-driven Processing sketch generator",
-  "main": "dist/index.js",
+  "description": "Browser VJ controller — two-window p5+Butterchurn MVP",
+  "main": "src/server.ts",
   "type": "module",
   "scripts": {
     "server": "tsx src/server.ts",
-    "dev": "tsx src/index.ts",
-    "demo:audio": "tsx src/agents/demo-audio.ts",
-    "module:api": "tsx src/modules/api-generator.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsc"
   },
   "keywords": [],
   "author": "",
@@ -21,15 +17,10 @@
     "typescript": "^5.5.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
-    "@google/adk": "^1.2.0",
     "@types/express": "^5.0.6",
-    "@types/multer": "^2.1.0",
+    "@types/ws": "^8.18.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "multer": "^2.1.1",
-    "music-metadata": "^11.13.0",
-    "node-osc": "^9.1.7",
-    "undici": "^8.5.0"
+    "ws": "^8.21.0"
   }
 }

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Butterchurn · Hue Comparison</title>
+    <link rel="stylesheet" href="/src/style.css">
+    <style>
+      body { background: #000; color: #ccc; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
+      .top {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+        padding: 10px 14px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+        background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+        border-bottom: 1px solid #222;
+      }
+      .top button {
+        padding: 6px 12px; background: #111; border: 1px solid #333; color: #ccc;
+        font-family: inherit; font-size: 0.75rem; border-radius: 4px; cursor: pointer;
+      }
+      .top button:hover { border-color: #0ff; color: #0ff; }
+      .top select {
+        padding: 5px 8px; background: #111; border: 1px solid #333; color: #ccc;
+        font-family: inherit; font-size: 0.75rem; border-radius: 4px;
+        max-width: 280px;
+      }
+      .hue-control { display: inline-flex; gap: 6px; align-items: center; font-size: 0.7rem; }
+      .hue-control input[type="range"] { width: 160px; }
+      .hue-val { min-width: 50px; text-align: right; color: #0ff; }
+
+      .pane-wrap { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: flex; }
+      .pane { flex: 1; position: relative; border-right: 1px solid #1a1a1a; overflow: hidden; }
+      .pane:last-child { border-right: none; }
+      .pane canvas {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        transition: filter 0.4s ease;
+      }
+      .pane-label {
+        position: absolute; top: 10px; left: 12px; z-index: 10;
+        background: rgba(0,0,0,0.7); padding: 6px 10px; border-radius: 4px;
+        font-size: 0.7rem; color: #0ff; letter-spacing: 0.1em; text-transform: uppercase;
+      }
+      .pane-label .filter-text { color: #ff3d7f; }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <button id="btn-start">Click to Start</button>
+      <select id="preset-pick"><option>—</option></select>
+      <button id="btn-prev">◀ Prev</button>
+      <button id="btn-next">Next ▶</button>
+
+      <span class="hue-control">
+        L hue: <input type="range" id="hue-left"  min="-180" max="180" step="1" value="0">
+        <span class="hue-val" id="hue-left-val">0°</span>
+      </span>
+      <span class="hue-control">
+        R hue: <input type="range" id="hue-right" min="-180" max="180" step="1" value="120">
+        <span class="hue-val" id="hue-right-val">120°</span>
+      </span>
+      <span class="hue-control">
+        sat:   <input type="range" id="sat"        min="0"    max="3"   step="0.05" value="1">
+        <span class="hue-val" id="sat-val">1.0</span>
+      </span>
+      <span class="hue-control">
+        bright:<input type="range" id="bright"     min="0.3"  max="2"   step="0.05" value="1">
+        <span class="hue-val" id="bright-val">1.0</span>
+      </span>
+    </div>
+
+    <div class="pane-wrap">
+      <div class="pane">
+        <div class="pane-label">LEFT · <span class="filter-text" id="filter-left">none</span></div>
+        <canvas id="canvas-left"></canvas>
+      </div>
+      <div class="pane">
+        <div class="pane-label">RIGHT · <span class="filter-text" id="filter-right">none</span></div>
+        <canvas id="canvas-right"></canvas>
+      </div>
+    </div>
+
+    <script type="module" src="/src/hue-demo.js"></script>
+  </body>
+</html>

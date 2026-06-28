@@ -1,5 +1,6 @@
 .env
 .sessions.json
+.mappings.json
 music/
 sketches/
 node_modules/
@@ -67,4 +68,4 @@ TEST-results.xml
 package-lock.json
 .eslintcache
 *v8.log
-/lib/
+_attic/

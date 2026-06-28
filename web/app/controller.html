@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VJ · Controller</title>
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body class="controller-body">
+    <div class="controller-shell">
+
+      <header class="controller-header">
+        <h1>VJ · Controller</h1>
+        <span id="ws-status" class="status">○ controller offline</span>
+      </header>
+
+      <section class="controller-section">
+        <div class="section-title">Render Output</div>
+        <div class="row">
+          <span id="render-status" class="status">render window not connected</span>
+        </div>
+        <div class="row" style="gap:6px;">
+          <button id="btn-bg" class="on">Background</button>
+          <button id="btn-fg" class="on">Foreground</button>
+          <button id="btn-preset-prev">◀ Preset</button>
+          <button id="btn-preset-next">Preset ▶</button>
+        </div>
+        <div class="row" style="gap:8px;">
+          <span class="status" style="min-width:60px;">Input:</span>
+          <select id="device-pick" disabled><option>—</option></select>
+        </div>
+        <div class="row" style="gap:8px; align-items:center;">
+          <span class="status" style="min-width:60px;">Level:</span>
+          <div class="meter" style="flex:1;"><div id="level-bar"></div></div>
+        </div>
+        <div class="status" style="font-size:0.7rem;">
+          Preset: <span id="preset-name" style="color:#0ff;">—</span>
+        </div>
+      </section>
+
+      <section class="controller-section">
+        <div class="section-title">Mood Palette</div>
+        <div class="row" id="mood-manual" style="gap:4px; flex-wrap:wrap;">
+          <button class="mood-btn" data-mood="hype">hype</button>
+          <button class="mood-btn" data-mood="punchy">punchy</button>
+          <button class="mood-btn" data-mood="mellow">mellow</button>
+          <button class="mood-btn" data-mood="chill">chill</button>
+          <button class="mood-btn" data-mood="dreamy">dreamy</button>
+          <button class="mood-btn" data-mood="dark">dark</button>
+          <button class="mood-btn" data-mood="_off">off</button>
+        </div>
+        <div class="row" style="gap:6px;">
+          <button id="btn-mood">Start Auto-Mood</button>
+          <span id="mood-status" class="status">manual — click a mood above to test</span>
+        </div>
+        <div class="row" style="gap:12px;">
+          <span class="status">Current: <span id="mood-current" style="color:#ff3d7f; font-weight:bold;">—</span></span>
+          <span class="status" id="mood-features">level — bass — mid — treble —</span>
+        </div>
+        <div id="mood-log" class="mood-log"><span class="status">classifier log — last 5 polls will appear here</span></div>
+      </section>
+
+      <section class="controller-section">
+        <div class="section-title">Pads</div>
+        <div class="row">
+          <span class="status">click a pad or hit keys ZXCV / ASDF / QWER / 1234  (bottom → top)</span>
+        </div>
+        <div id="pad-grid" class="pad-grid pad-grid-lg"></div>
+      </section>
+
+      <section class="controller-section">
+        <div class="section-title">Modules</div>
+        <div id="modules-list" class="modules-list"></div>
+      </section>
+
+      <section class="controller-section">
+        <div class="section-title">Mapping (JSON)</div>
+        <textarea id="mapping-editor" class="mapping-editor" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btn-mapping-save">Save</button>
+          <button id="btn-mapping-reset">Reset to default</button>
+          <span id="mapping-status" class="status"></span>
+        </div>
+      </section>
+
+    </div>
+    <script type="module" src="/src/controller.js"></script>
+  </body>
+</html>

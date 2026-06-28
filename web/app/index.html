@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VJ · Output</title>
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body class="render-body">
+    <canvas id="bg"></canvas>
+    <div id="fg-container"></div>
+    <!-- mood tint overlay: controller sets background-color + opacity via WS -->
+    <div id="tint-overlay" class="tint-overlay"></div>
+
+    <!-- one-time mic-permission overlay; vanishes after the first click -->
+    <div id="start-overlay" class="start-overlay">
+      <button id="btn-start" class="start-btn">Click to Start</button>
+      <div class="start-hint">
+        the controller window lives at
+        <a href="/controller.html" target="_blank">/controller.html</a>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
