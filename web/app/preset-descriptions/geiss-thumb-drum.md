@@ -1,4 +1,14 @@
 ---
 name: "Geiss - Thumb Drum"
+source: visual
+model: llava:7b
+density: dense
+brightness: medium
+palette: monochrome
+energy: intense
+complexity: 4
+colors: ["black", "gray"]
+normalised: 2026-06-29
 ---
-Vibrant neon colors swirl in rhythmic pulses, forming dynamic geometric shapes that twist and pulse in sync with the music.
+Black and white abstract art piece featuring a complex pattern of lines and dots that create a sense of depth and movement. It appears to be a visualization of music, with the dominant colors being shades of gray and black, suggesting a monochromatic theme. The motion type seems dynamic and fluid, possibly indicating a rhythmic or melodic piece of music. The geometric character is intricate and detailed, with a variety of shapes and sizes contributing to the overall complexity of the image. The energy level appears high due to the density of lines and dots, which gives the impression of a busy and complex composition.
+

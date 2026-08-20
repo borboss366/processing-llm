@@ -14,6 +14,7 @@ export default defineConfig({
       '/mappings':        'http://localhost:3000',
       '/mood':            'http://localhost:3000',
       '/presets':         'http://localhost:3000',
+      '/director':        'http://localhost:3000',
       // WebSocket bridge
       '/ws': { target: 'ws://localhost:3000', ws: true },
     },

@@ -1,4 +1,14 @@
 ---
 name: "Martin - liquid arrows"
+source: visual
+model: llava:7b
+motion: flowing
+density: dense
+brightness: medium
+energy: intense
+complexity: 5
+colors: ["red", "orange", "yellow", "blue"]
+normalised: 2026-06-29
 ---
-Vibrant neon colors flow in fluid, arrow-like patterns, creating dynamic, swirling geometric shapes that move with rhythmic precision.
+And dynamic abstract music visualization with a predominantly dark background. It features a mix of warm and cool colors, primarily reds, oranges, yellows, and blues, creating an energetic and lively atmosphere. The motion type appears to be fluid and flowing, resembling the movement of fire or water. Geometrically, it has a complex and intricate design with swirling patterns that give the impression of motion. The energy level is high, suggesting a fast-paced piece of music. Overall, the image looks busy and complex due to its multitude of colors and dynamic patterns.
+

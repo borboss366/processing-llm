@@ -1,4 +1,15 @@
 ---
 name: "Rovastar - Oozing Resistance"
+source: visual
+model: llava:7b
+density: dense
+brightness: bright
+palette: warm
+energy: intense
+geometry: spiral
+complexity: 5
+colors: ["blue", "red", "yellow"]
+normalised: 2026-06-29
 ---
-Deep purples and neon blues swirl in slow, undulating waves, forming fluid geometric patterns that pulse and ripple like molten glass.
+And dynamic visualization of music, featuring a spiral pattern with a central point that seems to be emitting light or energy. The dominant colors are blue, red, and yellow, creating a lively and energetic atmosphere. The motion type appears to be a combination of spinning and pulsating, giving the impression of movement and rhythm. The geometric character is a spiral, which is often associated with growth and development. The energy level is high, suggesting an intense or powerful piece of music. The image looks quite busy and complex due to the multitude of colors and the intricate spiral design.
+

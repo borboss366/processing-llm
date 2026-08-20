@@ -1,4 +1,13 @@
 ---
 name: "_Geiss - Desert Rose 2"
+source: visual
+model: llava:7b
+density: sparse
+brightness: medium
+palette: dark
+complexity: 1
+colors: ["dark"]
+normalised: 2026-06-29
 ---
-Soft pastel pinks and oranges swirl in slow, fluid motion, forming delicate, organic geometric patterns that shimmer like desert blooms under twilight.
+That features an abstract design with a predominantly dark color palette and a complex geometric pattern. It appears to be a visualization of music, possibly representing sound waves or frequencies. The motion type suggests a dynamic and rhythmic energy level, while the complexity of the geometric shapes indicates a busy and intricate composition.
+

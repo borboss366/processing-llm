@@ -39,25 +39,22 @@
       </section>
 
       <section class="controller-section">
-        <div class="section-title">Mood Palette</div>
-        <div class="row" id="mood-manual" style="gap:4px; flex-wrap:wrap;">
-          <button class="mood-btn" data-mood="hype">hype</button>
-          <button class="mood-btn" data-mood="punchy">punchy</button>
-          <button class="mood-btn" data-mood="mellow">mellow</button>
-          <button class="mood-btn" data-mood="chill">chill</button>
-          <button class="mood-btn" data-mood="dreamy">dreamy</button>
-          <button class="mood-btn" data-mood="dark">dark</button>
-          <button class="mood-btn" data-mood="_off">off</button>
-        </div>
+        <div class="section-title">Auto-Director</div>
         <div class="row" style="gap:6px;">
-          <button id="btn-mood">Start Auto-Mood</button>
-          <span id="mood-status" class="status">manual — click a mood above to test</span>
+          <button id="btn-mood">Start Auto-Director</button>
+          <button id="btn-force-change">Force Change Now</button>
+          <span id="mood-status" class="status">idle — start the director to watch for track changes</span>
+        </div>
+        <div class="row" style="gap:8px; align-items:center;">
+          <span class="status" style="min-width:90px;">Max complexity:</span>
+          <input type="range" id="complexity-slider" min="1" max="5" step="1" value="5" style="flex:1; max-width:200px;">
+          <span id="complexity-val" class="status" style="min-width:80px; color:#0ff;">5 / chaotic ok</span>
         </div>
         <div class="row" style="gap:12px;">
-          <span class="status">Current: <span id="mood-current" style="color:#ff3d7f; font-weight:bold;">—</span></span>
+          <span class="status">Last preset: <span id="mood-current" style="color:#ff3d7f; font-weight:bold;">—</span></span>
           <span class="status" id="mood-features">level — bass — mid — treble —</span>
         </div>
-        <div id="mood-log" class="mood-log"><span class="status">classifier log — last 5 polls will appear here</span></div>
+        <div id="mood-log" class="mood-log"><span class="status">director log — every poll (hold/commit) shows here</span></div>
       </section>
 
       <section class="controller-section">

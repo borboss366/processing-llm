@@ -174,12 +174,20 @@ function broadcastState() {
   const s = audio.state ?? {};
   ws.send({
     type:       'render-state',
+    // legacy aggregates — kept so existing rule classifier still works
     level:      s.smoothedLevel    ?? 0,
     bass:       s.smoothedBass     ?? 0,
     mid:        s.smoothedMid      ?? 0,
     treble:     s.smoothedTreble   ?? 0,
     centroid:   s.smoothedCentroid ?? 0,
     beatsPerSec:s.beatsPerSec      ?? 0,
+    // wide feature set — for LLM classifier
+    bands:      s.bands            ?? null,
+    rolloff:    s.rolloff          ?? 0,
+    flatness:   s.flatness         ?? 0,
+    crest:      s.crest            ?? 0,
+    flux:       s.flux             ?? 0,
+    bpm:        s.bpm              ?? 0,
     preset:     visualizer?.currentName ?? null,
     bgOn,
     fgOn,

@@ -9,8 +9,8 @@
  *     controller windows can talk directly.
  *   - /osc — pure WS broadcast (modules consume it client-side).
  *   - Pad mapping persistence (/mappings GET/POST → .mappings.json).
- *   - Mood pipeline: /mood/classify (deterministic rules over window stats)
- *     and /mood/pick-preset (LLM ranks preset descriptions for a mood).
+ *   - Director: /director (LLM picks preset + CSS filter from feature profile).
+ *   - Preset catalogue: /presets/descriptions (lists the .md description set).
  */
 
 import express from "express";
@@ -185,64 +185,169 @@ export async function startControllerServer(): Promise<void> {
     }
   });
 
-  // ── Mood classifier (deterministic rules over rich window stats) ──────
+  // ── Director (qwen3:8b picks preset + CSS filter from feature profile) ─
   const OLLAMA_URL = process.env["OLLAMA_HOST"]
     ? `http://${process.env["OLLAMA_HOST"]}/api/generate`
     : "http://localhost:11434/api/generate";
-  const MOOD_CHOICES = ["hype", "mellow", "dark", "dreamy", "punchy", "chill"] as const;
-  type Mood = typeof MOOD_CHOICES[number];
-  type WindowStats = {
-    mean_level: number; mean_bass: number; mean_mid: number; mean_treble: number;
-    mean_centroid: number; mean_beatsPerSec: number;
-    dynRange: number;
-    rawPeak?: number;
-  };
 
-  function classifyMoodFromRules(f: WindowStats): { mood: Mood; rule: string } {
-    const lvl  = f.mean_level;        // normalised [0,1]
-    const bass = f.mean_bass;
-    const mid  = f.mean_mid;
-    const tre  = f.mean_treble;
-    const bri  = f.mean_centroid;     // absolute brightness
-    const bps  = f.mean_beatsPerSec;  // absolute rate
-    const dyn  = f.dynRange;
-    const rawPeak = f.rawPeak ?? 1;
-
-    if (rawPeak < 0.05)
-      return { mood: "chill",  rule: "true silence (rawPeak<0.05)" };
-    if (bass > 0.6 && bri < 0.25 && tre < 0.30)
-      return { mood: "dark",   rule: "heavy lows + dim + no treble" };
-    if (bri > 0.45 && tre > 0.35 && bass < 0.45 && bps < 1.5)
-      return { mood: "dreamy", rule: "bright + airy + soft lows" };
-    if (bass > 0.6 && lvl > 0.45 && bps >= 1.5)
-      return { mood: "hype",   rule: "loud bass + fast beats" };
-    if (mid > 0.45 && dyn > 0.20 && lvl > 0.4)
-      return { mood: "punchy", rule: "dynamic mid-heavy" };
-    if (lvl < 0.3 && bps < 1.0)
-      return { mood: "chill",  rule: "low energy + slow" };
-    return { mood: "mellow",   rule: "fallback" };
-  }
-
-  app.post("/mood/classify", async (req, res) => {
-    const b = req.body as Partial<WindowStats>;
-    const features: WindowStats = {
-      mean_level:       Number(b?.mean_level)       || 0,
-      mean_bass:        Number(b?.mean_bass)        || 0,
-      mean_mid:         Number(b?.mean_mid)         || 0,
-      mean_treble:      Number(b?.mean_treble)      || 0,
-      mean_centroid:    Number(b?.mean_centroid)    || 0,
-      mean_beatsPerSec: Number(b?.mean_beatsPerSec) || 0,
-      dynRange:         Number(b?.dynRange)         || 0,
-      rawPeak:          Number(b?.rawPeak)          || 0,
+  /** POST /director  body: { current: WindowStats, prev?: WindowStats }
+   *  → { description, preset: <name>, filter: {hue,sat,bright}, raw, ms }
+   *  Fires when the controller detects the audio character changed significantly.
+   *  qwen3:8b reads current (and optionally previous) feature profile + the
+   *  preset description catalogue, then picks ONE preset and a colour filter.
+   *  Returns a one-sentence description of what changed. On error returns a
+   *  null preset and the controller keeps the current visualisation. */
+  app.post("/director", async (req, res) => {
+    const {
+      current,
+      prev,
+      recent: recentSlugs = [],
+      max_complexity: maxComplexity,
+    } = req.body as {
+      current: Record<string, number>;
+      prev?: Record<string, number>;
+      recent?: string[];
+      max_complexity?: number;
     };
+    if (!current) { res.status(400).json({ ok: false, error: "current features required" }); return; }
+
+    const list = await loadPresetDescriptions();
+    if (!list.length) {
+      res.json({ ok: false, error: "no preset descriptions yet — run scripts/visual-bootstrap.mjs" });
+      return;
+    }
+
+    // Prefilter:
+    //   - drop any preset we just played (recency = anti-repeat)
+    //   - drop any preset whose complexity exceeds the operator's max
+    const recentSet = new Set(recentSlugs);
+    let candidates = list.filter(p => {
+      if (recentSet.has(p.slug)) return false;
+      if (typeof maxComplexity === "number" && typeof p.tags.complexity === "number") {
+        if (p.tags.complexity > maxComplexity) return false;
+      }
+      return true;
+    });
+    // Always keep ≥1 candidate — if recency or complexity excluded everything,
+    // fall back to the full list so the director still picks something.
+    if (!candidates.length) candidates = list;
+
+    // Shuffle so each call sees a fresh window — without this, alphabetical
+    // readdir order meant the prompt only ever contained the first N presets.
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    // Cap at 60 entries to keep the LLM prompt fast (~3-5s warm).
+    const items = candidates.slice(0, 60);
+    const catalogue = items.map((p, i) => {
+      const t = p.tags;
+      const tagStr = [
+        t.complexity != null ? `c${t.complexity}` : null,
+        t.energy, t.density, t.brightness, t.motion,
+      ].filter(Boolean).join(' ');
+      return `${i + 1}. [${tagStr}] ${p.name} — ${p.description}`;
+    }).join("\n");
+
+    function profileLine(f: Record<string, number>): string {
+      const g = (k: string) => (typeof f[k] === "number" ? f[k].toFixed(2) : "0.00");
+      const bpm = Math.round(Number(f.mean_bpm) || 0);
+      return (
+        `level=${g("mean_level")} dyn=${g("dynRange")} bpm=${bpm} bps=${g("mean_beatsPerSec")} ` +
+        `bri=${g("mean_centroid")} roll=${g("mean_rolloff")} flat=${g("mean_flatness")} crest=${g("mean_crest")} flux=${g("mean_flux")} ` +
+        `bands sub=${g("mean_b_sub")} kick=${g("mean_b_kick")} low=${g("mean_b_low")} ` +
+        `lowMid=${g("mean_b_lowMid")} mid=${g("mean_b_mid")} upMid=${g("mean_b_upperMid")} ` +
+        `pres=${g("mean_b_presence")} air=${g("mean_b_air")}`
+      );
+    }
+
+    const prompt =
+      `You are a VJ director for a live music set. The audio character just changed.\n\n` +
+      `Available butterchurn presets (numbered):\n${catalogue}\n\n` +
+      (prev
+        ? `Previous section: ${profileLine(prev)}\n`
+        : `(No previous section — this is the start of the set.)\n`) +
+      `Current section:  ${profileLine(current)}\n\n` +
+      `Pick a visualisation that fits the CURRENT section, and a colour filter for it.\n` +
+      `Filter parameters:\n` +
+      `  hue    : -180..180 degrees (hue rotation; 0 = no shift)\n` +
+      `  sat    : 0..2     (saturation multiplier; 1 = unchanged)\n` +
+      `  bright : 0.5..1.5 (brightness multiplier; 1 = unchanged)\n\n` +
+      `Output one-line JSON only:\n` +
+      `{"description":"<one sentence, ≤15 words, on what the new section sounds like>",` +
+      `"preset":<number>,` +
+      `"filter":{"hue":<deg>,"sat":<num>,"bright":<num>}}`;
+
     const t0 = Date.now();
-    const { mood, rule } = classifyMoodFromRules(features);
-    res.json({ ok: true, mood, rule, features, ms: Date.now() - t0 });
+    try {
+      const r = await fetch(OLLAMA_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen3:8b", prompt, stream: false, think: false, keep_alive: -1,
+          options: { num_predict: 200, temperature: 0.5, stop: ["\n\n"] },
+        }),
+      });
+      const j = await r.json() as { response?: string };
+      const raw = (j.response ?? "").trim();
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("no JSON found in response");
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      const idx = Math.max(1, Math.min(items.length, parseInt(String(parsed.preset), 10) || 1)) - 1;
+      const pick = items[idx];                       // filtered list
+      const filter = parsed.filter ?? {};
+      const safe = (n: number, lo: number, hi: number, fallback: number) => {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return fallback;
+        return Math.max(lo, Math.min(hi, v));
+      };
+      const cleanFilter = {
+        hue:    safe(filter.hue,    -180, 180, 0),
+        sat:    safe(filter.sat,    0,    2,   1),
+        bright: safe(filter.bright, 0.5,  1.5, 1),
+      };
+      res.json({
+        ok:          true,
+        description: String(parsed.description ?? "").slice(0, 200),
+        preset:      pick.name,
+        preset_slug: pick.slug,
+        filter:      cleanFilter,
+        raw,
+        ms:          Date.now() - t0,
+      });
+    } catch (err) {
+      res.json({ ok: false, error: String(err), ms: Date.now() - t0 });
+    }
   });
 
-  // ── Preset descriptions + LLM-based mood→preset selection ────────────
+  // ── Preset descriptions (loaded fresh on each call so adding/editing
+  //    .md files in web/app/preset-descriptions/ takes effect immediately) ─
   const PRESET_DESC_DIR = path.resolve(process.cwd(), "web/app/preset-descriptions");
-  type PresetDesc = { name: string; description: string; slug: string };
+  type PresetDesc = {
+    name: string; description: string; slug: string; tags: PresetTags;
+  };
+
+  type PresetTags = {
+    motion?: string; density?: string; brightness?: string; palette?: string;
+    energy?: string; geometry?: string; complexity?: number; colors?: string[];
+  };
+
+  function parseTagsFromFrontmatter(fm: string): PresetTags {
+    const tags: PresetTags = {};
+    for (const k of ['motion', 'density', 'brightness', 'palette', 'energy', 'geometry'] as const) {
+      const m = new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(fm);
+      if (m) tags[k] = m[1].trim();
+    }
+    const cm = /^complexity:\s*([1-5])/m.exec(fm);
+    if (cm) tags.complexity = parseInt(cm[1], 10);
+    const colm = /^colors:\s*\[(.+)\]/m.exec(fm);
+    if (colm) {
+      tags.colors = colm[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    }
+    return tags;
+  }
 
   async function loadPresetDescriptions(): Promise<PresetDesc[]> {
     try {
@@ -250,13 +355,20 @@ export async function startControllerServer(): Promise<void> {
       const out: PresetDesc[] = [];
       for (const f of files) {
         const raw = await fs.readFile(path.join(PRESET_DESC_DIR, f), "utf8");
-        const m = /^---\s*\nname:\s*(.+?)\n---\s*\n([\s\S]+)$/.exec(raw);
+        const m = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]+)$/.exec(raw);
         if (!m) continue;
-        let name = m[1].trim();
+        const nm = /^name:\s*(.+)$/m.exec(m[1]);
+        if (!nm) continue;
+        let name = nm[1].trim();
         if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith("'") && name.endsWith("'"))) {
           try { name = JSON.parse(name); } catch {}
         }
-        out.push({ name, description: m[2].trim(), slug: f.replace(/\.md$/, "") });
+        out.push({
+          name,
+          description: m[2].trim(),
+          slug: f.replace(/\.md$/, ""),
+          tags: parseTagsFromFrontmatter(m[1]),
+        });
       }
       return out;
     } catch {
@@ -269,39 +381,117 @@ export async function startControllerServer(): Promise<void> {
     res.json({ ok: true, count: list.length, presets: list });
   });
 
-  app.post("/mood/pick-preset", async (req, res) => {
-    const mood = String(req.body?.mood ?? "").trim().toLowerCase();
-    if (!mood) { res.status(400).json({ ok: false, error: "mood required" }); return; }
+  // ── Module generation (qwen3:8b writes a p5 module from an NL prompt) ──
+  // Smallest possible pipeline: prompt → LLM → file → broadcast module-load.
+  // The prompt handed to qwen carries a compact spec of the module contract
+  // + one worked example so the model has enough to produce valid JS.
+  const MODULE_GEN_PROMPT_HEAD =
+    `You write self-contained ES-module JS for a p5.js VJ visualizer.\n\n` +
+    `SHAPE — export default an object with these fields:\n` +
+    `  id: string (must match the requested id, kebab-case)\n` +
+    `  oscPrefix: short string (for OSC address routing)\n` +
+    `  interfaces: subset of ['triggerable','fadeable','sliding','movable','multi-instance']\n` +
+    `  defaults: object of tweakable params (numbers, hex-string colors, etc.)\n` +
+    `  setup(ctx)?: optional one-time init — set ctx.state = { ... } here\n` +
+    `  draw(ctx): required; called every frame\n` +
+    `  onTrigger(ctx, args)?: optional; only for triggerable/multi-instance\n` +
+    `  osc(ctx, address, value)?: optional; return {trigger:true} to fire lifecycle\n\n` +
+    `ctx fields you can use:\n` +
+    `  ctx.p                     — p5 instance (fill, noStroke, circle, rect, ellipse, line, push, pop, translate, rotate, color, deltaTime, width, height, PI, TWO_PI, HALF_PI, sin, cos, ...)\n` +
+    `  ctx.params                — merged defaults + overrides\n` +
+    `  ctx.state                 — your per-instance mutable state\n` +
+    `  ctx.audio.state           — { smoothedLevel, smoothedBass, smoothedMid, smoothedTreble, smoothedCentroid, bpm, beatsPerSec, onBeat }\n` +
+    `  ctx.lifecycle             — { state:'idle|entering|active|exiting', alpha, phaseMs, progress }  (if triggerable/fadeable)\n` +
+    `  ctx.movable.position      — { x, y } in [0..1] canvas fractions (if movable)\n` +
+    `  ctx.lifecycle.position    — { x, y } in [0..1] fractions (if sliding)\n\n` +
+    `Interface configs go at the module top level, keyed by interface name:\n` +
+    `  triggerable: { enterMs, holdMs, exitMs, autoRetrigger }\n` +
+    `  fadeable:    { easing:'cubic-out'|'cubic-in'|'linear', maxAlpha }\n` +
+    `  sliding:     { from:{x,y}, to:{x,y}, easing, exitEasing }\n` +
+    `  movable:     { behavior:'linear'|'bounce'|'wander'|'orbit', start:{x,y}, velocity:{x,y}, speed, wrap, damping, jitter, center, radius }\n` +
+    `  'multi-instance': { max }\n\n` +
+    `EXAMPLE — a bouncing ball (movable, permanent):\n` +
+    `\`\`\`\n` +
+    `export default {\n` +
+    `  id: 'bouncing-ball', oscPrefix: 'ball',\n` +
+    `  interfaces: ['movable'],\n` +
+    `  movable: { behavior:'bounce', start:{x:0.5,y:0.5}, speed:0.55, velocity:{x:0.7,y:0.45}, damping:1.0 },\n` +
+    `  defaults: { size: 60, color: '#ff3d7f' },\n` +
+    `  draw(ctx) {\n` +
+    `    const { p, params, movable } = ctx;\n` +
+    `    p.noStroke(); p.fill(params.color);\n` +
+    `    p.circle(movable.position.x * p.width, movable.position.y * p.height, params.size);\n` +
+    `  },\n` +
+    `  osc(ctx, addr, val) {\n` +
+    `    const k = addr.split('/').pop();\n` +
+    `    if (k in ctx.params) ctx.params[k] = val;\n` +
+    `    return null;\n` +
+    `  },\n` +
+    `};\n` +
+    `\`\`\`\n\n` +
+    `RULES:\n` +
+    `- Output ONLY the JS module — no markdown fences, no commentary.\n` +
+    `- Use ES module syntax (export default). No import statements.\n` +
+    `- Use ctx.p prefix for all p5 calls. Never call bare fill/circle/etc.\n` +
+    `- Keep it under 120 lines. Focus on the requested behavior.\n` +
+    `- Colors are hex strings like '#ff8c00', not p5 color objects in defaults.\n` +
+    `- If module needs per-frame state (particles, trails), initialise it in setup().\n`;
 
-    const list = await loadPresetDescriptions();
-    if (!list.length) {
-      res.json({ ok: false, error: "no preset descriptions yet — run scripts/bootstrap-preset-descriptions.mjs" });
+  app.post("/modules/generate-js", async (req, res) => {
+    const { id, prompt } = req.body as { id?: string; prompt?: string };
+    if (!id || !/^[a-z][a-z0-9-]{0,30}$/.test(id)) {
+      res.status(400).json({ ok: false, error: "id required (lowercase kebab-case)" });
       return;
     }
-    const items = list.slice(0, 150);
-    const catalogue = items.map((p, i) => `${i + 1}. ${p.name} — ${p.description}`).join("\n");
-    const prompt =
-      `You are a VJ picking a music visualization for the current mood.\n\n` +
-      `Available presets (numbered):\n${catalogue}\n\n` +
-      `Current music mood: ${mood}\n\n` +
-      `Pick the SINGLE preset number that best matches this mood. ` +
-      `Output ONLY the number, nothing else.`;
+    if (!prompt?.trim()) {
+      res.status(400).json({ ok: false, error: "prompt required" });
+      return;
+    }
+
+    const fullPrompt =
+      MODULE_GEN_PROMPT_HEAD +
+      `\nGenerate a module with id "${id}".\n` +
+      `Requirement: ${prompt.trim()}\n\n` +
+      `Output the JS module now.`;
+
     const t0 = Date.now();
     try {
       const r = await fetch(OLLAMA_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen3:8b", prompt, stream: false, think: false, keep_alive: -1,
-          options: { num_predict: 12, temperature: 0.4, stop: ["\n"] },
+          model: "qwen3:8b",
+          prompt: fullPrompt,
+          stream: false,
+          think: false,
+          keep_alive: -1,
+          options: { num_predict: 2000, temperature: 0.4 },
         }),
       });
       const j = await r.json() as { response?: string };
-      const raw = (j.response ?? "").trim();
-      const nm = /(\d+)/.exec(raw);
-      const idx = nm ? Math.max(1, Math.min(items.length, parseInt(nm[1], 10))) - 1 : 0;
-      const pick = items[idx];
-      res.json({ ok: true, preset: pick.name, slug: pick.slug, description: pick.description, raw, ms: Date.now() - t0 });
+      let code = (j.response ?? "").trim();
+
+      // Strip markdown code fences if the model added them anyway
+      code = code
+        .replace(/^```(?:js|javascript)?\s*\n?/i, "")
+        .replace(/\n?```\s*$/i, "")
+        .trim();
+
+      // Sanity check — must contain the export default line
+      if (!/export\s+default\s*\{/.test(code)) {
+        res.status(500).json({ ok: false, error: "generated code has no `export default {`", raw: code, ms: Date.now() - t0 });
+        return;
+      }
+
+      // Save the module
+      const filePath = path.join(LOADED_MODULES_DIR, `${id}.js`);
+      await fs.writeFile(filePath, code, "utf8");
+
+      // Broadcast module-load so all render/controller windows hot-import it
+      loadedModuleIds.add(id);
+      wsBroadcast({ type: "module-load", id });
+
+      res.json({ ok: true, id, path: filePath, bytes: code.length, ms: Date.now() - t0, code });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err), ms: Date.now() - t0 });
     }
@@ -312,7 +502,4 @@ export async function startControllerServer(): Promise<void> {
     console.log(`[Server] WS bridge → ws://localhost:${CONTROLLER_PORT}/ws`);
     console.log(`[Server] Loaded modules → ${LOADED_MODULES_DIR}`);
   });
-
-  // Silence the unused-but-imported warning while letting Mood type carry
-  void MOOD_CHOICES;
 }

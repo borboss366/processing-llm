@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Preset Snap (headless)</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+      #bg { display: block; }
+    </style>
+  </head>
+  <body>
+    <canvas id="bg" width="800" height="600"></canvas>
+    <script type="module">
+      // Standalone Butterchurn driver used by the visual-bootstrap puppeteer
+      // script. Loads the same butterchurn + presets the MVP uses, plays a
+      // white-noise source through it so the FFT analyser has real data,
+      // exposes `window.setPreset(name)` for the script to call.
+
+      import butterchurnLib        from 'butterchurn';
+      import butterchurnPresetsLib from 'butterchurn-presets';
+
+      const bcLib = butterchurnLib.default || butterchurnLib;
+      const ppLib = butterchurnPresetsLib.default || butterchurnPresetsLib;
+
+      const canvas = document.getElementById('bg');
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // White-ish noise — pre-fill a 1-second buffer, loop it. Connecting it
+      // straight to the analyser keeps the presets visually animated (they all
+      // read freqBins). We DON'T connect to destination — no actual sound.
+      const buf = audioCtx.createBuffer(2, audioCtx.sampleRate, audioCtx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.35;
+      }
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buf; noise.loop = true; noise.start();
+
+      const viz = bcLib.createVisualizer(audioCtx, canvas, {
+        width:        800,
+        height:       600,
+        pixelRatio:   1,
+        textureRatio: 1,
+      });
+      viz.connectAudio(noise);
+
+      const presets = ppLib.getPresets();
+
+      // Puppeteer waits on this flag before calling setPreset.
+      window.snapReady = false;
+      window.setPreset = (name) => {
+        if (presets[name]) { viz.loadPreset(presets[name], 0); return true; }
+        return false;
+      };
+
+      function loop() {
+        requestAnimationFrame(loop);
+        viz.render();
+      }
+      loop();
+
+      // give the AudioContext a tick to start, then signal ready
+      setTimeout(() => { window.snapReady = true; }, 250);
+    </script>
+  </body>
+</html>

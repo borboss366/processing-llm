@@ -1,4 +1,15 @@
 ---
 name: "martin - reflections on black tiles"
+source: visual
+model: llava:7b
+motion: static
+density: sparse
+brightness: dim
+palette: monochrome
+energy: calm
+complexity: 1
+colors: ["black", "white", "gray"]
+normalised: 2026-06-29
 ---
-Dark, smooth black tiles reflect vibrant neon colors in slow, fluid motion, creating a mesmerizing geometric dance of light and shadow.
+With an abstract design. It features a dark background with a few bright spots that could be interpreted as stars or lights. There are geometric shapes such as rectangles and lines that create a sense of depth and perspective. The dominant colors in the image are black, white, and shades of gray, giving it a monochromatic appearance. The motion type is static, with no apparent movement or animation. The energy level appears to be low, as there's not much happening within the frame. The complexity of the image is moderate, with a simple yet intriguing composition that invites viewers to interpret its meaning.
+
