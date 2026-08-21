@@ -1,15 +1,8 @@
 /**
  * Module registry — holds runtime instances of hot-loaded JS modules.
  *
- * A module exports:
- *   export default {
- *     id, oscPrefix, defaults,
- *     interfaces: ['triggerable', 'fadeable'],   // optional
- *     setup(ctx)            // one-time init; ctx = { p, audio, params, lifecycle? }
- *     draw(ctx)             // per-frame render
- *     osc(ctx, addr, value) // OSC dispatch (optional)
- *     teardown(ctx)         // cleanup before reload / remove (optional)
- *   }
+ * The module contract (export shape, ctx fields, interfaces) is specified in
+ * web/app/MODULE_ABI.md — keep that file in sync with any behaviour change here.
  *
  * Modules are loaded via dynamic `import()` with a cache-busting query
  * so we can hot-reload the same URL.

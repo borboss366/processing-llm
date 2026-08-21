@@ -1,20 +1,16 @@
 /**
  * Module interface middleware.
  *
- * A module declares which interfaces it implements via `interfaces: [...]`.
+ * Interface semantics and config shapes are specified in web/app/MODULE_ABI.md
+ * — keep that file in sync with any behaviour change here.
+ *
  * The registry calls into this file to:
  *   1. Initialise lifecycle state once per instance (`initInterfaces`).
  *   2. Advance the state machine each frame (`advanceInterfaces`).
- *   3. Apply derived transforms (alpha, transform, scale) into ctx.lifecycle
- *      so the module's draw() can read them.
- *   4. Handle `trigger()` calls from the WS bus or the UI.
+ *   3. Handle `trigger()` calls from the WS bus or the UI.
  *
- * Pipeline order (fixed): trigger -> phase progression -> fadeable -> sliding
- *                         -> growable -> module.draw()
- *
- * Each interface declares its config under `module.<interfaceName>`, e.g.:
- *   { interfaces: ['triggerable', 'fadeable'],
- *     fadeable: { enterMs: 400, holdMs: 1500, exitMs: 600, easing: 'cubic-out' } }
+ * Pipeline order (fixed): trigger -> phase progression -> fadeable -> movable
+ *                         -> sliding -> module.draw()
  */
 
 // ── Easings ────────────────────────────────────────────────────────────────
