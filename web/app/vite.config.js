@@ -26,6 +26,7 @@ export default defineConfig({
         preview:    resolve(__dirname, 'preview.html'),
         controller: resolve(__dirname, 'controller.html'),
         hueDemo:    resolve(__dirname, 'hue-demo.html'),
+        ncaDemo:    resolve(__dirname, 'nca.html'),
       },
     },
   },

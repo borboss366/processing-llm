@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>NCA · Hexells Playground</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { background: #000; color: #ccc; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
+
+      #nca-canvas { position: fixed; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+
+      .top {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+        padding: 10px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+        border-bottom: 1px solid #222;
+      }
+      button {
+        padding: 6px 12px; background: #111; border: 1px solid #333; color: #ccc;
+        font-family: inherit; font-size: 0.75rem; border-radius: 4px; cursor: pointer;
+      }
+      button:hover { border-color: #0ff; color: #0ff; }
+      button.on { border-color: #0ff; color: #0ff; }
+      select {
+        padding: 5px 8px; background: #111; border: 1px solid #333; color: #ccc;
+        font-family: inherit; font-size: 0.75rem; border-radius: 4px; max-width: 220px;
+      }
+      .hint { font-size: 0.65rem; color: #666; }
+
+      .panel {
+        position: fixed; top: 56px; right: 0; bottom: 0; width: 280px; z-index: 40;
+        padding: 14px; overflow-y: auto;
+        background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+        border-left: 1px solid #222;
+        display: flex; flex-direction: column; gap: 14px;
+      }
+      .panel h3 {
+        margin: 0; font-size: 0.7rem; color: #0ff;
+        letter-spacing: 0.15em; text-transform: uppercase;
+        border-bottom: 1px solid #1a1a1a; padding-bottom: 6px;
+      }
+      .ctl { display: flex; flex-direction: column; gap: 3px; font-size: 0.7rem; }
+      .ctl label { display: flex; justify-content: space-between; }
+      .ctl .val { color: #0ff; }
+      .ctl input[type="range"] { width: 100%; }
+      .ctl-row { display: flex; gap: 8px; align-items: center; font-size: 0.7rem; }
+
+      .meters { display: flex; flex-direction: column; gap: 6px; font-size: 0.65rem; }
+      .meter { display: flex; align-items: center; gap: 8px; }
+      .meter .name { width: 46px; color: #888; }
+      .meter .bar { flex: 1; height: 8px; background: #111; border-radius: 4px; overflow: hidden; }
+      .meter .fill { height: 100%; width: 0%; background: #0ff; border-radius: 4px; }
+      #beat-dot {
+        width: 12px; height: 12px; border-radius: 50%; background: #222;
+        transition: background 0.15s ease;
+      }
+      #beat-dot.hit { background: #ff3d7f; transition: none; }
+      #bpm-label { color: #0ff; }
+
+      #model-label {
+        position: fixed; left: 16px; bottom: 14px; z-index: 40;
+        font-size: 1rem; color: #0ff; letter-spacing: 0.1em;
+        background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 4px;
+      }
+      #status {
+        position: fixed; left: 16px; top: 64px; z-index: 40;
+        font-size: 0.7rem; color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="nca-canvas"></canvas>
+
+    <div class="top">
+      <strong style="color:#0ff; font-size:0.75rem; letter-spacing:0.1em;">NCA · HEXELLS</strong>
+      <button id="btn-audio">enable audio</button>
+      <select id="device-pick" style="display:none"><option>—</option></select>
+      <select id="model-pick"><option>loading models…</option></select>
+      <button id="btn-prev">◀</button>
+      <button id="btn-next">▶</button>
+      <button id="btn-disturb">disturb</button>
+      <button id="btn-erase-all">erase all</button>
+      <select id="vis-pick" title="peek inside the CA (interpretability views)">
+        <option value="color">vis: color</option>
+        <option value="state">vis: raw state</option>
+        <option value="perception">vis: perception</option>
+        <option value="layer0">vis: layer0</option>
+        <option value="layer1">vis: layer1 (update)</option>
+        <option value="control">vis: control (model map)</option>
+        <option value="align">vis: align field</option>
+      </select>
+      <span class="hint">drag = erase (watch it heal) · shift-drag = splat model · a/z = prev/next</span>
+    </div>
+
+    <div class="panel">
+      <h3>Simulation</h3>
+      <div class="ctl">
+        <label>steps / frame <span class="val" id="steps-val">1</span></label>
+        <input type="range" id="steps" min="0" max="6" step="1" value="1">
+      </div>
+      <div class="ctl">
+        <label>brush radius <span class="val" id="brush-val">16</span></label>
+        <input type="range" id="brush" min="2" max="60" step="1" value="16">
+      </div>
+      <div class="ctl">
+        <label>boundary fuzz <span class="val" id="fuzz-val">8</span></label>
+        <input type="range" id="fuzz" min="0" max="128" step="1" value="8">
+      </div>
+
+      <h3>Audio → CA</h3>
+      <div class="ctl">
+        <label>beat → erase splat <span class="val" id="beat-erase-val">0.6</span></label>
+        <input type="range" id="beat-erase" min="0" max="1" step="0.05" value="0.6">
+      </div>
+      <div class="ctl">
+        <label>beat → model splat <span class="val" id="beat-splat-val">0</span></label>
+        <input type="range" id="beat-splat" min="0" max="1" step="0.05" value="0">
+      </div>
+      <div class="ctl">
+        <label>flux → sim speed <span class="val" id="flux-speed-val">0.5</span></label>
+        <input type="range" id="flux-speed" min="0" max="1" step="0.05" value="0.5">
+      </div>
+      <div class="ctl">
+        <label>bass → splat size <span class="val" id="bass-radius-val">0.5</span></label>
+        <input type="range" id="bass-radius" min="0" max="1" step="0.05" value="0.5">
+      </div>
+      <div class="ctl-row">
+        <label for="auto-switch">model morph every</label>
+        <select id="auto-switch">
+          <option value="0">off</option>
+          <option value="8">8 beats</option>
+          <option value="16">16 beats</option>
+          <option value="32">32 beats</option>
+          <option value="64">64 beats</option>
+        </select>
+      </div>
+
+      <h3>Audio state</h3>
+      <div class="meters">
+        <div class="meter"><span class="name">bass</span><div class="bar"><div class="fill" id="m-bass"></div></div></div>
+        <div class="meter"><span class="name">mid</span><div class="bar"><div class="fill" id="m-mid"></div></div></div>
+        <div class="meter"><span class="name">treble</span><div class="bar"><div class="fill" id="m-treble"></div></div></div>
+        <div class="meter"><span class="name">flux</span><div class="bar"><div class="fill" id="m-flux"></div></div></div>
+        <div class="meter">
+          <span class="name">beat</span><div id="beat-dot"></div>
+          <span id="bpm-label">— bpm</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="model-label">loading…</div>
+    <div id="status"></div>
+
+    <script type="module" src="/src/nca-demo.js"></script>
+  </body>
+</html>
