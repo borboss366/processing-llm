@@ -5,9 +5,9 @@ complete, committed, and pushed; Task 4 (creature module) has not been started.
 `CLAUDE_CODE_BRIEF_2.md` is in progress: Task A (errata folded into the
 original brief), Task F (barPhase caveat + `lastConfidentBpm` fallback,
 implemented in stick-dancer), Task B (director latency), and Task C
-(file-based audio + real-track validation; 4-genre matrix still pending
-user-supplied tracks) are done. Next: Task D (memory A/B on the recorded
-session), Task E (measured tags).
+(file-based audio + real-track validation, 4-genre matrix all PASS) are
+done. Next: Task D (memory A/B on the recorded session), Task E (measured
+tags).
 
 ### Brief 2, Task B — director latency (stable prefix + cacheable prompt)
 
@@ -57,9 +57,22 @@ session), Task E (measured tags).
   overlapping tick saw the stale anchor/cooldown. Fixed with an in-flight
   guard in `controller.js`. (Also explains median 6.4 s vs the 4.5 s bench:
   paired calls were queueing on Ollama.)
-- Remaining for full Task C acceptance: the 4-genre track matrix
-  (four-on-the-floor ✓ via the mix; syncopated bassline, strong snares,
-  isolated breakdown track still pending — user supplies).
+- **4-genre matrix — all PASS** (±2 BPM on confident samples; solo runs —
+  parallel headless browsers skew the estimate low, run one at a time):
+  | track | genre trait | truth | read | conf mean |
+  |---|---|---|---|---|
+  | Brejcha-style mix | four-on-the-floor | ~125 | 125.03 (Δ0.03) | 0.65 |
+  | MJ Cole – Sincere | syncopated 2-step | 134 | 132.63 (Δ-1.37) | 0.65 |
+  | Pendulum – Hold Your Colour | DnB, snare-heavy, top of range | 174 | 172.56 (Δ-1.44) | 0.55 |
+  | Darude – Sandstorm | repeated breakdowns | 136 | 136.00 (Δ0.00) | 0.76 |
+  DnB initially failed hard (~105 mush — kick/snare alternation put the
+  autocorrelation peak on the 2-step at 87 and estimates flip-flopped
+  between octaves). Fixed with a stronger half-lag preference (0.55; only
+  the 60–90 band can flip since doubling past 180 is range-capped) + octave
+  hysteresis on the BPM EMA. Synthetic suite still passes all 4 after both.
+  Ground truth arbitration: `tools/wav-tempo.mjs` (offline, independent
+  implementation) — proved the Sandstorm rip really is 136.01 and an
+  apparent -3.5 bias was 3-parallel-browser CPU contention.
 
 ## Done
 
@@ -132,11 +145,9 @@ session), Task E (measured tags).
 1. **Director latency — residual.** Solved to ~4.5 s/pick (see Task B above);
    what remains is generation time (~2 s) + tail eval (~2.5 s). If sub-2 s
    ever matters, the levers are a shorter output format and a smaller model.
-2. **PLL real-audio validation is one-genre deep.** Validated on the
-   four-on-the-floor techno mix (locked, breakdowns recover — see Task C
-   above); syncopated basslines, strong-snare material, and other genres
-   still untested until more tracks arrive. `beatConfidence` remains the
-   on-stage indicator.
+2. **PLL validated across 4 genres** (see the Task C matrix) — remaining
+   caveat is only that `beatConfidence` stays the on-stage indicator for
+   material outside those patterns (breakbeat, triplet swing, rubato).
 3. **Memory prompt unevaluated on real data.** The record/replay tooling
    exists, but only a 3-window smoke session has been recorded
    (`sessions/smoke-test.jsonl`). Needs a real 10-minute set recorded, then a

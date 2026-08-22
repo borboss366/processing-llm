@@ -220,8 +220,12 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
       if (score > bestScore) { bestScore = score; bestLag = lag; }
     }
     if (!bestLag || bestScore <= 0) return 0;
+    // Threshold 0.55: only lags whose doubled tempo stays ≤ MAX_BPM can flip
+    // (60–90 BPM band), so four-on-the-floor tempos are untouchable. DnB
+    // kick/snare alternation puts the strongest correlation on the 2-step
+    // (87 for a 174 track) with the true grid clearly present but weaker.
     const half = Math.round(bestLag / 2);
-    if (half >= lagMin && corrBuf[half] >= 0.7 * corrBuf[bestLag]) bestLag = half;
+    if (half >= lagMin && corrBuf[half] >= 0.55 * corrBuf[bestLag]) bestLag = half;
 
     // Parabolic interpolation around the peak — integer lags quantise BPM
     // (±4 BPM steps around 120 at 60 Hz); fractional lag gets inside ±2.
@@ -345,7 +349,16 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     bpmTickCounter++;
     if (bpmTickCounter >= 10) {            // every ~6 Hz instead of every tick
       bpmTickCounter = 0;
-      const detected = bpmEstimate();
+      let detected = bpmEstimate();
+      // Octave hysteresis: when the raw estimate lands at ~half or ~double
+      // the current tempo, keep the current octave — syncopated patterns
+      // (DnB kick/snare) make raw estimates flip between T and 2T, and an
+      // EMA over flip-flopping octaves converges on garbage in between.
+      if (state.bpm > 0 && detected > 0) {
+        const r = detected / state.bpm;
+        if (r > 1.8 && r < 2.2 && detected / 2 >= MIN_BPM) detected /= 2;
+        else if (r > 0.45 && r < 0.55 && detected * 2 <= MAX_BPM) detected *= 2;
+      }
       // Heavy smoothing — BPM doesn't change fast. Seed directly on the first
       // estimate so the PLL doesn't chase an EMA climbing up from zero.
       if (detected > 0) state.bpm = state.bpm ? state.bpm * 0.7 + detected * 0.3 : detected;
