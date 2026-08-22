@@ -11,6 +11,8 @@
  *   - Pad mapping persistence (/mappings GET/POST → .mappings.json).
  *   - Director: /director (LLM picks preset + CSS filter from feature profile).
  *   - Preset catalogue: /presets/descriptions (lists the .md description set).
+ *   - Session recording: /session/append (controller streams director decisions
+ *     + operator actions to sessions/<id>.jsonl for offline replay).
  */
 
 import express from "express";
@@ -20,6 +22,15 @@ import fs from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
+import {
+  DEFAULT_CATALOGUE_WINDOW,
+  buildDirectorPrompt,
+  callDirectorLLM,
+  loadPresetDescriptions,
+  parseDirectorResponse,
+  prefilterCandidates,
+  type DirectorMemory,
+} from "../director/director.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -186,199 +197,99 @@ export async function startControllerServer(): Promise<void> {
   });
 
   // ── Director (qwen3:8b picks preset + CSS filter from feature profile) ─
-  const OLLAMA_URL = process.env["OLLAMA_HOST"]
-    ? `http://${process.env["OLLAMA_HOST"]}/api/generate`
-    : "http://localhost:11434/api/generate";
+  // All shared logic (prompt construction, prefilter, parsing, Ollama call)
+  // lives in src/director/director.ts so tools/replay.mjs replays the exact
+  // same pipeline offline.
+  const PRESET_DESC_DIR = path.resolve(process.cwd(), "web/app/preset-descriptions");
 
-  /** POST /director  body: { current: WindowStats, prev?: WindowStats }
-   *  → { description, preset: <name>, filter: {hue,sat,bright}, raw, ms }
-   *  Fires when the controller detects the audio character changed significantly.
-   *  qwen3:8b reads current (and optionally previous) feature profile + the
-   *  preset description catalogue, then picks ONE preset and a colour filter.
-   *  Returns a one-sentence description of what changed. On error returns a
-   *  null preset and the controller keeps the current visualisation. */
+  /** POST /director
+   *  body: { current, prev?, recent?, max_complexity?, history?, catalogue_window? }
+   *  → { description, preset, preset_slug, filter: {hue,sat,bright}, raw, ms }
+   *  Fires when the controller detects the audio character changed. The model
+   *  sees the last N picks (`history`, memory prompt) plus the current profile
+   *  and the prefiltered preset catalogue, and picks ONE preset + a filter.
+   *  On error returns ok:false and the controller keeps the current visuals. */
   app.post("/director", async (req, res) => {
     const {
       current,
       prev,
       recent: recentSlugs = [],
       max_complexity: maxComplexity,
+      history = [],
+      catalogue_window: catalogueWindow,
     } = req.body as {
       current: Record<string, number>;
       prev?: Record<string, number>;
       recent?: string[];
       max_complexity?: number;
+      history?: DirectorMemory[];
+      catalogue_window?: number;
     };
     if (!current) { res.status(400).json({ ok: false, error: "current features required" }); return; }
 
-    const list = await loadPresetDescriptions();
+    const list = await loadPresetDescriptions(PRESET_DESC_DIR);
     if (!list.length) {
       res.json({ ok: false, error: "no preset descriptions yet — run scripts/visual-bootstrap.mjs" });
       return;
     }
 
-    // Prefilter:
-    //   - drop any preset we just played (recency = anti-repeat)
-    //   - drop any preset whose complexity exceeds the operator's max
-    const recentSet = new Set(recentSlugs);
-    let candidates = list.filter(p => {
-      if (recentSet.has(p.slug)) return false;
-      if (typeof maxComplexity === "number" && typeof p.tags.complexity === "number") {
-        if (p.tags.complexity > maxComplexity) return false;
-      }
-      return true;
+    const items = prefilterCandidates(list, {
+      recentSlugs,
+      ...(typeof maxComplexity === "number" ? { maxComplexity } : {}),
+      windowSize: catalogueWindow ?? DEFAULT_CATALOGUE_WINDOW,
     });
-    // Always keep ≥1 candidate — if recency or complexity excluded everything,
-    // fall back to the full list so the director still picks something.
-    if (!candidates.length) candidates = list;
-
-    // Shuffle so each call sees a fresh window — without this, alphabetical
-    // readdir order meant the prompt only ever contained the first N presets.
-    for (let i = candidates.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
-
-    // Cap at 60 entries to keep the LLM prompt fast (~3-5s warm).
-    const items = candidates.slice(0, 60);
-    const catalogue = items.map((p, i) => {
-      const t = p.tags;
-      const tagStr = [
-        t.complexity != null ? `c${t.complexity}` : null,
-        t.energy, t.density, t.brightness, t.motion,
-      ].filter(Boolean).join(' ');
-      return `${i + 1}. [${tagStr}] ${p.name} — ${p.description}`;
-    }).join("\n");
-
-    function profileLine(f: Record<string, number>): string {
-      const g = (k: string) => (typeof f[k] === "number" ? f[k].toFixed(2) : "0.00");
-      const bpm = Math.round(Number(f.mean_bpm) || 0);
-      return (
-        `level=${g("mean_level")} dyn=${g("dynRange")} bpm=${bpm} bps=${g("mean_beatsPerSec")} ` +
-        `bri=${g("mean_centroid")} roll=${g("mean_rolloff")} flat=${g("mean_flatness")} crest=${g("mean_crest")} flux=${g("mean_flux")} ` +
-        `bands sub=${g("mean_b_sub")} kick=${g("mean_b_kick")} low=${g("mean_b_low")} ` +
-        `lowMid=${g("mean_b_lowMid")} mid=${g("mean_b_mid")} upMid=${g("mean_b_upperMid")} ` +
-        `pres=${g("mean_b_presence")} air=${g("mean_b_air")}`
-      );
-    }
-
-    const prompt =
-      `You are a VJ director for a live music set. The audio character just changed.\n\n` +
-      `Available butterchurn presets (numbered):\n${catalogue}\n\n` +
-      (prev
-        ? `Previous section: ${profileLine(prev)}\n`
-        : `(No previous section — this is the start of the set.)\n`) +
-      `Current section:  ${profileLine(current)}\n\n` +
-      `Pick a visualisation that fits the CURRENT section, and a colour filter for it.\n` +
-      `Filter parameters:\n` +
-      `  hue    : -180..180 degrees (hue rotation; 0 = no shift)\n` +
-      `  sat    : 0..2     (saturation multiplier; 1 = unchanged)\n` +
-      `  bright : 0.5..1.5 (brightness multiplier; 1 = unchanged)\n\n` +
-      `Output one-line JSON only:\n` +
-      `{"description":"<one sentence, ≤15 words, on what the new section sounds like>",` +
-      `"preset":<number>,` +
-      `"filter":{"hue":<deg>,"sat":<num>,"bright":<num>}}`;
+    const prompt = buildDirectorPrompt({ current, prev: prev ?? null, catalogue: items, history });
 
     const t0 = Date.now();
     try {
-      const r = await fetch(OLLAMA_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "qwen3:8b", prompt, stream: false, think: false, keep_alive: -1,
-          options: { num_predict: 200, temperature: 0.5, stop: ["\n\n"] },
-        }),
-      });
-      const j = await r.json() as { response?: string };
-      const raw = (j.response ?? "").trim();
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("no JSON found in response");
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      const idx = Math.max(1, Math.min(items.length, parseInt(String(parsed.preset), 10) || 1)) - 1;
-      const pick = items[idx];                       // filtered list
-      const filter = parsed.filter ?? {};
-      const safe = (n: number, lo: number, hi: number, fallback: number) => {
-        const v = Number(n);
-        if (!Number.isFinite(v)) return fallback;
-        return Math.max(lo, Math.min(hi, v));
-      };
-      const cleanFilter = {
-        hue:    safe(filter.hue,    -180, 180, 0),
-        sat:    safe(filter.sat,    0,    2,   1),
-        bright: safe(filter.bright, 0.5,  1.5, 1),
-      };
+      const { raw, ms } = await callDirectorLLM(prompt);
+      const { description, pick, filter } = parseDirectorResponse(raw, items);
       res.json({
         ok:          true,
-        description: String(parsed.description ?? "").slice(0, 200),
+        description,
         preset:      pick.name,
         preset_slug: pick.slug,
-        filter:      cleanFilter,
+        filter,
         raw,
-        ms:          Date.now() - t0,
+        ms,
       });
     } catch (err) {
       res.json({ ok: false, error: String(err), ms: Date.now() - t0 });
     }
   });
 
-  // ── Preset descriptions (loaded fresh on each call so adding/editing
-  //    .md files in web/app/preset-descriptions/ takes effect immediately) ─
-  const PRESET_DESC_DIR = path.resolve(process.cwd(), "web/app/preset-descriptions");
-  type PresetDesc = {
-    name: string; description: string; slug: string; tags: PresetTags;
-  };
-
-  type PresetTags = {
-    motion?: string; density?: string; brightness?: string; palette?: string;
-    energy?: string; geometry?: string; complexity?: number; colors?: string[];
-  };
-
-  function parseTagsFromFrontmatter(fm: string): PresetTags {
-    const tags: PresetTags = {};
-    for (const k of ['motion', 'density', 'brightness', 'palette', 'energy', 'geometry'] as const) {
-      const m = new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(fm);
-      if (m) tags[k] = m[1].trim();
-    }
-    const cm = /^complexity:\s*([1-5])/m.exec(fm);
-    if (cm) tags.complexity = parseInt(cm[1], 10);
-    const colm = /^colors:\s*\[(.+)\]/m.exec(fm);
-    if (colm) {
-      tags.colors = colm[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
-    }
-    return tags;
-  }
-
-  async function loadPresetDescriptions(): Promise<PresetDesc[]> {
-    try {
-      const files = (await fs.readdir(PRESET_DESC_DIR)).filter(f => f.endsWith(".md"));
-      const out: PresetDesc[] = [];
-      for (const f of files) {
-        const raw = await fs.readFile(path.join(PRESET_DESC_DIR, f), "utf8");
-        const m = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]+)$/.exec(raw);
-        if (!m) continue;
-        const nm = /^name:\s*(.+)$/m.exec(m[1]);
-        if (!nm) continue;
-        let name = nm[1].trim();
-        if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith("'") && name.endsWith("'"))) {
-          try { name = JSON.parse(name); } catch {}
-        }
-        out.push({
-          name,
-          description: m[2].trim(),
-          slug: f.replace(/\.md$/, ""),
-          tags: parseTagsFromFrontmatter(m[1]),
-        });
-      }
-      return out;
-    } catch {
-      return [];
-    }
-  }
-
   app.get("/presets/descriptions", async (_req, res) => {
-    const list = await loadPresetDescriptions();
+    const list = await loadPresetDescriptions(PRESET_DESC_DIR);
     res.json({ ok: true, count: list.length, presets: list });
+  });
+
+  // ── Session recording (controller appends events while Auto-Director runs) ─
+  const SESSIONS_DIR = path.resolve(process.cwd(), "sessions");
+
+  /** POST /session/append  body: { session: <file-safe id>, event: object }
+   *  Appends one JSON line to sessions/<session>.jsonl. Fire-and-forget from
+   *  the controller; replayed offline by tools/replay.mjs. */
+  app.post("/session/append", async (req, res) => {
+    const { session, event } = req.body as { session?: string; event?: Record<string, unknown> };
+    if (!session || !/^[A-Za-z0-9._-]{1,80}$/.test(session)) {
+      res.status(400).json({ ok: false, error: "session id required (file-safe chars only)" });
+      return;
+    }
+    if (!event || typeof event !== "object") {
+      res.status(400).json({ ok: false, error: "event object required" });
+      return;
+    }
+    try {
+      await fs.mkdir(SESSIONS_DIR, { recursive: true });
+      await fs.appendFile(
+        path.join(SESSIONS_DIR, `${session}.jsonl`),
+        JSON.stringify(event) + "\n",
+        "utf8",
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
   });
 
   httpServer.listen(CONTROLLER_PORT, () => {

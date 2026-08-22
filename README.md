@@ -61,7 +61,30 @@ and hot-loads it into a running server.
   Generated/refreshed by `web/app/scripts/visual-bootstrap.mjs` +
   `bootstrap-preset-descriptions.mjs` (offline, puppeteer +
   `preset-snap.html` + a vision model).
-- `tools/` — offline authoring CLIs (`modgen/gen.mjs`).
+- `src/director/` — director core shared by the live route and offline
+  replay: pure prompt construction (`buildDirectorPrompt`, with a `memory`
+  variant that shows the model its last N picks), catalogue prefilter,
+  response parsing, Ollama call.
+- `tools/` — offline authoring/evaluation CLIs (`modgen/gen.mjs`,
+  `replay.mjs`).
+- `sessions/` (gitignored) — one .jsonl per Auto-Director run: every director
+  decision (feature window, request, raw LLM response, pick, latency), hold
+  tick, and operator action.
+
+## Evaluating the director
+
+Run a set with Auto-Director on — everything is recorded automatically. Then
+re-run the recorded feature windows through any prompt variant with no audio:
+
+```sh
+node tools/replay.mjs sessions/<file>.jsonl --prompt-variant memory     # live default
+node tools/replay.mjs sessions/<file>.jsonl --prompt-variant no-memory  # pre-memory prompt
+# knobs: --history-n N  --catalogue-window N (smaller = faster)  --model <ollama model>
+```
+
+prints a table of original pick vs. new pick per window. Replay accumulates
+its own recency/memory, so the table shows what the whole set would have
+looked like under that variant. Requires Ollama running.
 
 ## Experimental
 

@@ -96,6 +96,9 @@ engine.on((ev) => {
   if (ev.kind === 'pad' && !ev.mapped) {
     console.log(`[controller] pad ${ev.idx} pressed but not mapped`);
   }
+  // Operator actions (pad triggers, toggles, preset next/prev, OSC) go into
+  // the session record so replay can see what the human did between picks.
+  sessionLog({ type: 'action', ...ev });
 });
 
 renderPadGrid(initialMapping);
@@ -550,6 +553,8 @@ const CHANGE_THRESHOLD       = 0.16;     // 0..1 normalised distance to trigger
 const MIN_CHANGE_INTERVAL_MS = 25_000;   // hard cooldown between director calls
 const POLL_INTERVAL_MS       = 4_000;    // sample + compare every 4s
 const RECENT_PRESET_KEEP     = 8;        // anti-repeat memory
+const DIRECTOR_HISTORY_N     = 3;        // decisions the memory prompt sees
+const CATALOGUE_WINDOW       = 60;       // presets per director prompt
 
 let directorTimer    = null;
 let directorActive   = false;
@@ -557,6 +562,22 @@ let anchorProfile    = null;             // last window stats snapshot when we u
 let lastChangeMs     = 0;
 let lastPreset       = null;             // last preset name we asked render to load
 let recentPresetSlugs = [];              // sliding window of recent picks (for /director)
+let directorHistory  = [];               // last N {profile, preset, filter} for the memory prompt
+
+// ─── Session recording ────────────────────────────────────────────────────
+// While Auto-Director runs, every director decision, hold tick, and operator
+// action is appended (fire-and-forget) to sessions/<id>.jsonl on the server,
+// for offline evaluation via `node tools/replay.mjs`.
+let sessionId = null;
+
+function sessionLog(event) {
+  if (!sessionId) return;
+  fetch('/session/append', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: sessionId, event: { t: Date.now(), ...event } }),
+  }).catch(() => {});   // recording must never break the live path
+}
 const COMPLEXITY_LABELS = {
   1: '1 / minimalist',
   2: '2 / simple',
@@ -691,6 +712,8 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
       prev: anchorProfile,
       recent: recentPresetSlugs,           // anti-repeat
       max_complexity: getMaxComplexity(),  // operator-set ceiling
+      history: directorHistory,            // last N picks for the memory prompt
+      catalogue_window: CATALOGUE_WINDOW,
     };
     const r = await fetch('/director', {
       method: 'POST',
@@ -702,8 +725,24 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
     if (!json.ok) {
       els.moodStatus.textContent = `director error: ${json.error ?? 'unknown'}`;
       console.warn('[director] error', json);
+      sessionLog({ type: 'director-error', force, reason, error: json.error ?? 'unknown', ms });
       return;
     }
+    sessionLog({
+      type: 'director',
+      force, reason,
+      stats,                              // the feature window that fired this
+      request: body,
+      response: {
+        raw:         json.raw,
+        preset:      json.preset,
+        preset_slug: json.preset_slug,
+        description: json.description,
+        filter:      json.filter,
+        llm_ms:      json.ms,
+      },
+      ms,                                 // round-trip incl. HTTP
+    });
     const presetShort = (json.preset ?? '?').slice(0, 50);
     const filter = json.filter ?? { hue: 0, sat: 1, bright: 1 };
     const filterStr = `hue-rotate(${filter.hue}deg) saturate(${filter.sat}) brightness(${filter.bright})`;
@@ -729,6 +768,9 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
       recentPresetSlugs.push(json.preset_slug);
       if (recentPresetSlugs.length > RECENT_PRESET_KEEP) recentPresetSlugs.shift();
     }
+    // Remember the decision for the memory prompt (last N, oldest first)
+    directorHistory.push({ profile: stats, preset: json.preset, filter });
+    if (directorHistory.length > DIRECTOR_HISTORY_N) directorHistory.shift();
   } catch (e) {
     els.moodStatus.textContent = `director fetch failed: ${e.message}`;
     console.warn('[director] fetch failed', e);
@@ -762,6 +804,7 @@ async function directorTick() {
     const why = dist <= CHANGE_THRESHOLD ? 'stable' : `cooldown ${(cooldownLeft / 1000).toFixed(0)}s`;
     appendMoodLog('hold', why, idleLine, 'same');
     els.moodStatus.textContent = `${why} · ${idleLine}`;
+    sessionLog({ type: 'hold', why, dist, stats });
   }
 }
 
@@ -776,11 +819,23 @@ els.btnMood?.addEventListener('click', () => {
     ws.send({ type: 'set-filter', filter: 'none' });
     anchorProfile = null;
     lastChangeMs  = 0;
+    sessionLog({ type: 'session-stop' });
+    sessionId = null;
+    directorHistory = [];
   } else {
     directorActive = true;
     els.btnMood.textContent = '■ Stop Auto-Director';
     els.btnMood.classList.add('on');
-    console.log(`[director] started — sampling every ${POLL_INTERVAL_MS/1000}s, change threshold ${CHANGE_THRESHOLD}, cooldown ${MIN_CHANGE_INTERVAL_MS/1000}s`);
+    sessionId = new Date().toISOString().replace(/[:.]/g, '-');
+    sessionLog({
+      type: 'session-start',
+      config: {
+        pollMs: POLL_INTERVAL_MS, threshold: CHANGE_THRESHOLD,
+        cooldownMs: MIN_CHANGE_INTERVAL_MS, recentKeep: RECENT_PRESET_KEEP,
+        historyN: DIRECTOR_HISTORY_N, catalogueWindow: CATALOGUE_WINDOW,
+      },
+    });
+    console.log(`[director] started — session ${sessionId}, sampling every ${POLL_INTERVAL_MS/1000}s, change threshold ${CHANGE_THRESHOLD}, cooldown ${MIN_CHANGE_INTERVAL_MS/1000}s`);
     directorTick();
     directorTimer = setInterval(directorTick, POLL_INTERVAL_MS);
   }
