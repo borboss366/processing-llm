@@ -23,7 +23,7 @@ const argv = process.argv.slice(2);
 const flags = {};
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith("--")) flags[argv[i].slice(2)] = argv[++i];
 const seek = Number(flags.seek ?? 120);
-const bgOff = (flags.bg ?? "off") === "off";
+const bgOff = (flags.bg ?? "on") === "off";   // primary captures: Butterchurn ON
 
 const post = (p, body) => fetch(`http://localhost:3000${p}`, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -59,11 +59,18 @@ try {
     console.log(`[capture] ${shape}: ${perf.fps.toFixed(1)} fps (headless swiftshader), ` +
       `module ${perf.creature ? `${perf.creature.ms.toFixed(2)} ms/frame · ${perf.creature.nodes} nodes · ${perf.creature.edges} edges` : "n/a"}`);
 
-    await page.screenshot({ path: path.join(ROOT, `reports/creature-${shape}.png`) });
-    const rec = await page.screencast({ path: path.join(ROOT, `reports/creature-${shape}.webm`) });
+    await page.screenshot({ path: path.join(ROOT, `reports/creature2-${shape}.png`) });
+    const rec = await page.screencast({ path: path.join(ROOT, `reports/creature2-${shape}.webm`) });
     await new Promise((r) => setTimeout(r, 20_000));
     await rec.stop();
-    console.log(`[capture] ${shape}: wrote reports/creature-${shape}.png + .webm`);
+
+    // secondary diagnostic: same pose family on black
+    ws.send(JSON.stringify({ type: "set-bg", on: false }));
+    await new Promise((r) => setTimeout(r, 400));
+    await page.screenshot({ path: path.join(ROOT, `reports/creature2-${shape}-diag.png`) });
+    if (!bgOff) ws.send(JSON.stringify({ type: "set-bg", on: true }));
+    await new Promise((r) => setTimeout(r, 400));
+    console.log(`[capture] ${shape}: wrote reports/creature2-${shape}.png/.webm + -diag.png`);
   }
 } finally {
   ws.close();

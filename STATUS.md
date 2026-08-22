@@ -11,11 +11,12 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
-- **Creature module built and captured**: quadruped + jelly shapes, beat-
-  locked gaits, 2.4 ms/frame physics+draw at ~444 nodes (7× headroom on the
-  60 fps budget) — stills + 20 s clips in
-  `reports/2026-08-22-creature.md`. Awaiting the user's
-  does-it-read-as-a-creature judgment.
+- **Creature module, polish pass done**: verdict on v1 was YES; v2 adds
+  scale/framing (65% canvas, ground line), glow rendering (SDF boundary
+  outline + additive flesh pass), root motion, knees + 9-node paws + floor,
+  ring-chain limbs — whole body moves on the beat, feet solid, tentacles
+  continuous; 4.3 ms/frame at ~596 nodes (≤5 ms budget)
+  (`reports/2026-08-22-creature-2.md`). Awaiting judgment on a real GPU.
 - **Pick cadence**: 1.14 picks/min on a 12-min techno set (was 3.17), 14/14
   unique presets, 13/14 commits within 0.1 of a bar boundary
   (`reports/2026-08-22-pick-cadence.md`).
@@ -36,10 +37,10 @@ min-hold control). Full guide in `README.md`.
 
 ## Open
 
-1. **Creature verdict pending** — does it read as a creature? Known
-   weaknesses visible in the captures: quadruped feet crumple (armature fix:
-   mid-limb pins), jelly tentacles fragment into bead clusters. No further
-   creature work (growth, LLM shapes) until judged.
+1. **Creature v2 verdict pending** — judged on a real GPU with Butterchurn
+   behind it. Known nits: head outline partly broken (sparse sampling on a
+   small circle), near/far leg pairs can visually cross in side view. No
+   further creature work (growth, LLM shapes) until judged.
 2. **Director never holds** — leading-question tail prompt + threshold below
    the mix's natural drift; z-score calibration specified as Brief 4 Task 3.
 3. **Preset tags are vision-model-skewed** — Brief 4 Task 4.
@@ -51,5 +52,5 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-User judgment on the creature captures; then Brief 4 Task 3 (change-detector
-calibration + hold).
+User judgment on the creature v2 captures (real GPU); then Brief 4 Task 3
+(change-detector calibration + hold).
