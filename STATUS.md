@@ -2,6 +2,9 @@
 
 What got done against `CLAUDE_CODE_BRIEF.md`, what's still open. Tasks 1–3 are
 complete, committed, and pushed; Task 4 (creature module) has not been started.
+`CLAUDE_CODE_BRIEF_2.md` is in progress: Task A (errata folded into the
+original brief) and Task F (barPhase caveat + `lastConfidentBpm` fallback,
+implemented in stick-dancer) are done.
 
 ## Done
 
@@ -96,11 +99,7 @@ complete, committed, and pushed; Task 4 (creature module) has not been started.
 5. **Task 4 not started.** Creature module (SDF shapes → spring tissue →
    skeleton gait driven by `beatPhase`). Per the brief it ends with a capture
    and a human judgment call: does it read as a creature?
-6. **Brief corrections worth folding back in** (so the document stays true):
-   preview was superseded by the controller, not preset-snap; browser
-   experiments must live under `web/app/` (Vite root), not top-level
-   `experiments/`; the PLL nudge rule needs the acquisition mode.
-7. **Minor.** Render-window JS bundle is ~2 MB minified (butterchurn presets
+6. **Minor.** Render-window JS bundle is ~2 MB minified (butterchurn presets
    dominate — code-splitting would help if load time ever matters); the
    server has no auth (fine on a private LAN, worth remembering it's an open
    relay + file-append endpoint); director history/session reset on every

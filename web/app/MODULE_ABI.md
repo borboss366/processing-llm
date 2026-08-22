@@ -75,9 +75,29 @@ All values smoothed (~1 s EMA) and normalised 0..1 unless noted:
   to detected onsets; prefer this over `onBeat` for anything rhythmic
   (bounces, pulses, strobes) — it gives you *where in the beat you are*,
   not just a one-frame boolean
-- `barPhase` — 0..1 over a 4-beat bar (for longer gestures)
+- `barPhase` — 0..1 over a 4-beat bar (for longer gestures). **Caveat: this
+  is a consistent 4-beat clock anchored to whichever onset the PLL first
+  acquired, NOT to the musical downbeat.** Never assume `barPhase === 0` is
+  the "one" — downbeat tracking is a separate, future signal. Safe uses:
+  gesture *lengths* (something that evolves over 4 beats); unsafe uses:
+  accenting "beat 1 of the bar".
 - `beatConfidence` — 0..1, how consistently onsets land on the locked phase;
   scale beat-driven motion by it so visuals stay calm when the beat is vague
+- `lastConfidentBpm` — the BPM last seen while `beatConfidence ≥ 0.4`
+
+**Recommended fallback** — while `beatConfidence < 0.4` the PLL is acquiring
+and `beatPhase` may jump; don't freeze, free-run your own phase at
+`lastConfidentBpm` (see `stick-dancer` for the reference implementation):
+
+```js
+const a = ctx.audio.state;
+if (a.beatConfidence >= 0.4 && a.bpm > 0) {
+  ctx.state.phase = a.beatPhase;                    // locked: follow the PLL
+} else if (a.lastConfidentBpm > 0) {               // vague: keep dancing at
+  ctx.state.phase =                                 // the last known tempo
+    (ctx.state.phase + (ctx.p.deltaTime / 1000) * (a.lastConfidentBpm / 60)) % 1;
+}
+```
 - `beatsPerSec` — beat rate over the last 3 s
 - `onBeat` — boolean, true on detected bass onsets (legacy; prefer `beatPhase`)
 

@@ -21,8 +21,11 @@
  *     beatPhase      — 0..1 continuous phase, 0 = beat (phase-locked loop:
  *                      advances at the estimated BPM, nudged toward 0 by
  *                      onsets that land near a beat boundary)
- *     barPhase       — 0..1 over 4 beats
+ *     barPhase       — 0..1 over 4 beats (anchored to first acquisition,
+ *                      NOT to the musical downbeat)
  *     beatConfidence — EMA of how close onsets land to phase 0
+ *     lastConfidentBpm — bpm last seen while confidence ≥ 0.4; modules
+ *                      free-run on this when confidence drops
  *
  * Plus the legacy aggregates kept for the existing classifier:
  *     smoothedLevel / smoothedBass / smoothedMid / smoothedTreble
@@ -101,6 +104,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     beatPhase:      0,   // 0..1, 0 = beat boundary
     barPhase:       0,   // 0..1 over 4 beats
     beatConfidence: 0,   // 0..1, EMA of onset-to-phase-0 closeness
+    lastConfidentBpm: 0, // bpm last seen while confidence ≥ 0.4 (module fallback)
 
     // beat detector
     bassAvg:     0,
@@ -360,6 +364,10 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
         }
       }
       state.barPhase = (beatCounter + state.beatPhase) / 4;
+      // Remember the tempo while the lock is trustworthy, so modules can
+      // free-run an oscillator at this rate when confidence drops (during
+      // acquisition beatPhase is being hard-snapped and is jumpy).
+      if (state.beatConfidence >= 0.4) state.lastConfidentBpm = state.bpm;
     }
 
     // ── beat detector (kept for live UI + beatsPerSec) ───────────────

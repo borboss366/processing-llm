@@ -137,3 +137,24 @@ Graph-rewriting automata, soft rules, Lenia, evolutionary anything, moving
 physics to WASM/GPU, new LLM-generated modules. These are all additions on
 top of a working creature and a measurable director, which is what the tasks
 above produce.
+
+## Errata (2026-08-22, after Tasks 1–3 — see STATUS.md and CLAUDE_CODE_BRIEF_2.md)
+
+- **Task 1.4 premise was wrong**: `preview.html` was superseded by the
+  controller's module list + per-module test pane, not by `preset-snap.html`
+  (which is the headless driver for the description bootstrap, a different
+  tool). preview was deleted, not moved.
+- **Layout rule correction**: browser experiments that import `core/` must
+  live under `web/app/` (the Vite root) or they cannot run — which is why
+  `nca.html` rightly stays there. Top-level `experiments/` is for offline
+  (Node) experiments only.
+- **Task 3.3 as specified deadlocks**: "nudge only within ±0.25, otherwise
+  ignore" can never acquire lock when the initial phase offset is outside the
+  window and the frequency estimate is exact — the error stays constant
+  forever. The implementation adds an acquisition mode (hard snap to onsets
+  while `beatConfidence < 0.4`), reverting to the gentle ±0.25 / gain-0.15
+  regime once locked.
+- **Task 2 acceptance correction**: "a recorded 10-minute session replays in
+  under a minute" is bounded by Ollama prompt-eval latency, not by the replay
+  harness; it becomes achievable only with the cacheable-prompt work
+  (BRIEF_2 Task B), not on the original code on any hardware.
