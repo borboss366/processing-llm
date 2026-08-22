@@ -17,6 +17,12 @@
  *
  * Uses erasable TS syntax only (no enums/namespaces) — tools/replay.mjs
  * imports this file directly via Node's native type stripping.
+ *
+ * WHEN the director fires is not decided here: the change detector (weighted
+ * profile distance over bands/brightness/BPM/dynamics, threshold 0.16, two
+ * consecutive over-threshold windows, min-hold clock) lives controller-side
+ * in web/app/src/controller.js — replay consumes recorded windows and never
+ * re-runs it.
  */
 
 import fs from "node:fs/promises";
@@ -183,7 +189,9 @@ export function profileLine(f: Record<string, number>): string {
 export function buildDirectorPrefix(catalogueText: string): string {
   return (
     `You are a VJ director for a live music set. Whenever the audio character changes, ` +
-    `you pick ONE butterchurn preset (by its number) and a colour filter for it.\n\n` +
+    `you pick ONE butterchurn preset (by its number) and a colour filter for it — or you ` +
+    `answer "hold" to keep the current visuals. A good VJ holds a look for minutes; ` +
+    `change only when the music genuinely moves on.\n\n` +
     `Available butterchurn presets (numbered):\n${catalogueText}\n\n` +
     `Filter parameters:\n` +
     `  hue    : -180..180 degrees (hue rotation; 0 = no shift)\n` +
@@ -191,8 +199,9 @@ export function buildDirectorPrefix(catalogueText: string): string {
     `  bright : 0.5..1.5 (brightness multiplier; 1 = unchanged)\n\n` +
     `You always answer with one-line JSON only:\n` +
     `{"description":"<one sentence, ≤15 words, on what the new section sounds like>",` +
-    `"preset":<number>,` +
-    `"filter":{"hue":<deg>,"sat":<num>,"bright":<num>}}\n\n`
+    `"preset":<number> or "hold",` +
+    `"filter":{"hue":<deg>,"sat":<num>,"bright":<num>}}\n` +
+    `("preset":"hold" = the current section does not warrant a change; filter is ignored.)\n\n`
   );
 }
 
@@ -251,7 +260,8 @@ export function buildDirectorPrompt(opts: {
 
 export type DirectorPick = {
   description: string;
-  pick: PresetDesc;
+  hold: boolean;         // "keep the current visuals" — pick/filter absent
+  pick: PresetDesc | null;
   filter: DirectorFilter;
   offList: boolean;      // model ignored the candidate-number constraint
 };
@@ -265,6 +275,14 @@ export function parseDirectorResponse(
   if (!jsonMatch) throw new Error("no JSON found in response");
   const parsed = JSON.parse(jsonMatch[0]);
   if (!candidateNumbers.length) throw new Error("empty candidate list");
+
+  if (String(parsed.preset).trim().toLowerCase() === "hold") {
+    return {
+      description: String(parsed.description ?? "").slice(0, 200),
+      hold: true, pick: null, offList: false,
+      filter: { hue: 0, sat: 1, bright: 1 },
+    };
+  }
 
   const requested = parseInt(String(parsed.preset), 10);
   let num = Number.isFinite(requested) ? requested : candidateNumbers[0]!;
@@ -286,6 +304,7 @@ export function parseDirectorResponse(
   };
   return {
     description: String(parsed.description ?? "").slice(0, 200),
+    hold: false,
     pick,
     offList,
     filter: {

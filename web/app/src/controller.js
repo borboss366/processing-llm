@@ -514,6 +514,17 @@ const ws = createWs({
       // throttle to ~4 Hz — render broadcasts at 10 Hz and updating the UI
       // every frame was causing visible flicker on the level bar + text
       scheduleRenderUiUpdate();
+    } else if (msg.type === 'preset-committed') {
+      // Render window applied a bar-quantized pick — log arrival→commit
+      // delay and the barPhase it landed on (acceptance: commit alignment).
+      sessionLog({
+        type: 'commit',
+        preset: msg.name,
+        barPhase: msg.barPhase,
+        beatConfidence: msg.beatConfidence,
+        waitedMs: msg.waitedMs,
+        lowConfidenceFallback: msg.lowConfidenceFallback,
+      });
     } else if (msg.type === 'mapping-update') {
       // Server pushed a mapping — apply unless it's exactly the one we just
       // wrote (avoid clobbering whatever the user is mid-typing).
@@ -540,8 +551,8 @@ setInterval(() => {
 //   2. Compare current profile to the ANCHOR profile (snapshot from the last
 //      time the visuals changed). Compute a normalised Euclidean distance over
 //      the most discriminative features (bands, brightness, BPM, dynamics).
-//   3. When distance > CHANGE_THRESHOLD AND cooldown (MIN_CHANGE_INTERVAL_MS)
-//      has elapsed since the last director call, fire /director.
+//   3. When distance > CHANGE_THRESHOLD for HYSTERESIS_WINDOWS consecutive
+//      windows AND the min-hold clock has expired, fire /director.
 //   4. /director (qwen3:8b) reads prev + current profiles + preset catalogue
 //      and returns {description, preset, filter:{hue,sat,bright}}.
 //   5. Apply preset (load-preset-by-name) + filter (set-filter). Update anchor.
@@ -550,11 +561,26 @@ setInterval(() => {
 // Force-Change button fires immediately, ignoring cooldown.
 
 const CHANGE_THRESHOLD       = 0.16;     // 0..1 normalised distance to trigger
-const MIN_CHANGE_INTERVAL_MS = 25_000;   // hard cooldown between director calls
+const HYSTERESIS_WINDOWS     = 2;        // consecutive over-threshold windows required
+const DEFAULT_MIN_HOLD_MS    = 45_000;   // no director call within this of a commitment
 const POLL_INTERVAL_MS       = 4_000;    // sample + compare every 4s
-const RECENT_PRESET_KEEP     = 8;        // anti-repeat memory
+const RECENT_PRESET_KEEP     = 12;       // anti-repeat memory (≥ last 10 picks)
 const DIRECTOR_HISTORY_N     = 3;        // decisions the memory prompt sees
 const CATALOGUE_WINDOW       = 60;       // presets per director prompt
+
+// The change detector (see also src/director/director.ts header): profile
+// distance = weighted Euclidean over the 8 band means + centroid/rolloff
+// (1.5×) + flatness/crest/flux/dynRange + BPM (3×, /200) — see
+// DISTANCE_FEATURES below. A director call fires only when distance >
+// CHANGE_THRESHOLD for HYSTERESIS_WINDOWS consecutive 4 s windows AND the
+// min-hold clock (UI-settable, default 45 s) has expired since the last
+// COMMITTED decision (pick or director-hold — both update the anchor).
+
+function getMinHoldMs() {
+  const el = document.getElementById('min-hold-s');
+  const v = el ? Number(el.value) : NaN;
+  return Number.isFinite(v) && v >= 10 ? v * 1000 : DEFAULT_MIN_HOLD_MS;
+}
 
 let directorTimer    = null;
 let directorActive   = false;
@@ -563,6 +589,7 @@ let lastChangeMs     = 0;
 let lastPreset       = null;             // last preset name we asked render to load
 let recentPresetSlugs = [];              // sliding window of recent picks (for /director)
 let directorHistory  = [];               // last N {profile, preset, filter} for the memory prompt
+let overThresholdStreak = 0;             // hysteresis: consecutive windows above threshold
 
 // ─── Session recording ────────────────────────────────────────────────────
 // While Auto-Director runs, every director decision, hold tick, and operator
@@ -743,6 +770,7 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
       request: body,
       response: {
         raw:         json.raw,
+        hold:        json.hold ?? false,
         preset:      json.preset,
         preset_slug: json.preset_slug,
         description: json.description,
@@ -756,26 +784,37 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
       },
       ms,                                 // round-trip incl. HTTP
     });
+    // Either way (pick or hold) this is a committed decision: the director
+    // evaluated and blessed the current profile, so the anchor and the
+    // min-hold clock reset — otherwise a changed-but-held section would
+    // re-fire a call every min-hold forever.
+    anchorProfile = stats;
+    lastChangeMs  = performance.now();
+    const f = (n) => (typeof n === 'number' ? n.toFixed(2) : String(n));
+    const bpm = (stats.mean_bpm ?? 0).toFixed(0);
+    const statLine =
+      `${force ? '[forced] ' : reason ? `[${reason}] ` : ''}` +
+      `lvl ${f(stats.mean_level)} bri ${f(stats.mean_centroid)} bpm ${bpm} flux ${f(stats.mean_flux)} crest ${f(stats.mean_crest)} · ${ms}ms`;
+
+    if (json.hold) {
+      appendMoodLog('hold', 'director hold', `${statLine} · ${json.description ?? ''}`, 'same');
+      els.moodStatus.textContent = `${ms}ms · hold · ${json.description ?? ''}`;
+      console.log('[director] → hold', { description: json.description, stats });
+      return;
+    }
+
     const presetShort = (json.preset ?? '?').slice(0, 50);
     const filter = json.filter ?? { hue: 0, sat: 1, bright: 1 };
     const filterStr = `hue-rotate(${filter.hue}deg) saturate(${filter.sat}) brightness(${filter.bright})`;
-    const f = (n) => (typeof n === 'number' ? n.toFixed(2) : String(n));
-    const bpm = (stats.mean_bpm ?? 0).toFixed(0);
-    const line =
-      `${force ? '[forced] ' : reason ? `[${reason}] ` : ''}` +
-      `lvl ${f(stats.mean_level)} bri ${f(stats.mean_centroid)} bpm ${bpm} flux ${f(stats.mean_flux)} crest ${f(stats.mean_crest)} · ${ms}ms` +
-      ` · ≤c${getMaxComplexity()} · ${filterStr}`;
-    appendMoodLog('change', presetShort, line, 'commit');
+    appendMoodLog('change', presetShort, `${statLine} · ≤c${getMaxComplexity()} · ${filterStr}`, 'commit');
     if (els.moodCurrent) els.moodCurrent.textContent = presetShort;
     els.moodStatus.textContent = `${ms}ms · ${json.description ?? presetShort}`;
     console.log(`[director] → ${json.preset}`, { description: json.description, filter, stats, response: json });
 
-    // Apply visuals
-    ws.send({ type: 'load-preset-by-name', name: json.preset, blendSec: 2.0 });
-    ws.send({ type: 'set-filter', filter: filterStr });
-    lastPreset    = json.preset;
-    anchorProfile = stats;
-    lastChangeMs  = performance.now();
+    // Apply visuals — the render window commits at its next bar wrap (or
+    // after ≤4 s when beat confidence is low) and acks with preset-committed.
+    ws.send({ type: 'apply-pick', name: json.preset, blendSec: 2.0, filter: filterStr, sentAt: Date.now() });
+    lastPreset = json.preset;
     // Track recent slug — sliding window of N
     if (json.preset_slug) {
       recentPresetSlugs.push(json.preset_slug);
@@ -804,19 +843,27 @@ async function directorTick() {
 
   const dist = profileDistance(stats, anchorProfile);
   const sinceLast = performance.now() - lastChangeMs;
-  const cooldownLeft = Math.max(0, MIN_CHANGE_INTERVAL_MS - sinceLast);
+  const holdLeft = Math.max(0, getMinHoldMs() - sinceLast);
+
+  // Hysteresis: the distance must exceed the threshold for
+  // HYSTERESIS_WINDOWS consecutive windows before a call fires — a single
+  // spiky window (fill, FX hit) shouldn't move the visuals.
+  overThresholdStreak = dist > CHANGE_THRESHOLD ? overThresholdStreak + 1 : 0;
 
   // Lightweight idle log so the operator sees the system is actually checking.
   const f = (n) => (typeof n === 'number' ? n.toFixed(2) : String(n));
   const bpm = (stats.mean_bpm ?? 0).toFixed(0);
   const idleLine =
-    `dist ${dist.toFixed(3)} (thr ${CHANGE_THRESHOLD}) · cd ${(cooldownLeft / 1000).toFixed(0)}s · ` +
+    `dist ${dist.toFixed(3)} (thr ${CHANGE_THRESHOLD}, streak ${overThresholdStreak}/${HYSTERESIS_WINDOWS}) · hold ${(holdLeft / 1000).toFixed(0)}s · ` +
     `lvl ${f(stats.mean_level)} bri ${f(stats.mean_centroid)} bpm ${bpm} pk ${f(stats.rawPeak)}`;
 
-  if (dist > CHANGE_THRESHOLD && cooldownLeft === 0) {
+  if (overThresholdStreak >= HYSTERESIS_WINDOWS && holdLeft === 0) {
+    overThresholdStreak = 0;
     await callDirector(stats, { reason: `dist ${dist.toFixed(2)}` });
   } else {
-    const why = dist <= CHANGE_THRESHOLD ? 'stable' : `cooldown ${(cooldownLeft / 1000).toFixed(0)}s`;
+    const why = dist <= CHANGE_THRESHOLD ? 'stable'
+      : holdLeft > 0 ? `min-hold ${(holdLeft / 1000).toFixed(0)}s`
+      : `streak ${overThresholdStreak}/${HYSTERESIS_WINDOWS}`;
     appendMoodLog('hold', why, idleLine, 'same');
     els.moodStatus.textContent = `${why} · ${idleLine}`;
     sessionLog({ type: 'hold', why, dist, stats });
@@ -842,15 +889,17 @@ els.btnMood?.addEventListener('click', () => {
     els.btnMood.textContent = '■ Stop Auto-Director';
     els.btnMood.classList.add('on');
     sessionId = new Date().toISOString().replace(/[:.]/g, '-');
+    overThresholdStreak = 0;
     sessionLog({
       type: 'session-start',
       config: {
         pollMs: POLL_INTERVAL_MS, threshold: CHANGE_THRESHOLD,
-        cooldownMs: MIN_CHANGE_INTERVAL_MS, recentKeep: RECENT_PRESET_KEEP,
+        minHoldMs: getMinHoldMs(), hysteresisWindows: HYSTERESIS_WINDOWS,
+        recentKeep: RECENT_PRESET_KEEP,
         historyN: DIRECTOR_HISTORY_N, catalogueWindow: CATALOGUE_WINDOW,
       },
     });
-    console.log(`[director] started — session ${sessionId}, sampling every ${POLL_INTERVAL_MS/1000}s, change threshold ${CHANGE_THRESHOLD}, cooldown ${MIN_CHANGE_INTERVAL_MS/1000}s`);
+    console.log(`[director] started — session ${sessionId}, sampling every ${POLL_INTERVAL_MS/1000}s, threshold ${CHANGE_THRESHOLD} ×${HYSTERESIS_WINDOWS}, min-hold ${getMinHoldMs()/1000}s`);
     directorTick();
     directorTimer = setInterval(directorTick, POLL_INTERVAL_MS);
   }

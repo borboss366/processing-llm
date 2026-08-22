@@ -97,6 +97,7 @@ const RECENT_KEEP = start?.config?.recentKeep ?? 8;
 const recent = [];       // replay's own anti-repeat window
 const history = [];      // replay's own memory
 let changed = 0;
+let holds = 0;
 const t0 = Date.now();
 
 console.log(col("#", 3) + col("t+", 7) + col("original pick", 36) + col("new pick", 36) + col("ms", 7) + col("peval", 7) + "description");
@@ -126,14 +127,19 @@ for (let i = 0; i < windows.length; i++) {
       ...(model ? { model } : {}),
       ...(seed !== undefined ? { seed: seed * 1000 + i } : {}),
     });
-    const { description, pick, filter, offList } =
+    const { description, hold, pick, filter, offList } =
       parseDirectorResponse(llm.raw, catalogue.items, candidateNumbers);
-    if (pick.name !== w.response?.preset) changed++;
-    recent.push(pick.slug);
-    if (recent.length > RECENT_KEEP) recent.shift();
-    history.push({ profile: w.stats, preset: pick.name, filter });
+    const origLabel = w.response?.hold ? "HOLD" : w.response?.preset;
+    const newLabel = hold ? "HOLD" : pick.name;
+    if (hold) holds++;
+    if (newLabel !== origLabel) changed++;
+    if (!hold) {
+      recent.push(pick.slug);
+      if (recent.length > RECENT_KEEP) recent.shift();
+      history.push({ profile: w.stats, preset: pick.name, filter });
+    }
     row = col(String(i + 1), 3) + col(`${Math.round((w.t - sessionT0) / 1000)}s`, 7) +
-          col(w.response?.preset, 36) + col((offList ? "⚠ " : "") + pick.name, 36) +
+          col(origLabel, 36) + col((offList ? "⚠ " : "") + newLabel, 36) +
           col(String(llm.ms), 7) + col(String(llm.promptEvalCount), 7) + trunc(description, 56);
   } catch (err) {
     row = col(String(i + 1), 3) + col(`${Math.round((w.t - sessionT0) / 1000)}s`, 7) +
@@ -144,4 +150,5 @@ for (let i = 0; i < windows.length; i++) {
 
 console.log("─".repeat(128));
 console.log(`[replay] ${windows.length} windows in ${((Date.now() - t0) / 1000).toFixed(1)}s · ` +
-            `${changed}/${windows.length} picks differ from the recorded session · ⚠ = off-list pick corrected`);
+            `${changed}/${windows.length} decisions differ from the recorded session · ` +
+            `${holds} hold(s) · ⚠ = off-list pick corrected`);

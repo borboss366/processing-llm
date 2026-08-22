@@ -119,11 +119,53 @@ async function switchDevice(deviceId) {
   broadcastState();
 }
 
+// ─── Bar-quantized pick commit ───────────────────────────────────────────
+// A director pick ('apply-pick') is not applied on arrival: it commits at
+// the next barPhase wrap so preset changes land on phrase boundaries — or
+// after ≤4 s when beatConfidence < 0.4 (no trustworthy grid to wait for).
+let pendingPick = null;   // { name, blendSec, filter, arrivedMs, lastBarPhase }
+
+function commitPick(reason) {
+  const p = pendingPick;
+  pendingPick = null;
+  if (!p) return;
+  if (visualizer) {
+    const name = visualizer.loadByName(p.name, p.blendSec ?? 1.5);
+    if (!name) console.warn('[main] preset not found:', p.name);
+  }
+  if (els.bg && p.filter !== undefined) els.bg.style.filter = p.filter || 'none';
+  ws.send({
+    type: 'preset-committed',
+    name: p.name,
+    barPhase: audio.state.barPhase,
+    beatConfidence: audio.state.beatConfidence,
+    waitedMs: Math.round(performance.now() - p.arrivedMs),
+    lowConfidenceFallback: reason === 'low-confidence-timeout',
+  });
+  broadcastState();
+}
+
+function advancePendingPick() {
+  if (!pendingPick) return;
+  const p = pendingPick;
+  const conf = audio.state.beatConfidence;
+  const waited = performance.now() - p.arrivedMs;
+  const wrapped = audio.state.barPhase < p.lastBarPhase - 0.5;
+  p.lastBarPhase = audio.state.barPhase;
+  if (conf >= 0.4 && audio.state.bpm > 0) {
+    if (wrapped) commitPick('bar-wrap');
+    else if (waited > 12_000) commitPick('bar-timeout');   // safety: bpm stalled
+  } else if (waited > 4_000) {
+    commitPick('low-confidence-timeout');
+  }
+}
+
 // ─── Render loop (audio analysis + butterchurn) ──────────────────────────
 let lastBroadcastMs = 0;
 function renderLoop() {
   requestAnimationFrame(renderLoop);
   audio.tick();
+  advancePendingPick();
   if (bgOn && visualizer) visualizer.render();
 
   // broadcast render-state at ~10 Hz so the controller's level bar is smooth
@@ -154,6 +196,15 @@ const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesse
     } else if (msg.type === 'preset-prev' && visualizer) {
       visualizer.prev();
       broadcastState();
+    } else if (msg.type === 'apply-pick') {
+      // Replaces any not-yet-committed pick — only the newest decision counts.
+      pendingPick = {
+        name: msg.name,
+        blendSec: msg.blendSec,
+        filter: msg.filter,
+        arrivedMs: performance.now(),
+        lastBarPhase: audio.state.barPhase,
+      };
     } else if (msg.type === 'load-preset-by-name' && visualizer) {
       const name = visualizer.loadByName(msg.name, msg.blendSec ?? 1.5);
       if (!name) console.warn('[main] preset not found:', msg.name);

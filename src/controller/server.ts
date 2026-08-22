@@ -255,13 +255,14 @@ export async function startControllerServer(): Promise<void> {
     const t0 = Date.now();
     try {
       const llm = await callDirectorLLM(prompt);
-      const { description, pick, filter, offList } =
+      const { description, hold, pick, filter, offList } =
         parseDirectorResponse(llm.raw, catalogue.items, candidateNumbers);
       res.json({
         ok:          true,
+        hold,
         description,
-        preset:      pick.name,
-        preset_slug: pick.slug,
+        preset:      pick?.name ?? null,
+        preset_slug: pick?.slug ?? null,
         filter,
         off_list:    offList,
         raw:         llm.raw,
