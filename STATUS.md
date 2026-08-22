@@ -11,12 +11,15 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
-- **Creature module, polish pass done**: verdict on v1 was YES; v2 adds
-  scale/framing (65% canvas, ground line), glow rendering (SDF boundary
-  outline + additive flesh pass), root motion, knees + 9-node paws + floor,
-  ring-chain limbs — whole body moves on the beat, feet solid, tentacles
-  continuous; 4.3 ms/frame at ~596 nodes (≤5 ms budget)
-  (`reports/2026-08-22-creature-2.md`). Awaiting judgment on a real GPU.
+- **Creature gooey rendering pivot (v3) passes its gate**: tissue nodes are
+  invisible metaball centres — additive soft sprites on a dedicated canvas
+  layer + SVG gooey filter (blur→alpha-threshold) yield a continuous glowing
+  soft body with a clean silhouette over Butterchurn, both shapes; 0.33
+  ms/frame JS (filter is GPU-composited; page fps *rose* vs the wireframe)
+  (`reports/2026-08-22-creature-3-gooey.md`). Mechanics from v2 (bar-locked
+  gait, knees/paws/floor, ring-chain limbs) unchanged underneath
+  (`reports/2026-08-22-creature-2.md`). Awaiting judgment before Brief 6
+  Tasks 2–4 (shader threshold, background dim, squash & stretch).
 - **Pick cadence**: 1.14 picks/min on a 12-min techno set (was 3.17), 14/14
   unique presets, 13/14 commits within 0.1 of a bar boundary
   (`reports/2026-08-22-pick-cadence.md`).
@@ -37,10 +40,11 @@ min-hold control). Full guide in `README.md`.
 
 ## Open
 
-1. **Creature v2 verdict pending** — judged on a real GPU with Butterchurn
-   behind it. Known nits: head outline partly broken (sparse sampling on a
-   small circle), near/far leg pairs can visually cross in side view. No
-   further creature work (growth, LLM shapes) until judged.
+1. **Creature v3 (gooey) verdict pending** — judged on a real GPU. Known
+   trade-offs at default params: quadruped near/far leg pairs fuse into two
+   chunky columns, small threshold holes in the torso, jelly tentacles fuse
+   into a skirt (knobs: `gooThreshold`, `gooBlur`; Task 2's shader threshold
+   would sharpen the rim). No Tasks 2–5 work until judged.
 2. **Director never holds** — leading-question tail prompt + threshold below
    the mix's natural drift; z-score calibration specified as Brief 4 Task 3.
 3. **Preset tags are vision-model-skewed** — Brief 4 Task 4.
@@ -52,5 +56,5 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-User judgment on the creature v2 captures (real GPU); then Brief 4 Task 3
-(change-detector calibration + hold).
+User judgment on the creature v3 gooey captures (real GPU); then Brief 6
+Tasks 2–4, then Brief 4 Task 3 (change-detector calibration + hold).

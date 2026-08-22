@@ -282,16 +282,97 @@ function build(state, params) {
     (triByPart[labels[tris[t]]] ??= []).push(tris[t], tris[t + 1], tris[t + 2]);
   }
 
+  // Per-node metaball radius: 1.4× the LOCAL mean incident edge length —
+  // thin ring-chain limbs are spaced ~2× the body grid, and a global radius
+  // leaves their sprites below the goo threshold (tentacles vanish).
+  const spriteR = new Float32Array(n);
+  {
+    const sum = new Float32Array(n), cnt = new Float32Array(n);
+    for (let e2 = 0; e2 < restLen.length; e2++) {
+      sum[edges[e2 * 2]] += restLen[e2]; cnt[edges[e2 * 2]]++;
+      sum[edges[e2 * 2 + 1]] += restLen[e2]; cnt[edges[e2 * 2 + 1]]++;
+    }
+    for (let i = 0; i < n; i++) spriteR[i] = 1.4 * (cnt[i] ? sum[i] / cnt[i] : medLen);
+  }
+
   Object.assign(state, {
     def, n, pos, prev, rest, edges, restLen, boundary, joints, pinned,
-    nodeR, drawNodes, labels, triByPart, fleshR: medLen * 1.6,
+    nodeR, drawNodes, labels, triByPart, fleshR: medLen * 1.6, medLen, spriteR,
     bbox: { minX, maxX, minY, maxY, h: maxY - minY, cx: (minX + maxX) / 2 },
-    freePhase: 0, perfMs: 0,
+    freePhase: 0, perfMs: 0, sprites: null,
     builtShape: params.shape, builtCount: params.nodeCount,
   });
 }
 
 const PART_HUE = { body: 190, head: 315, limb0: 25, limb1: 55, limb2: 85, limb3: 130, limb4: 160 };
+
+// ── Gooey layer (brief 6, Task 1): the tissue nodes are invisible metaball
+// centres. Soft radial sprites accumulate additively on a dedicated canvas
+// between Butterchurn and the p5 fg canvas; an SVG gaussian-blur +
+// alpha-threshold filter (the standard gooey filter) turns the union into a
+// smooth soft body with a clean silhouette. Physics untouched. ────────────
+
+function ensureGooLayer(state, params) {
+  if (!state.goo) {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'creature-goo';
+    canvas.style.cssText =
+      'position:absolute; inset:0; width:100%; height:100%; pointer-events:none;';
+    // between the Butterchurn canvas (#bg) and the p5 layer (#fg-container)
+    const fg = document.getElementById('fg-container');
+    (fg ?? document.body).before(canvas);
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '0'); svg.setAttribute('height', '0');
+    svg.style.position = 'absolute';
+    svg.innerHTML =
+      `<defs><filter id="creature-goo-f">` +
+      `<feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>` +
+      `<feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/>` +
+      `</filter></defs>`;
+    document.body.appendChild(svg);
+    canvas.style.filter = 'url(#creature-goo-f)';
+    state.goo = { canvas, g: canvas.getContext('2d'), svg, blur: 6, threshold: 0.42 };
+  }
+  const goo = state.goo;
+  // params → filter attributes: alpha' = slope·a + (0.5 − slope·threshold)
+  const blur = Number(params.gooBlur) || 6;
+  const thr = Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.42));
+  if (blur !== goo.blur || thr !== goo.threshold) {
+    goo.blur = blur; goo.threshold = thr;
+    const slope = 18;
+    goo.svg.querySelector('feGaussianBlur').setAttribute('stdDeviation', String(blur));
+    goo.svg.querySelector('feColorMatrix').setAttribute('values',
+      `1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${slope} ${(0.5 - slope * thr).toFixed(2)}`);
+  }
+  if (goo.canvas.width !== window.innerWidth || goo.canvas.height !== window.innerHeight) {
+    goo.canvas.width = window.innerWidth;
+    goo.canvas.height = window.innerHeight;
+  }
+  return goo;
+}
+
+// Pre-rendered soft sprites, one per part hue: radial gaussian-ish falloff.
+function ensureSprites(state) {
+  if (state.sprites) return state.sprites;
+  const sprites = {};
+  for (const [lab, hue] of Object.entries(PART_HUE)) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    const col = (a) => `hsla(${hue}, 85%, 62%, ${a})`;
+    grad.addColorStop(0, col(1));
+    grad.addColorStop(0.35, col(0.62));
+    grad.addColorStop(0.65, col(0.22));
+    grad.addColorStop(1, col(0));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    sprites[lab] = c;
+  }
+  state.sprites = sprites;
+  return sprites;
+}
 
 export default {
   id: 'creature',
@@ -309,6 +390,9 @@ export default {
     scale: 1.0,                // × (65% of canvas height)
     ground: 0.82,              // floor line, canvas-height fraction
     xFrac: 0.5,
+    renderMode: 'goo',         // 'goo' (metaball soft body) | 'wire' (diagnostic)
+    gooBlur: 6,                // gooey filter stdDeviation (px)
+    gooThreshold: 0.42,        // gooey alpha threshold 0..1
   },
 
   setup(ctx) {
@@ -405,6 +489,7 @@ export default {
     // ── render ──────────────────────────────────────────────────────────
     const alpha = (ctx.lifecycle?.alpha ?? 1);
     if (alpha <= 0.001) {
+      if (state.goo) state.goo.g.clearRect(0, 0, state.goo.canvas.width, state.goo.canvas.height);
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       return;
     }
@@ -416,6 +501,31 @@ export default {
     const X = (i) => ox + pos[i * 2] * S;
     const Y = (i) => oy + pos[i * 2 + 1] * S;
     const kick = a.bands?.kick ?? 0, mid = a.bands?.mid ?? 0;
+
+    if (params.renderMode === 'goo') {
+      // metaball soft body on the dedicated layer; nothing on the p5 canvas
+      const goo = ensureGooLayer(state, params);
+      const sprites = ensureSprites(state);
+      const g = goo.g;
+      g.clearRect(0, 0, goo.canvas.width, goo.canvas.height);
+      g.globalCompositeOperation = 'lighter';
+      // brightness rides the bands: body/head on kick, limbs on mid — with a
+      // floor high enough that a quiet band can't push parts below threshold
+      const aBody = (0.70 + 0.30 * kick) * alpha;
+      const aLimb = (0.70 + 0.30 * mid) * alpha;
+      for (let i = 0; i < n; i++) {
+        const lab = state.labels[i];
+        const sp = sprites[lab] ?? sprites.body;
+        const r = state.spriteR[i] * S;
+        g.globalAlpha = (lab === 'body' || lab === 'head') ? aBody : aLimb;
+        g.drawImage(sp, X(i) - r, Y(i) - r, r * 2, r * 2);
+      }
+      g.globalAlpha = 1;
+      state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
+      window.__creaturePerf = { ms: state.perfMs, nodes: n, edges: restLen.length };
+      return;
+    }
+    if (state.goo) state.goo.g.clearRect(0, 0, state.goo.canvas.width, state.goo.canvas.height);
 
     p.push();
     p.colorMode(p.HSB, 360, 100, 100, 1);
@@ -486,5 +596,15 @@ export default {
     const k = address.split('/').pop();
     if (k in ctx.params) ctx.params[k] = value;
     return null;
+  },
+
+  teardown(ctx) {
+    // the goo layer lives in the page DOM — remove it on unload/hot-reload
+    const goo = ctx.state?.goo;
+    if (goo) {
+      goo.canvas.remove();
+      goo.svg.remove();
+      ctx.state.goo = null;
+    }
   },
 };
