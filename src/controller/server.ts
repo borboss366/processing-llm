@@ -47,6 +47,10 @@ export async function startControllerServer(): Promise<void> {
   mkdirSync(LOADED_MODULES_DIR, { recursive: true });
   app.use("/loaded", express.static(LOADED_MODULES_DIR));
 
+  // Local (gitignored) audio files, for the render window's dev-only
+  // ?audio=file:/music/<name> input — reproducible validation without a mic.
+  app.use("/music", express.static(path.resolve(process.cwd(), "music")));
+
   // ── WebSocket bridge ──────────────────────────────────────────────────
   const httpServer = http.createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });

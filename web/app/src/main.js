@@ -30,6 +30,17 @@ const els = {
 
 // ─── State ────────────────────────────────────────────────────────────────
 const audio   = createAudio();
+window.__audio = audio;   // dev/test seam: harnesses sample audio.state via puppeteer
+
+// Dev-only file input: ?audio=file:/music/track.mp3[&seek=120] plays the file
+// through the same analyser graph instead of asking for the mic. The /music
+// route is served by the controller server from the local (gitignored) dir.
+const QUERY = new URLSearchParams(location.search);
+const AUDIO_FILE = QUERY.get('audio')?.startsWith('file:')
+  ? QUERY.get('audio').slice(5)
+  : null;
+const AUDIO_SEEK = Number(QUERY.get('seek') ?? 0);
+
 let visualizer = null;
 let registry   = null;
 let p5Instance = null;
@@ -71,8 +82,12 @@ async function startAudio() {
   try {
     els.btnStart.disabled = true;
     els.btnStart.textContent = 'starting…';
-    await audio.start();
-    await refreshDeviceList();
+    if (AUDIO_FILE) {
+      await audio.startFromFile(AUDIO_FILE, { seekSec: AUDIO_SEEK });
+    } else {
+      await audio.start();
+      await refreshDeviceList();
+    }
     fitCanvas();
     visualizer = createButterchurn(els.bg, {
       audioCtx:    audio.audioCtx,
@@ -120,7 +135,7 @@ function renderLoop() {
 }
 
 // ─── WebSocket bridge ────────────────────────────────────────────────────
-const ws = createWs({
+const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesses)
   url: `ws://${location.host}/ws`,
   onMessage(msg) {
     if (msg.type === 'osc' && registry) {
@@ -168,6 +183,8 @@ const ws = createWs({
     }
   },
 });
+
+window.__ws = ws;   // dev/test seam, same as window.__audio
 
 function broadcastState() {
   if (!ws.alive) return;

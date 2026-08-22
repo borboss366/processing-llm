@@ -38,6 +38,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
   let analyser = null;
   let mediaSource = null;
   let currentStream = null;
+  let fileElement = null;    // set when startFromFile() drives the graph
 
   const fftSize = 1024;
   const BIN_COUNT = fftSize / 2;     // 512
@@ -114,6 +115,27 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
   };
   const beatTimes = [];
 
+  /** File-based input for reproducible validation: same analyser graph as
+   *  start(), fed by an <audio> element instead of the mic, also routed to
+   *  the speakers. Used via the render window's ?audio=file:<url> param. */
+  async function startFromFile(url, { seekSec = 0 } = {}) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    const el = new Audio();
+    el.crossOrigin = 'anonymous';
+    el.preload = 'auto';
+    el.src = url;
+    mediaSource = audioCtx.createMediaElementSource(el);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = fftSize;
+    analyser.smoothingTimeConstant = 0.7;
+    mediaSource.connect(analyser);
+    mediaSource.connect(audioCtx.destination);   // audible
+    fileElement = el;
+    await el.play();
+    if (seekSec > 0) el.currentTime = seekSec;
+    return { audioCtx, mediaSource, element: el };
+  }
+
   async function start({ deviceId } = {}) {
     const constraints = {
       audio: {
@@ -176,21 +198,30 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     const start = (onsetIdx - n + 2 * MAX_ONSET_BUF) % MAX_ONSET_BUF;
     const x = (i) => onsetBuf[(start + i) % MAX_ONSET_BUF];
 
-    let bestLag = 0, bestCorr = 0;
+    // Octave disambiguation, two layers (a periodic kick correlates equally
+    // at T, 2T, 3T…, so raw argmax is a coin flip between tempo octaves —
+    // measured 62.5 BPM on a ~125 BPM techno mix):
+    //  1. a mild log-normal tempo prior centred ~120 BPM weights the score —
+    //     DJ-set content lives there, and it breaks exact harmonic ties;
+    //  2. if the double-tempo lag also correlates strongly (≥ 0.7×), it is
+    //     the fundamental — covers the high-BPM corner (e.g. 174 vs 87)
+    //     where the prior alone slightly favours the subharmonic.
+    const priorFor = (lag) => {
+      const oct = Math.log2(60000 / (lag * dt) / 120);
+      return Math.exp(-0.5 * (oct / 0.7) ** 2);
+    };
+    let bestLag = 0, bestScore = 0;
     for (let lag = lagMin; lag <= lagMax; lag++) {
       let c = 0;
       const limit = n - lag;
       for (let i = 0; i < limit; i++) c += x(i) * x(i + lag);
       corrBuf[lag] = c / limit;              // normalise: long lags sum fewer terms
-      if (corrBuf[lag] > bestCorr) { bestCorr = corrBuf[lag]; bestLag = lag; }
+      const score = corrBuf[lag] * priorFor(lag);
+      if (score > bestScore) { bestScore = score; bestLag = lag; }
     }
-    if (!bestLag || bestCorr <= 0) return 0;
-
-    // Octave disambiguation: for a periodic kick, lag 2T correlates as well
-    // as T, and noise can tip the peak onto the 2-beat subharmonic. If half
-    // the winning lag also correlates strongly, that half is the fundamental.
+    if (!bestLag || bestScore <= 0) return 0;
     const half = Math.round(bestLag / 2);
-    if (half >= lagMin && corrBuf[half] >= 0.8 * bestCorr) bestLag = half;
+    if (half >= lagMin && corrBuf[half] >= 0.7 * corrBuf[bestLag]) bestLag = half;
 
     // Parabolic interpolation around the peak — integer lags quantise BPM
     // (±4 BPM steps around 120 at 60 Hz); fractional lag gets inside ±2.
@@ -391,11 +422,13 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
 
   return {
     start,
+    startFromFile,
     switchDevice,
     listDevices,
     tick,
     state,
     freqBins,
+    get fileElement() { return fileElement; },
     _injectAnalyser(a) { analyser = a; },   // test seam for tools/beat-test.mjs
     get audioCtx()     { return audioCtx;     },
     get mediaSource()  { return mediaSource;  },
