@@ -80,7 +80,8 @@ re-run the recorded feature windows through any prompt variant with no audio:
 ```sh
 node tools/replay.mjs sessions/<file>.jsonl --prompt-variant memory     # live default
 node tools/replay.mjs sessions/<file>.jsonl --prompt-variant no-memory  # pre-memory prompt
-# knobs: --history-n N  --catalogue-window N (smaller = faster)  --model <ollama model>
+# knobs: --history-n N  --catalogue-window N  --model <ollama model>
+#        --seed N (pins candidate sampling + generation: fair A/B comparisons)
 ```
 
 prints a table of original pick vs. new pick per window. Replay accumulates

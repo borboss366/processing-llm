@@ -26,9 +26,11 @@ import {
   DEFAULT_CATALOGUE_WINDOW,
   buildDirectorPrompt,
   callDirectorLLM,
+  getStableCatalogue,
   loadPresetDescriptions,
   parseDirectorResponse,
   prefilterCandidates,
+  warmDirectorPrompt,
   type DirectorMemory,
 } from "../director/director.js";
 
@@ -227,36 +229,54 @@ export async function startControllerServer(): Promise<void> {
     };
     if (!current) { res.status(400).json({ ok: false, error: "current features required" }); return; }
 
-    const list = await loadPresetDescriptions(PRESET_DESC_DIR);
-    if (!list.length) {
+    const catalogue = await getStableCatalogue(PRESET_DESC_DIR);
+    if (!catalogue.items.length) {
       res.json({ ok: false, error: "no preset descriptions yet — run scripts/visual-bootstrap.mjs" });
       return;
     }
 
-    const items = prefilterCandidates(list, {
+    const candidateNumbers = prefilterCandidates(catalogue.items, {
       recentSlugs,
       ...(typeof maxComplexity === "number" ? { maxComplexity } : {}),
       windowSize: catalogueWindow ?? DEFAULT_CATALOGUE_WINDOW,
     });
-    const prompt = buildDirectorPrompt({ current, prev: prev ?? null, catalogue: items, history });
+    const prompt = buildDirectorPrompt({
+      catalogueText: catalogue.text,
+      candidateNumbers,
+      current,
+      prev: prev ?? null,
+      history,
+    });
 
     const t0 = Date.now();
     try {
-      const { raw, ms } = await callDirectorLLM(prompt);
-      const { description, pick, filter } = parseDirectorResponse(raw, items);
+      const llm = await callDirectorLLM(prompt);
+      const { description, pick, filter, offList } =
+        parseDirectorResponse(llm.raw, catalogue.items, candidateNumbers);
       res.json({
         ok:          true,
         description,
         preset:      pick.name,
         preset_slug: pick.slug,
         filter,
-        raw,
-        ms,
+        off_list:    offList,
+        raw:         llm.raw,
+        ms:          llm.ms,
+        prompt_eval_count: llm.promptEvalCount,
+        prompt_eval_ms:    llm.promptEvalMs,
+        eval_count:        llm.evalCount,
+        eval_ms:           llm.evalMs,
       });
     } catch (err) {
       res.json({ ok: false, error: String(err), ms: Date.now() - t0 });
     }
   });
+
+  // Pre-pay prompt eval of the stable prefix (~6k tokens) so the first real
+  // pick of a set is already warm. Fire-and-forget; fine if Ollama is down.
+  warmDirectorPrompt(PRESET_DESC_DIR)
+    .then((r) => console.log(`[Server] director prompt warmed: ${r.promptEvalCount} tokens in ${r.promptEvalMs} ms`))
+    .catch(() => console.log("[Server] director warm-up skipped (Ollama unreachable)"));
 
   app.get("/presets/descriptions", async (_req, res) => {
     const list = await loadPresetDescriptions(PRESET_DESC_DIR);

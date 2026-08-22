@@ -740,6 +740,11 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
         description: json.description,
         filter:      json.filter,
         llm_ms:      json.ms,
+        off_list:    json.off_list,
+        prompt_eval_count: json.prompt_eval_count,
+        prompt_eval_ms:    json.prompt_eval_ms,
+        eval_count:        json.eval_count,
+        eval_ms:           json.eval_ms,
       },
       ms,                                 // round-trip incl. HTTP
     });

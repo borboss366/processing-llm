@@ -3,8 +3,30 @@
 What got done against `CLAUDE_CODE_BRIEF.md`, what's still open. Tasks 1–3 are
 complete, committed, and pushed; Task 4 (creature module) has not been started.
 `CLAUDE_CODE_BRIEF_2.md` is in progress: Task A (errata folded into the
-original brief) and Task F (barPhase caveat + `lastConfidentBpm` fallback,
-implemented in stick-dancer) are done.
+original brief), Task F (barPhase caveat + `lastConfidentBpm` fallback,
+implemented in stick-dancer), and Task B (director latency) are done.
+
+### Brief 2, Task B — director latency (stable prefix + cacheable prompt)
+
+- The prompt is now STABLE PREFIX (role + full 104-preset catalogue, sorted
+  by slug and memoized + filter/output spec) + VARIABLE TAIL (history,
+  current profile, `Choose ONLY from these preset numbers: [...]`). The
+  shuffle is gone; the fresh subset lives in the candidate number list.
+- Explicit `num_ctx: 16384` (the prefix is ~11.6k tokens — the default
+  context would silently truncate it). Server warms the prefix at boot.
+- Off-list picks are corrected deterministically (nearest allowed number)
+  and flagged (`off_list`) in the response + session log. None observed yet.
+- `prompt_eval_count/duration` + `eval_count/duration` logged everywhere;
+  replay gained `--seed` (pins candidate sampling + Ollama generation —
+  verified: two seeded runs produce identical picks).
+- **Measured**: prefix warm-up 11,639 tokens / 42 s once at boot; live picks
+  4.3–4.9 s each including the first (was ~26 s); warm prompt-eval 2.0–2.6 s
+  vs 42 s cold; smoke-session replay 13.7 s vs 79.8 s (5.8×). Note: this
+  Ollama build reports cached tokens in `prompt_eval_count`, so the
+  *duration* is the honest cache signal, not the count.
+- Caveats: any other Ollama call in between (modgen, bootstrap) evicts the
+  prefix cache; editing preset descriptions now needs a server restart to
+  reach the director prompt.
 
 ## Done
 
@@ -74,13 +96,9 @@ implemented in stick-dancer) are done.
 
 ## Unsolved problems
 
-1. **Director latency.** ~26 s per pick live with qwen3:8b at catalogue
-   window 60 (Ollama prompt-eval bound), ~12 s at window 25. Means: (a) live
-   picks land ~25 s after the music changes — arguably the biggest set-quality
-   issue right now; (b) the brief's "10-minute session replays in under a
-   minute" acceptance is unreachable on this machine (2–5 min realistic).
-   Levers: smaller catalogue window, shorter descriptions, a smaller model,
-   or a two-stage pick (cheap prefilter → tiny final prompt).
+1. **Director latency — residual.** Solved to ~4.5 s/pick (see Task B above);
+   what remains is generation time (~2 s) + tail eval (~2.5 s). If sub-2 s
+   ever matters, the levers are a shorter output format and a smaller model.
 2. **PLL validated only synthetically.** Clean-kick harness passes; real DJ
    audio (syncopated basslines, off-beat bass, four-on-the-floor with strong
    snares) is untested. `beatConfidence` is the on-stage indicator — watch it

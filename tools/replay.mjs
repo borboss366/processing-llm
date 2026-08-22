@@ -6,7 +6,10 @@
  *
  *   node tools/replay.mjs sessions/<file>.jsonl [--prompt-variant memory|no-memory]
  *                                               [--history-n N] [--catalogue-window N]
- *                                               [--model <ollama-model>]
+ *                                               [--model <ollama-model>] [--seed N]
+ *
+ * --seed pins both candidate sampling and Ollama generation, so two replays
+ * that differ only in --prompt-variant are a fair A/B comparison.
  *
  * Uses the exact same buildDirectorPrompt / prefilter / parse code as the
  * live route (src/director/director.ts, imported via Node's native type
@@ -22,10 +25,21 @@ import {
   DEFAULT_CATALOGUE_WINDOW,
   buildDirectorPrompt,
   callDirectorLLM,
-  loadPresetDescriptions,
+  getStableCatalogue,
   parseDirectorResponse,
   prefilterCandidates,
 } from "../src/director/director.ts";
+
+// Deterministic RNG (mulberry32) so --seed makes candidate sampling — and,
+// via Ollama's seed option, generation — reproducible for fair A/B replays.
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -42,9 +56,10 @@ const variant = flags["prompt-variant"] ?? "memory";
 const historyN = Number(flags["history-n"] ?? DEFAULT_HISTORY_N);
 const catalogueWindow = Number(flags["catalogue-window"] ?? DEFAULT_CATALOGUE_WINDOW);
 const model = flags["model"];
+const seed = flags["seed"] !== undefined ? Number(flags["seed"]) : undefined;
 
 if (!file || !["memory", "no-memory"].includes(variant)) {
-  console.error("usage: node tools/replay.mjs sessions/<file>.jsonl [--prompt-variant memory|no-memory] [--history-n N] [--catalogue-window N] [--model m]");
+  console.error("usage: node tools/replay.mjs sessions/<file>.jsonl [--prompt-variant memory|no-memory] [--history-n N] [--catalogue-window N] [--model m] [--seed N]");
   process.exit(1);
 }
 
@@ -63,15 +78,16 @@ if (!windows.length) {
   process.exit(1);
 }
 
-const catalogue = await loadPresetDescriptions(path.join(ROOT, "web/app/preset-descriptions"));
-if (!catalogue.length) {
+const catalogue = await getStableCatalogue(path.join(ROOT, "web/app/preset-descriptions"));
+if (!catalogue.items.length) {
   console.error("[replay] no preset descriptions found");
   process.exit(1);
 }
 
 console.log(`[replay] ${file}: ${windows.length} director windows, ${actions} operator actions` +
             (start ? `, recorded config ${JSON.stringify(start.config)}` : ""));
-console.log(`[replay] variant=${variant} historyN=${historyN} catalogueWindow=${catalogueWindow}\n`);
+console.log(`[replay] variant=${variant} historyN=${historyN} catalogueWindow=${catalogueWindow}` +
+            (seed !== undefined ? ` seed=${seed}` : "") + "\n");
 
 // ── replay loop ───────────────────────────────────────────────────────────
 const trunc = (s, n) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
@@ -83,42 +99,49 @@ const history = [];      // replay's own memory
 let changed = 0;
 const t0 = Date.now();
 
-console.log(col("#", 3) + col("t+", 7) + col("original pick", 36) + col("new pick", 36) + col("ms", 7) + "description");
-console.log("─".repeat(120));
+console.log(col("#", 3) + col("t+", 7) + col("original pick", 36) + col("new pick", 36) + col("ms", 7) + col("peval", 7) + "description");
+console.log("─".repeat(128));
 
 const sessionT0 = windows[0].t;
 for (let i = 0; i < windows.length; i++) {
   const w = windows[i];
-  const items = prefilterCandidates(catalogue, {
+  const candidateNumbers = prefilterCandidates(catalogue.items, {
     recentSlugs: recent,
     maxComplexity: w.request?.max_complexity,
     windowSize: catalogueWindow,
+    ...(seed !== undefined ? { rng: mulberry32(seed * 1000 + i) } : {}),
   });
   const prompt = buildDirectorPrompt({
+    catalogueText: catalogue.text,
+    candidateNumbers,
     current: w.stats,
     prev: w.request?.prev ?? null,
-    catalogue: items,
     history: history.slice(-historyN),
     variant,
   });
 
   let row;
   try {
-    const { raw, ms } = await callDirectorLLM(prompt, model ? { model } : {});
-    const { description, pick, filter } = parseDirectorResponse(raw, items);
+    const llm = await callDirectorLLM(prompt, {
+      ...(model ? { model } : {}),
+      ...(seed !== undefined ? { seed: seed * 1000 + i } : {}),
+    });
+    const { description, pick, filter, offList } =
+      parseDirectorResponse(llm.raw, catalogue.items, candidateNumbers);
     if (pick.name !== w.response?.preset) changed++;
     recent.push(pick.slug);
     if (recent.length > RECENT_KEEP) recent.shift();
     history.push({ profile: w.stats, preset: pick.name, filter });
     row = col(String(i + 1), 3) + col(`${Math.round((w.t - sessionT0) / 1000)}s`, 7) +
-          col(w.response?.preset, 36) + col(pick.name, 36) + col(String(ms), 7) + trunc(description, 60);
+          col(w.response?.preset, 36) + col((offList ? "⚠ " : "") + pick.name, 36) +
+          col(String(llm.ms), 7) + col(String(llm.promptEvalCount), 7) + trunc(description, 56);
   } catch (err) {
     row = col(String(i + 1), 3) + col(`${Math.round((w.t - sessionT0) / 1000)}s`, 7) +
-          col(w.response?.preset, 36) + col(`ERROR: ${err.message}`, 36) + col("-", 7);
+          col(w.response?.preset, 36) + col(`ERROR: ${err.message}`, 36) + col("-", 7) + col("-", 7);
   }
   console.log(row);
 }
 
-console.log("─".repeat(120));
+console.log("─".repeat(128));
 console.log(`[replay] ${windows.length} windows in ${((Date.now() - t0) / 1000).toFixed(1)}s · ` +
-            `${changed}/${windows.length} picks differ from the recorded session`);
+            `${changed}/${windows.length} picks differ from the recorded session · ⚠ = off-list pick corrected`);
