@@ -85,9 +85,13 @@ All values smoothed (~1 s EMA) and normalised 0..1 unless noted:
   scale beat-driven motion by it so visuals stay calm when the beat is vague
 - `lastConfidentBpm` — the BPM last seen while `beatConfidence ≥ 0.4`
 
+**Reference `beatPhase` users**: `loaded-modules/creature.js` (full usage —
+continuous gait phase driving a skeleton, confidence-gated with free-run
+fallback) and `loaded-modules/stick-dancer.js` (minimal bounce).
+
 **Recommended fallback** — while `beatConfidence < 0.4` the PLL is acquiring
 and `beatPhase` may jump; don't freeze, free-run your own phase at
-`lastConfidentBpm` (see `stick-dancer` for the reference implementation):
+`lastConfidentBpm`:
 
 ```js
 const a = ctx.audio.state;
