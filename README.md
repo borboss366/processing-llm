@@ -66,7 +66,8 @@ and hot-loads it into a running server.
   variant that shows the model its last N picks), catalogue prefilter,
   response parsing, Ollama call.
 - `tools/` — offline authoring/evaluation CLIs (`modgen/gen.mjs`,
-  `replay.mjs`).
+  `replay.mjs`, `beat-test.mjs` — synthetic-clock acceptance harness for the
+  beat-phase tracker).
 - `sessions/` (gitignored) — one .jsonl per Auto-Director run: every director
   decision (feature window, request, raw LLM response, pick, latency), hold
   tick, and operator action.

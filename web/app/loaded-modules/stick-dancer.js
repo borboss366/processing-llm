@@ -2,8 +2,11 @@
  * stick-dancer — first proof-of-concept hot-loaded module.
  *
  * Hot-loaded via the registry at /loaded/stick-dancer.js. Demonstrates:
- *   - setup/draw/osc/teardown ABI
- *   - audio.state used for scale + arm wave + beat detection
+ *   - setup/draw/osc ABI (contract: web/app/MODULE_ABI.md)
+ *   - audio.state used for scale + arm wave
+ *   - beatPhase reference usage: the bounce reads the continuous phase (pop
+ *     at the beat, settle through it), scaled by beatConfidence — not the
+ *     one-frame onBeat boolean
  *   - OSC-tunable params via ctx.params
  *
  * To reload: just POST to the controller — the registry imports with a
@@ -26,28 +29,28 @@ export default {
     yFrac:        0.5,
   },
 
-  setup(ctx) {
-    ctx.state = { bounceVel: 0, bounceOff: 0 };
-  },
-
   draw(ctx) {
-    const { p, audio, params, state } = ctx;
+    const { p, audio, params } = ctx;
     const s  = params.baseSize;
     const cx = p.width  * params.xFrac;
     const cy = p.height * params.yFrac;
 
-    // beat bounce
-    if (params.bounceOnBeat && audio.state.onBeat) state.bounceVel = -4;
-    state.bounceVel += 0.4;
-    state.bounceOff += state.bounceVel;
-    if (state.bounceOff > 0) { state.bounceOff = 0; state.bounceVel = 0; }
+    // Beat bounce from the continuous phase: pop up at the beat boundary
+    // (phase 0), settle back through the beat. Confidence scales the height
+    // so the dancer calms down when the tracker isn't sure.
+    let bounceOff = 0;
+    if (params.bounceOnBeat && audio.state.bpm > 0) {
+      const ph   = audio.state.beatPhase;
+      const conf = audio.state.beatConfidence;
+      bounceOff = -Math.pow(1 - ph, 3) * s * 0.3 * conf;
+    }
 
     const armOsc = Math.sin(p.frameCount * params.waveRate * (1 + audio.state.smoothedLevel * 2)) * params.waveAmplitude;
 
     p.push();
       p.translate(cx, cy);
       p.scale(1 + audio.state.smoothedLevel * 0.6);
-      p.translate(0, state.bounceOff);
+      p.translate(0, bounceOff);
 
       p.stroke(params.bodyColor); p.strokeWeight(s * 0.06);
       p.line(0, -s * 0.55, 0, 0);                                     // spine

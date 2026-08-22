@@ -70,9 +70,16 @@ All values smoothed (~1 s EMA) and normalised 0..1 unless noted:
 - `bands` — `{ sub, kick, low, lowMid, mid, upperMid, presence, air }`
   (8 log-spaced energy bands)
 - `rolloff`, `flatness`, `crest`, `flux` — spectral shape
-- `bpm` — autocorrelation tempo estimate (60–180 range)
+- `bpm` — autocorrelation tempo estimate (60–180 range), refresh-rate independent
+- `beatPhase` — 0..1 continuous beat phase, 0 = beat boundary. Phase-locked
+  to detected onsets; prefer this over `onBeat` for anything rhythmic
+  (bounces, pulses, strobes) — it gives you *where in the beat you are*,
+  not just a one-frame boolean
+- `barPhase` — 0..1 over a 4-beat bar (for longer gestures)
+- `beatConfidence` — 0..1, how consistently onsets land on the locked phase;
+  scale beat-driven motion by it so visuals stay calm when the beat is vague
 - `beatsPerSec` — beat rate over the last 3 s
-- `onBeat` — boolean, true on detected bass onsets
+- `onBeat` — boolean, true on detected bass onsets (legacy; prefer `beatPhase`)
 
 ## Interfaces
 
