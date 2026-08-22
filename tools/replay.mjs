@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_HISTORY_N,
   DEFAULT_CATALOGUE_WINDOW,
+  DEFAULT_PROMPT_VARIANT,
   buildDirectorPrompt,
   callDirectorLLM,
   getStableCatalogue,
@@ -52,7 +53,7 @@ for (let i = 0; i < argv.length; i++) {
   else positional.push(argv[i]);
 }
 const file = positional[0];
-const variant = flags["prompt-variant"] ?? "memory";
+const variant = flags["prompt-variant"] ?? DEFAULT_PROMPT_VARIANT;
 const historyN = Number(flags["history-n"] ?? DEFAULT_HISTORY_N);
 const catalogueWindow = Number(flags["catalogue-window"] ?? DEFAULT_CATALOGUE_WINDOW);
 const model = flags["model"];

@@ -223,6 +223,7 @@ export async function startControllerServer(): Promise<void> {
       max_complexity: maxComplexity,
       history = [],
       catalogue_window: catalogueWindow,
+      variant,
     } = req.body as {
       current: Record<string, number>;
       prev?: Record<string, number>;
@@ -230,6 +231,7 @@ export async function startControllerServer(): Promise<void> {
       max_complexity?: number;
       history?: DirectorMemory[];
       catalogue_window?: number;
+      variant?: "memory" | "no-memory";
     };
     if (!current) { res.status(400).json({ ok: false, error: "current features required" }); return; }
 
@@ -250,6 +252,7 @@ export async function startControllerServer(): Promise<void> {
       current,
       prev: prev ?? null,
       history,
+      ...(variant ? { variant } : {}),   // default: DEFAULT_PROMPT_VARIANT
     });
 
     const t0 = Date.now();

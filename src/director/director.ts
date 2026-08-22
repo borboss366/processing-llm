@@ -56,6 +56,11 @@ export type DirectorMemory = {
 
 export type PromptVariant = "memory" | "no-memory";
 
+// A/B result 2026-08-22 (reports/2026-08-22-memory-ab.md): variants tie on
+// diversity/holds/validity — recency prefiltering already prevents repeats —
+// and memory costs ~1.6 s + ~380 tokens per pick. Cheaper variant wins.
+export const DEFAULT_PROMPT_VARIANT: PromptVariant = "no-memory";
+
 // ── Preset catalogue ───────────────────────────────────────────────────────
 
 function parseTagsFromFrontmatter(fm: string): PresetTags {
@@ -220,7 +225,7 @@ export function buildDirectorPrompt(opts: {
   history?: DirectorMemory[];
   variant?: PromptVariant;
 }): string {
-  const { catalogueText, candidateNumbers, current, prev, history = [], variant = "memory" } = opts;
+  const { catalogueText, candidateNumbers, current, prev, history = [], variant = DEFAULT_PROMPT_VARIANT } = opts;
 
   let context: string;
   let ask: string;
