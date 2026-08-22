@@ -4,7 +4,10 @@ What got done against `CLAUDE_CODE_BRIEF.md`, what's still open. Tasks 1–3 are
 complete, committed, and pushed; Task 4 (creature module) has not been started.
 `CLAUDE_CODE_BRIEF_2.md` is in progress: Task A (errata folded into the
 original brief), Task F (barPhase caveat + `lastConfidentBpm` fallback,
-implemented in stick-dancer), and Task B (director latency) are done.
+implemented in stick-dancer), Task B (director latency), and Task C
+(file-based audio + real-track validation; 4-genre matrix still pending
+user-supplied tracks) are done. Next: Task D (memory A/B on the recorded
+session), Task E (measured tags).
 
 ### Brief 2, Task B — director latency (stable prefix + cacheable prompt)
 
@@ -27,6 +30,36 @@ implemented in stick-dancer), and Task B (director latency) are done.
 - Caveats: any other Ollama call in between (modgen, bootstrap) evicts the
   prefix cache; editing preset descriptions now needs a server restart to
   reach the director prompt.
+
+### Brief 2, Task C — file-based audio + real-track validation
+
+- `core/audio.js startFromFile()`; render window `?audio=file:/music/x.mp3`
+  `[&seek=N]`; controller server serves gitignored `music/` at `/music`.
+- `tools/beat-test-real.mjs` (headless-Chrome PLL harness) and
+  `tools/record-session.mjs` (full-stack session recorder; render and
+  controller in SEPARATE browsers — a backgrounded headless tab gets 0 rAF).
+- Real audio immediately caught a half-tempo octave lock (62.5 on a ~125 BPM
+  techno mix) → tempo estimation now uses a log-normal prior centred
+  ~120 BPM + half-lag preference; synthetic harness still passes all 4.
+  After the fix the mix reads 124.93 BPM, confidence 0.80 over a 60 s probe.
+- **Recorded 12-minute session** (`sessions/2026-08-22T18-23-29-150Z.jsonl`,
+  Brejcha-style minimal techno mix, seek 60 s): 38 director picks (21 unique
+  presets), 146 hold ticks, 0 errors, 0 off-list picks, median pick latency
+  6.4 s. Beat log sidecar `...-beat.json`.
+- **beatConfidence through the set**: mean 0.60; 7 dips below 0.4, all 2–4 s
+  except one 22 s dip at ~440 s file-time (a breakdown). Through that dip the
+  BPM estimate held ~124–127 (did not collapse), `lastConfidentBpm` stayed
+  119–127 (the module fallback would have kept visuals dancing at a sane
+  tempo), and confidence re-acquired to >0.5 within ~20 s of the beat
+  returning. Phase re-acquisition after breakdowns works as designed.
+- **Live-path bug found by the recording**: the director double-fired ~4 s
+  after every pick — the LLM call (~6.4 s) outlives the 4 s poll and the
+  overlapping tick saw the stale anchor/cooldown. Fixed with an in-flight
+  guard in `controller.js`. (Also explains median 6.4 s vs the 4.5 s bench:
+  paired calls were queueing on Ollama.)
+- Remaining for full Task C acceptance: the 4-genre track matrix
+  (four-on-the-floor ✓ via the mix; syncopated bassline, strong snares,
+  isolated breakdown track still pending — user supplies).
 
 ## Done
 
@@ -99,11 +132,11 @@ implemented in stick-dancer), and Task B (director latency) are done.
 1. **Director latency — residual.** Solved to ~4.5 s/pick (see Task B above);
    what remains is generation time (~2 s) + tail eval (~2.5 s). If sub-2 s
    ever matters, the levers are a shorter output format and a smaller model.
-2. **PLL validated only synthetically.** Clean-kick harness passes; real DJ
-   audio (syncopated basslines, off-beat bass, four-on-the-floor with strong
-   snares) is untested. `beatConfidence` is the on-stage indicator — watch it
-   during the next real-music session before trusting `beatPhase` for
-   anything load-bearing.
+2. **PLL real-audio validation is one-genre deep.** Validated on the
+   four-on-the-floor techno mix (locked, breakdowns recover — see Task C
+   above); syncopated basslines, strong-snare material, and other genres
+   still untested until more tracks arrive. `beatConfidence` remains the
+   on-stage indicator.
 3. **Memory prompt unevaluated on real data.** The record/replay tooling
    exists, but only a 3-window smoke session has been recorded
    (`sessions/smoke-test.jsonl`). Needs a real 10-minute set recorded, then a

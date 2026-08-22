@@ -703,7 +703,15 @@ function computeWindowStats() {
   return out;
 }
 
+let directorCallInFlight = false;
+
 async function callDirector(stats, { force = false, reason = '' } = {}) {
+  // The LLM call outlives the 4 s poll interval, and an overlapping tick
+  // still sees the pre-pick anchor/cooldown — without this guard the
+  // director double-fires ~4 s apart (observed on every pick of a recorded
+  // 12-minute session).
+  if (directorCallInFlight) return;
+  directorCallInFlight = true;
   try {
     const t0 = performance.now();
     els.moodStatus.textContent = `director thinking…${force ? ' (forced)' : ''}`;
@@ -779,6 +787,8 @@ async function callDirector(stats, { force = false, reason = '' } = {}) {
   } catch (e) {
     els.moodStatus.textContent = `director fetch failed: ${e.message}`;
     console.warn('[director] fetch failed', e);
+  } finally {
+    directorCallInFlight = false;
   }
 }
 
