@@ -11,6 +11,19 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **PLL acquisition snaps tamed + entry gating (brief 9 Task 0b)**: the
+  move clock is now an exported pure function (`stepMoveClock`) verified
+  frame-by-frame by `tools/move-clock-test.mjs` (fast tier): acquisition
+  snaps drain through a 1.45×-nominal cap (the observed 0.46-beat case
+  spreads over 1.03 beats), backward snaps hold instead of rewinding, and
+  BPM re-estimates reach stride/blends only through an 0.8 s low-passed
+  beat length (120→174 steps ≤3.2 ms/frame vs 155 ms raw). The creature
+  holds its entry fade until beatConfidence ≥ 0.5 sustained 1 s
+  (`entryConf`/`entrySec`, latch resets on lifecycle idle). Evidence in a
+  file-writing capture with spikes counted from frame one: 0 spikes while
+  a real 0.41-beat snap occurred (maxRawDelta=0.41 vs maxAppliedDelta
+  =0.26, the headless-fps cap) — seam `window.__creaturePhase`, printed
+  by the capture harness.
 - **Metaball welding fixed (brief 9 Task 0a)**: density now accumulates in
   per-group channels (R torso+head+legs, G armL, B armR; bone splats route
   to their group) on a second half-res canvas, shaded on `d = max(R,G,B)` —

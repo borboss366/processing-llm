@@ -54,6 +54,12 @@ const needStack = () => (stackUp ? null : "server+vite not running (npm run serv
 // ---------------------------------------------------------------------------
 const CHECKS = [
   {
+    name: "move-clock",
+    tier: "fast",
+    cmd: ["node", "tools/move-clock-test.mjs"],
+    desc: "move clock caps acquisition snaps (0.46 → ≥1 beat spread) and low-passes BPM swings",
+  },
+  {
     name: "pll-synthetic",
     tier: "fast",
     cmd: ["node", "tools/beat-test.mjs"],

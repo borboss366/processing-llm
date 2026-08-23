@@ -107,7 +107,9 @@ try {
     for (let s = 0; s < seconds; s++) {
       await new Promise((r) => setTimeout(r, 1000));
       const cp = await page.evaluate(() => {
-        const perf = window.__creaturePerf ?? null;
+        const perf = window.__creaturePerf
+          ? { ...window.__creaturePerf, ...(window.__creaturePhase ?? {}) }
+          : null;
         const c = window.__creatureAccum;
         if (!perf || !c) return perf;
         // never getImageData the live accum (flips it to readback mode and
@@ -161,6 +163,12 @@ try {
     console.log(`[capture] ${shape}: states ${runs.join(" → ") || "n/a"} · max stance slide ${maxSlide.toFixed(2)} px · clean-path ${maxMs === Infinity ? "n/a" : maxMs.toFixed(2)} ms/frame`);
     console.log(`[capture] ${shape}: components max ${maxComps} · bone dev rot ${(boneRot * 100).toFixed(1)}% / ground ${(boneGnd * 100).toFixed(1)}% · limb min density ${JSON.stringify(dens)}`);
     console.log(`[capture] ${shape}: joint-speed spikes all=${spikesAll} flagged(outside windows)=${spikesFlagged}`);
+    // move-clock evidence (brief 9 Task 0b): the raw PLL delta the clock was
+    // handed vs the largest per-frame delta it let through to the pose
+    const ph = timeline.at(-1) ?? {};
+    if (ph.maxRaw !== undefined) {
+      console.log(`[capture] ${shape}: move clock maxRawDelta=${ph.maxRaw} maxAppliedDelta=${ph.maxApplied} entryGate=${ph.entryOk ? "passed" : "HELD"}`);
+    }
     const slog = timeline.at(-1)?.spikeLog ?? [];
     if (slog.length) console.log(`[capture] ${shape}: spike log ${JSON.stringify(slog)}`);
 

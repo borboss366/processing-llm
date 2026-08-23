@@ -633,6 +633,36 @@ function ensureDensSprites(state) {
 // unions by max instead of stacking; everything else shares R
 const densChannel = (lab) => (lab === 'limb2' ? 'g' : lab === 'limb3' ? 'b' : 'r');
 
+// ── Move-local clock (brief 8.2, hardened brief 9 Task 0b) ────────────────
+// Everything pose-facing (moves, odometry, feet, blends) consumes this clock,
+// never raw beatPhase. PLL nudges, acquisition snaps and free-run↔locked
+// switches land as debt and drain through a capped per-frame delta; BPM
+// re-estimates reach stride/cap only through a low-passed beat length.
+// Exported so tools/move-clock-test.mjs can verify it frame-by-frame
+// without a browser. Returns the smoothed beat length for move consumers.
+export function stepMoveClock(state, phase, dt, beatSecRaw) {
+  // ~0.8 s low-pass: an acquisition BPM swing (e.g. 120→174) would otherwise
+  // step strideU and the cap itself even though phase deltas are capped
+  state.beatSecS = state.beatSecS == null
+    ? beatSecRaw
+    : state.beatSecS + (beatSecRaw - state.beatSecS) * Math.min(1, dt / 0.8);
+  const nominal = dt / state.beatSecS;
+  let dRaw = phase - (state.mvLast ?? phase);
+  if (dRaw < -0.5) dRaw += 1;
+  if (dRaw < 0) dRaw = 0;                 // backward snap: hold, never rewind
+  state.mvLast = phase;
+  state.phaseDebt = (state.phaseDebt ?? 0) + dRaw;
+  // 0.45×nominal catch-up headroom: the observed 0.46-beat acquisition snap
+  // spreads over ≥1 beat of wall time instead of stepping the pose
+  const applied = Math.min(state.phaseDebt, nominal * 1.45);
+  state.phaseDebt -= applied;
+  state.moveAcc = (state.moveAcc ?? 0) + applied;
+  state.moveApplied = applied;
+  state.mvMaxRaw = Math.max(state.mvMaxRaw ?? 0, dRaw);
+  state.mvMaxApplied = Math.max(state.mvMaxApplied ?? 0, applied);
+  return state.beatSecS;
+}
+
 export default {
   id: 'creature',
   oscPrefix: 'creature',
@@ -642,6 +672,8 @@ export default {
   defaults: {
     shape: 'biped-1',          // shapes/<name>.png + .json
     weldUnion: 1,              // 0 = legacy additive density (A/B diagnostics only)
+    entryConf: 0.5,            // beatConfidence needed before the entry fade runs
+    entrySec: 1,               // …sustained this long (latch; resets on lifecycle idle)
     archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse'
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
     speed: 0.35,               // body-heights per second when walking
@@ -696,22 +728,7 @@ export default {
       state.freePhase = (state.freePhase + dt * (bpmUsed / 60)) % 1;
       phase = state.freePhase;
     }
-    const beatSec = 60 / bpmUsed;
-    // Move-local phase (brief 8.2): accumulates from beatPhase deltas with a
-    // per-frame cap, so PLL nudges and clock-source switches spread over the
-    // following frames (debt-based catch-up) instead of stepping the pose.
-    {
-      const nominal = dt / beatSec;
-      let dRaw = phase - (state.mvLast ?? phase);
-      if (dRaw < -0.5) dRaw += 1;
-      if (dRaw < 0) dRaw = 0;
-      state.mvLast = phase;
-      state.phaseDebt = (state.phaseDebt ?? 0) + dRaw;
-      const applied = Math.min(state.phaseDebt, nominal * 1.6);
-      state.phaseDebt -= applied;
-      state.moveAcc = (state.moveAcc ?? 0) + applied;
-      state.moveApplied = applied;
-    }
+    const beatSec = stepMoveClock(state, phase, dt, 60 / bpmUsed);
     const mPhase = state.moveAcc % 1;
     const level = a.smoothedLevel ?? 0;
     const lvl = Math.min(1, 0.35 + level * 1.3);
@@ -1031,7 +1048,28 @@ export default {
     }
 
     // ── render ──────────────────────────────────────────────────────────
-    const alpha = (ctx.lifecycle?.alpha ?? 1);
+    // entry gate (brief 9 Task 0b): hold the fade until the PLL is worth
+    // dancing to — beatConfidence ≥ entryConf sustained entrySec. The latch
+    // resets when the lifecycle returns to idle, so every (re)trigger waits
+    // for a settled beat estimate before the creature materialises.
+    const lcState = ctx.lifecycle?.state ?? 'active';
+    state.entry ??= { since: null, ok: false, env: 0 };
+    if (lcState === 'idle') state.entry = { since: null, ok: false, env: 0 };
+    if (!state.entry.ok) {
+      if (a.beatConfidence >= params.entryConf) {
+        state.entry.since ??= t0;
+        if (t0 - state.entry.since >= params.entrySec * 1000) state.entry.ok = true;
+      } else {
+        state.entry.since = null;
+      }
+    }
+    state.entry.env = state.entry.ok ? Math.min(1, state.entry.env + dt / 0.9) : 0;
+    const alpha = (ctx.lifecycle?.alpha ?? 1) * state.entry.env;
+    window.__creaturePhase = {
+      maxRaw: +(state.mvMaxRaw ?? 0).toFixed(4),
+      maxApplied: +(state.mvMaxApplied ?? 0).toFixed(4),
+      entryOk: state.entry.ok,
+    };
     if (alpha <= 0.001) {
       if (state.shade) {
         const { gl } = state.shade;
