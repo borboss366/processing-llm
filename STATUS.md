@@ -11,15 +11,15 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
-- **Creature gooey rendering pivot (v3) passes its gate**: tissue nodes are
-  invisible metaball centres — additive soft sprites on a dedicated canvas
-  layer + SVG gooey filter (blur→alpha-threshold) yield a continuous glowing
-  soft body with a clean silhouette over Butterchurn, both shapes; 0.33
-  ms/frame JS (filter is GPU-composited; page fps *rose* vs the wireframe)
-  (`reports/2026-08-22-creature-3-gooey.md`). Mechanics from v2 (bar-locked
-  gait, knees/paws/floor, ring-chain limbs) unchanged underneath
-  (`reports/2026-08-22-creature-2.md`). Awaiting judgment before Brief 6
-  Tasks 2–4 (shader threshold, background dim, squash & stretch).
+- **Creature v4: locomotion + behaviour (brief 7)**: world-space walking
+  with planted feet (max stance slide 2.78 px ≈ 0.6% body height, phase-
+  locked odometry), bar-wrap state machine idle/walk/groove/hop on an energy
+  z-score (observed live: idle on the breakdown, groove on peaks), Perlin
+  idle (breath/sway/head-look), two-hue palette + accent, connected neck,
+  no torso holes; 0.34 ms/frame at ~598 nodes; `creature-state` events flow
+  to the session stream (`reports/2026-08-23-creature-4-locomotion.md`).
+  Gooey metaball render from v3 underneath
+  (`reports/2026-08-22-creature-3-gooey.md`). Awaiting judgment.
 - **Pick cadence**: 1.14 picks/min on a 12-min techno set (was 3.17), 14/14
   unique presets, 13/14 commits within 0.1 of a bar boundary
   (`reports/2026-08-22-pick-cadence.md`).
@@ -40,11 +40,11 @@ min-hold control). Full guide in `README.md`.
 
 ## Open
 
-1. **Creature v3 (gooey) verdict pending** — judged on a real GPU. Known
-   trade-offs at default params: quadruped near/far leg pairs fuse into two
-   chunky columns, small threshold holes in the torso, jelly tentacles fuse
-   into a skirt (knobs: `gooThreshold`, `gooBlur`; Task 2's shader threshold
-   would sharpen the rim). No Tasks 2–5 work until judged.
+1. **Creature v4 verdict pending** — judged on a real GPU. Known
+   trade-offs: leg pairs still fuse into chunky columns at the default goo
+   threshold; `hop` rarely triggers on this mix (z > 1.5 is a high bar).
+   Next after the gate (per brief 7): bitmap silhouettes, then
+   director-driven behaviour.
 2. **Director never holds** — leading-question tail prompt + threshold below
    the mix's natural drift; z-score calibration specified as Brief 4 Task 3.
 3. **Preset tags are vision-model-skewed** — Brief 4 Task 4.
@@ -56,5 +56,6 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-User judgment on the creature v3 gooey captures (real GPU); then Brief 6
-Tasks 2–4, then Brief 4 Task 3 (change-detector calibration + hold).
+User judgment on the creature v4 locomotion captures (real GPU); then
+bitmap silhouettes (Brief 6 Task 5) and director-driven behaviour, with
+Brief 4 Task 3 (change-detector calibration + hold) still queued.

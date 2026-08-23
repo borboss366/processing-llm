@@ -1,27 +1,23 @@
 /**
- * creature — soft-body dancing creature with a generated armature.
+ * creature — soft-body dancing creature with locomotion and behaviour.
  *
  * Reference beatPhase user (see MODULE_ABI.md): gait phase comes from
  * audio.state.beatPhase while beatConfidence ≥ 0.4, otherwise free-runs at
  * lastConfidentBpm. Never stops.
  *
- * Pipeline (built once in setup, physics per frame):
- *   shape   — labelled primitives (body/head circles+capsules, limb
- *             capsules) in a unit box; 'quadruped' | 'jelly'
- *   tissue  — body/head: jittered grid + k-nearest (among themselves).
- *             limbs/tentacles: RING CHAINS along the capsule axis (rings
- *             every ~1/12 length, 2-3 nodes each, ring+next+diagonal edges)
- *             so they stay continuous instead of fragmenting into beads.
- *             First ring is stitched to the nearest body nodes.
- *   bones   — joints with parent links; quadruped legs have knees. Tips pin
- *             8-10 nodes (rigid paws), other joints 4.
- *   gait    — per joint θ = A·sin(2π(freq·phase + off)); root bounce at 2×
- *             beat, stride lean (trot), bell pulse + upward swim (jelly).
- *   physics — pinned → joint targets; Verlet + 3 relaxation iterations,
- *             floor clamp with contact friction, weak centering.
- *   render  — additive within the p5 canvas: part-hue faces (alpha .3),
- *             bright thick boundary edges (+wide low-alpha glow pass), dim
- *             interior edges, nodes only near joints.
+ * v4 (brief 7): world-space locomotion with planted feet, behaviour state
+ * machine (idle/walk/groove/hop, bar-boundary transitions on an energy
+ * z-score), Perlin idle motion, two-hue palette + accent, neck flesh.
+ *
+ * Physics runs in LOCAL shape space; the world transform (root x, facing
+ * mirror, squash/stretch) is applied at draw time. A world-fixed foot is a
+ * foot drifting backwards at body speed in local coordinates: feet plant at
+ * +0.3·stride ahead of rest and lift at −0.3·stride behind (consistent with
+ * a 60% stance), so world-space slide is zero by construction — measured
+ * anyway and exposed via window.__creaturePerf.slidePx.
+ *
+ * Render: gooey metaball layer (brief 6 Task 1) — invisible node sprites +
+ * SVG blur/threshold filter. renderMode:'wire' keeps the old diagnostic.
  */
 
 // ── SDF / geometry helpers ─────────────────────────────────────────────────
@@ -34,12 +30,12 @@ function sdCapsule(px, py, c) {
 }
 function sdPrim(p, x, y) { return p.type === 'circle' ? sdCircle(x, y, p) : sdCapsule(x, y, p); }
 
-// Shapes. Limb capsules are ring-sampled a(root)→b(tip); body/head are
-// grid-sampled. Joint lists reference limbs by index.
 const SHAPES = {
   quadruped: {
     core: [
       { label: 'body', type: 'capsule', ax: 0.30, ay: 0.45, bx: 0.70, by: 0.45, r: 0.105 },
+      // neck: core flesh, not a pinned satellite — grid-sampled like the body
+      { label: 'body', type: 'capsule', ax: 0.70, ay: 0.43, bx: 0.80, by: 0.34, r: 0.055 },
       { label: 'head', type: 'circle', cx: 0.82, cy: 0.31, r: 0.09 },
     ],
     limbs: [
@@ -52,7 +48,6 @@ const SHAPES = {
       { name: 'hip',      x: 0.35, y: 0.45, parent: -1, role: 'root' },
       { name: 'shoulder', x: 0.65, y: 0.45, parent: 0,  role: 'rootMid' },
       { name: 'neck',     x: 0.80, y: 0.33, parent: 1,  role: 'head' },
-      // per leg: knee (parent hip/shoulder) then tip (parent knee)
       { name: 'knee0', x: 0.31, y: 0.65, parent: 0, role: 'knee', limb: 0 },
       { name: 'tip0',  x: 0.29, y: 0.79, parent: 3, role: 'limb', limb: 0, paw: true },
       { name: 'knee1', x: 0.395, y: 0.65, parent: 0, role: 'knee', limb: 1 },
@@ -92,17 +87,16 @@ const SHAPES = {
   },
 };
 
-// Gait tables. trot: diagonal legs (0,3) vs (1,2); knees lag tips by 0.1;
-// root bounce 2×, stride lean 1×; head bob 2× at 0.25 behind the bounce.
+// Rotation gaits (groove/pulse). Walk drives tips/knees geometrically.
 const GAITS = {
   trot: {
     limb:   (i) => ({ A: 0.50, freq: 1, off: (i === 0 || i === 3) ? 0 : 0.5 }),
     knee:   (i) => ({ A: 0.35, freq: 1, off: ((i === 0 || i === 3) ? 0 : 0.5) - 0.1 }),
     head:   ()  => ({ A: 0.28, freq: 2, off: -0.25 }),
-    root:   ()  => ({ A: 0.04, freq: 1, off: 0 }),        // stride lean (radians)
+    root:   ()  => ({ A: 0.04, freq: 1, off: 0 }),
     rootMid:()  => ({ A: 0.04, freq: 1, off: 0.5 }),
     tent:   (i) => ({ A: 0.25, freq: 1, off: (i % 2) * 0.5 }),
-    bellPulse: 0, bounce: 0.03, drift: 0,
+    bellPulse: 0,
   },
   pulse: {
     limb:   ()  => ({ A: 0.40, freq: 1, off: 0 }),
@@ -111,9 +105,15 @@ const GAITS = {
     root:   ()  => ({ A: 0, freq: 1, off: 0 }),
     rootMid:()  => ({ A: 0, freq: 1, off: 0 }),
     tent:   ()  => ({ A: 0.18, freq: 1, off: 0 }),
-    bellPulse: 0.20, bounce: 0.012, drift: 0.02,
+    bellPulse: 0.20,
   },
 };
+
+function hueFor(lab, params) {
+  if (lab === 'head') return params.hueAccent;
+  if (lab === 'body') return params.hueBody;
+  return params.hueLimbs;
+}
 
 function build(state, params) {
   const def = SHAPES[params.shape] ?? SHAPES.quadruped;
@@ -125,7 +125,7 @@ function build(state, params) {
   const EK = (i, j) => (i < j ? i * 4096 + j : j * 4096 + i);
   const addEdge = (i, j) => { if (i !== j) edgeSet.add(EK(i, j)); };
 
-  // ── body/head: jittered grid + k-nearest among core nodes only ──────
+  // body/head: jittered grid + k-nearest among core nodes only
   const inCore = (x, y) => def.core.some((p) => sdPrim(p, x, y) < 0);
   const coreLabel = (x, y) => {
     let best = Infinity, lab = 'body';
@@ -159,7 +159,7 @@ function build(state, params) {
     for (let m = 0; m < kNear && m < d2.length; m++) addEdge(i, d2[m][1]);
   }
 
-  // ── limbs/tentacles: ring chains along the capsule axis ─────────────
+  // limbs/tentacles: ring chains along the capsule axis
   const RINGS = 12;
   for (const L of def.limbs) {
     const dx = L.bx - L.ax, dy = L.by - L.ay;
@@ -178,9 +178,8 @@ function build(state, params) {
       for (let m = 0; m + 1 < ring.length; m++) addEdge(ring[m], ring[m + 1]);
       if (prevRing) {
         for (let m = 0; m < ring.length; m++) addEdge(ring[m], prevRing[Math.min(m, prevRing.length - 1)]);
-        addEdge(ring[0], prevRing[prevRing.length - 1]);   // one diagonal per pair: shear stiffness
+        addEdge(ring[0], prevRing[prevRing.length - 1]);
       } else {
-        // stitch the first ring into the body: 2 nearest core nodes each
         for (const i of ring) {
           const d2 = [];
           for (let j = 0; j < nCore; j++) d2.push([(xs[i] - xs[j]) ** 2 + (ys[i] - ys[j]) ** 2, j]);
@@ -210,7 +209,7 @@ function build(state, params) {
     e++;
   }
 
-  // triangles (3 mutually connected) for the face fill
+  // triangles for the wire-diagnostic face fill
   const tris = [];
   for (let i = 0; i < n; i++) {
     const nb = adj[i];
@@ -219,12 +218,6 @@ function build(state, params) {
       if (i < j && j < q && edgeSet.has(EK(j, q))) tris.push(i, j, q);
     }
   }
-
-  // Boundary edges from the SDF, not triangle counts: on a sparse k-NN graph
-  // most triangles are isolated, so "edge in exactly one triangle" classifies
-  // half the interior as boundary (rendered as bright confetti). Geometric
-  // truth instead: both endpoints within one grid step of the SDF surface,
-  // and the edge short (a surface-following hop, not a chord).
   const allPrims = [...def.core, ...def.limbs];
   const sdAll = (x, y) => {
     let d = Infinity;
@@ -241,7 +234,7 @@ function build(state, params) {
       surface[edges[e2 * 2]] && surface[edges[e2 * 2 + 1]] && restLen[e2] <= medLen * 1.9 ? 1 : 0;
   }
 
-  // ── joints + pins (paws grab 8-10 nodes, others 4) ──────────────────
+  // joints + pins
   const joints = def.joints.map((J) => ({ ...J }));
   const pinned = new Set();
   for (const J of joints) {
@@ -258,7 +251,6 @@ function build(state, params) {
     }
   }
 
-  // nodes drawn only near joints (within 1.5× pin radius)
   const drawNodes = [];
   const nodeR = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -270,7 +262,6 @@ function build(state, params) {
     }
   }
 
-  // rest bounding box → scale/framing (feet placed on the ground line)
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < n; i++) {
     minX = Math.min(minX, xs[i]); maxX = Math.max(maxX, xs[i]);
@@ -282,9 +273,9 @@ function build(state, params) {
     (triByPart[labels[tris[t]]] ??= []).push(tris[t], tris[t + 1], tris[t + 2]);
   }
 
-  // Per-node metaball radius: 1.4× the LOCAL mean incident edge length —
-  // thin ring-chain limbs are spaced ~2× the body grid, and a global radius
-  // leaves their sprites below the goo threshold (tentacles vanish).
+  // Per-node metaball radius: 1.4× LOCAL mean incident edge length (thin
+  // limb chains vanish under a global radius); body/head get a floor so the
+  // torso has no threshold holes.
   const spriteR = new Float32Array(n);
   {
     const sum = new Float32Array(n), cnt = new Float32Array(n);
@@ -292,36 +283,37 @@ function build(state, params) {
       sum[edges[e2 * 2]] += restLen[e2]; cnt[edges[e2 * 2]]++;
       sum[edges[e2 * 2 + 1]] += restLen[e2]; cnt[edges[e2 * 2 + 1]]++;
     }
-    for (let i = 0; i < n; i++) spriteR[i] = 1.4 * (cnt[i] ? sum[i] / cnt[i] : medLen);
+    for (let i = 0; i < n; i++) {
+      let r = 1.4 * (cnt[i] ? sum[i] / cnt[i] : medLen);
+      if (labels[i] === 'body' || labels[i] === 'head') r = Math.max(r, 1.9 * medLen);
+      spriteR[i] = r;
+    }
   }
+
+  // per-limb tip metadata for the walk cycle
+  const tips = joints.filter((J) => J.role === 'limb');
 
   Object.assign(state, {
     def, n, pos, prev, rest, edges, restLen, boundary, joints, pinned,
-    nodeR, drawNodes, labels, triByPart, fleshR: medLen * 1.6, medLen, spriteR,
-    bbox: { minX, maxX, minY, maxY, h: maxY - minY, cx: (minX + maxX) / 2 },
-    freePhase: 0, perfMs: 0, sprites: null,
+    nodeR, drawNodes, labels, triByPart, medLen, spriteR, tips,
+    bbox: { minX, maxX, minY, maxY, h: maxY - minY, w: maxX - minX, cx: (minX + maxX) / 2 },
+    freePhase: 0, perfMs: 0, sprites: null, spriteKey: '',
+    world: null, feet: null,
+    beh: { state: 'walk', lastBar: 0, lowBars: 0, em: 0.2, ev: 0.01 },
+    slidePx: 0,
     builtShape: params.shape, builtCount: params.nodeCount,
   });
 }
 
-const PART_HUE = { body: 190, head: 315, limb0: 25, limb1: 55, limb2: 85, limb3: 130, limb4: 160 };
-
-// ── Gooey layer (brief 6, Task 1): the tissue nodes are invisible metaball
-// centres. Soft radial sprites accumulate additively on a dedicated canvas
-// between Butterchurn and the p5 fg canvas; an SVG gaussian-blur +
-// alpha-threshold filter (the standard gooey filter) turns the union into a
-// smooth soft body with a clean silhouette. Physics untouched. ────────────
-
+// ── Gooey layer (brief 6) ──────────────────────────────────────────────────
 function ensureGooLayer(state, params) {
   if (!state.goo) {
     const canvas = document.createElement('canvas');
     canvas.id = 'creature-goo';
     canvas.style.cssText =
       'position:absolute; inset:0; width:100%; height:100%; pointer-events:none;';
-    // between the Butterchurn canvas (#bg) and the p5 layer (#fg-container)
     const fg = document.getElementById('fg-container');
     (fg ?? document.body).before(canvas);
-
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', '0'); svg.setAttribute('height', '0');
     svg.style.position = 'absolute';
@@ -335,7 +327,6 @@ function ensureGooLayer(state, params) {
     state.goo = { canvas, g: canvas.getContext('2d'), svg, blur: 6, threshold: 0.42 };
   }
   const goo = state.goo;
-  // params → filter attributes: alpha' = slope·a + (0.5 − slope·threshold)
   const blur = Number(params.gooBlur) || 6;
   const thr = Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.42));
   if (blur !== goo.blur || thr !== goo.threshold) {
@@ -352,11 +343,12 @@ function ensureGooLayer(state, params) {
   return goo;
 }
 
-// Pre-rendered soft sprites, one per part hue: radial gaussian-ish falloff.
-function ensureSprites(state) {
-  if (state.sprites) return state.sprites;
+function ensureSprites(state, params) {
+  const key = `${params.hueBody}|${params.hueLimbs}|${params.hueAccent}`;
+  if (state.sprites && state.spriteKey === key) return state.sprites;
   const sprites = {};
-  for (const [lab, hue] of Object.entries(PART_HUE)) {
+  for (const lab of ['body', 'head', 'limb']) {
+    const hue = lab === 'limb' ? params.hueLimbs : hueFor(lab, params);
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const g = c.getContext('2d');
@@ -371,6 +363,7 @@ function ensureSprites(state) {
     sprites[lab] = c;
   }
   state.sprites = sprites;
+  state.spriteKey = key;
   return sprites;
 }
 
@@ -382,17 +375,21 @@ export default {
   fadeable: { easing: 'cubic-out', maxAlpha: 1 },
   defaults: {
     shape: 'quadruped',        // 'quadruped' | 'jelly'
-    archetype: 'auto',         // 'auto' | 'trot' | 'pulse'
-    amplitude: 1.0,            // gait amplitude multiplier
-    bounce: 1.0,               // root bounce multiplier
-    stiffness: 0.75,           // spring relaxation factor 0..1
+    archetype: 'auto',         // 'auto' | 'trot' | 'pulse' (groove rotation gait)
+    behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
+    speed: 0.35,               // body-heights per second when walking
+    beatsPerStride: 1,
+    amplitude: 1.0,
+    bounce: 1.0,
+    stiffness: 0.75,
     nodeCount: 600,
-    scale: 1.0,                // × (65% of canvas height)
-    ground: 0.82,              // floor line, canvas-height fraction
+    scale: 1.0,
+    ground: 0.82,
     xFrac: 0.5,
-    renderMode: 'goo',         // 'goo' (metaball soft body) | 'wire' (diagnostic)
-    gooBlur: 6,                // gooey filter stdDeviation (px)
-    gooThreshold: 0.42,        // gooey alpha threshold 0..1
+    hueBody: 190, hueLimbs: 150, hueAccent: 315,   // two families + accent
+    renderMode: 'goo',
+    gooBlur: 6,
+    gooThreshold: 0.42,
   },
 
   setup(ctx) {
@@ -404,38 +401,139 @@ export default {
     const { p, params, state } = ctx;
     const a = ctx.audio.state;
     const t0 = performance.now();
+    const dt = Math.min(0.08, p.deltaTime / 1000);
+    const tSec = t0 / 1000;
 
     if (state.builtShape !== params.shape || state.builtCount !== params.nodeCount) {
       build(state, params);
     }
 
-    // ── phase: PLL when confident, else free-run at lastConfidentBpm ────
+    // ── phase: PLL when confident, else free-run ────────────────────────
     let phase;
-    if (a.beatConfidence >= 0.4 && a.bpm > 0) {
+    const confident = a.beatConfidence >= 0.4 && a.bpm > 0;
+    const bpmUsed = confident ? a.bpm : (a.lastConfidentBpm > 0 ? a.lastConfidentBpm : 120);
+    if (confident) {
       phase = a.beatPhase;
       state.freePhase = phase;
     } else {
-      const bpm = a.lastConfidentBpm > 0 ? a.lastConfidentBpm : 120;
-      state.freePhase = (state.freePhase + (p.deltaTime / 1000) * (bpm / 60)) % 1;
+      state.freePhase = (state.freePhase + dt * (bpmUsed / 60)) % 1;
       phase = state.freePhase;
     }
+    const beatSec = 60 / bpmUsed;
+    const level = a.smoothedLevel ?? 0;
+    const lvl = Math.min(1, 0.35 + level * 1.3);
 
+    // ── behaviour state machine: transitions on bar wraps, energy z-score ─
+    const beh = state.beh;
+    const alphaE = Math.min(0.2, dt / 20);       // ~20 s running stats
+    beh.em = beh.em * (1 - alphaE) + level * alphaE;
+    const dev = level - beh.em;
+    beh.ev = beh.ev * (1 - alphaE) + dev * dev * alphaE;
+    const z = dev / Math.sqrt(beh.ev + 1e-6);
+    const barPhase = confident ? a.barPhase : state.freePhase / 4;
+    const wrapped = barPhase < beh.lastBar - 0.5;
+    beh.lastBar = barPhase;
+    let next = beh.state;
+    if (params.behavior !== 'auto') {
+      next = params.behavior;
+    } else if (!confident) {
+      next = 'idle';
+    } else if (wrapped) {
+      if (z < -0.5) { beh.lowBars++; if (beh.lowBars >= 2) next = 'idle'; }
+      else {
+        beh.lowBars = 0;
+        next = z > 1.5 ? 'hop' : z > 0.5 ? 'groove' : 'walk';
+      }
+    }
+    if (next !== beh.state) {
+      beh.state = next;
+      try { window.__ws?.send({ type: 'creature-state', state: next, z: +z.toFixed(2) }); } catch {}
+    }
+    const st = beh.state;
+
+    // ── world locomotion ────────────────────────────────────────────────
+    const S = (0.65 * p.height / Math.max(0.05, state.bbox.h)) * params.scale;
+    const groundPx = p.height * params.ground;
+    state.world ??= { x: p.width * params.xFrac, facing: 1, facingVis: 1, turn: null };
+    const world = state.world;
+    const isQuad = state.def === SHAPES.quadruped;
+    const speedU = params.speed * state.bbox.h;              // unit/s
+    const strideU = speedU * beatSec * Math.max(0.25, params.beatsPerStride);
+
+    // Phase-locked odometry: the body advances by Δphase·stride, the SAME
+    // clock the stride cycle runs on — never by wall-clock dt. With separate
+    // clocks any frame stall desynchronises body translation from stance
+    // foot drift (dt clamps differ render vs audio) and feet slide; measured
+    // 12–19 px per stall. On one clock the two cancel exactly.
+    let dPhase = phase - (world.lastPhase ?? phase);
+    if (dPhase < -0.5) dPhase += 1;
+    if (dPhase < 0) dPhase = 0;
+    world.lastPhase = phase;
+
+    if (isQuad && st === 'walk') {
+      if (world.turn) {
+        const u = Math.min(1, (t0 - world.turn.t0) / 400);
+        world.facingVis = world.turn.from + (world.turn.to - world.turn.from) * u;
+        if (u >= 1) { world.facing = world.turn.to; world.turn = null; }
+      } else {
+        world.x += dPhase * strideU * S * world.facing;
+        if (world.facing > 0 && world.x > p.width * 0.82) world.turn = { t0, from: 1, to: -1 };
+        if (world.facing < 0 && world.x < p.width * 0.18) world.turn = { t0, from: -1, to: 1 };
+        world.facingVis = world.facing;
+      }
+    } else if (!isQuad) {
+      // jelly: slow drift, lazy eased turns, no mirror
+      world.vx ??= speedU * 0.35;
+      const targetV = (world.x > p.width * 0.8 ? -1 : world.x < p.width * 0.2 ? 1 :
+        Math.sign(world.vx || 1)) * speedU * 0.35;
+      world.vx += (targetV - world.vx) * Math.min(1, dt * 0.8);
+      if (st !== 'idle') world.x += world.vx * S * dt;
+      world.facingVis = 1;
+    }
+
+    // ── skeleton targets per state ──────────────────────────────────────
     const gaitName = params.archetype === 'auto' ? state.def.naturalGait : params.archetype;
     const gait = GAITS[gaitName] ?? GAITS.trot;
-    const level = Math.min(1, 0.35 + (a.smoothedLevel ?? 0) * 1.3);
-    const amp = params.amplitude * level;
-    const bellScale = 1 + (gait.bellPulse ?? 0) * Math.sin(2 * Math.PI * phase) * amp;
-    // root motion: vertical bounce at 2× beat + jelly upward swim drift
-    const bounceY = (gait.bounce ?? 0) * params.bounce * level * Math.sin(4 * Math.PI * phase)
-                  + (gait.drift ?? 0) * -Math.sin(2 * Math.PI * (phase - 0.25)) * params.bounce;
+    const amp = params.amplitude * lvl * (st === 'idle' ? 0 : 1);
+    const bellScale = !isQuad && st !== 'idle'
+      ? 1 + gait.bellPulse * Math.sin(2 * Math.PI * phase) * amp : 1 + 0.02 * Math.sin(2 * Math.PI * 0.2 * tSec);
 
-    // ── skeleton ────────────────────────────────────────────────────────
+    // squash/stretch driver: cos aligns squash with mid-stance compression
+    // (the brief's sin puts it between plants). s=+1 flight/plant, −1 mid-stance.
+    let sq = 0, bounceY = 0;
+    const H = state.bbox.h;
+    if (st === 'walk') {
+      const s = Math.cos(4 * Math.PI * phase);
+      sq = 0.05 * s * lvl;
+      bounceY = -0.05 * H * ((s + 1) / 2) * lvl * params.bounce;   // high at plant/flight
+    } else if (st === 'groove') {
+      const s = Math.sin(4 * Math.PI * phase);
+      sq = 0.05 * s * lvl;
+      bounceY = -0.08 * H * Math.max(0, Math.sin(4 * Math.PI * phase)) * lvl * params.bounce;
+    } else if (st === 'hop') {
+      const air = Math.max(0, Math.sin(2 * Math.PI * phase));
+      sq = (air > 0 ? 0.07 * air : -0.06) * lvl;
+      bounceY = -0.13 * H * air * lvl * params.bounce;
+    }
+    if (!isQuad) {
+      bounceY += (st === 'idle' ? 0 : -0.02 * H * Math.sin(2 * Math.PI * (phase - 0.25)) * params.bounce);
+    }
+
+    // idle layers (full strength in idle, faint under everything else)
+    const idleK = st === 'idle' ? 1 : 0.3;
+    const swayU = ((p.noise(tSec * 0.13, 7) - 0.5) * 2) * 0.02 * state.bbox.w * idleK;
+    const rearBob = ((p.noise(tSec * 0.4, 23) - 0.5) * 2) * 0.006 * idleK;
+    let headLook = ((p.noise(tSec * 0.07, 13) - 0.5) * 2) * 0.45 * idleK;
+    if (p.noise(tSec * 0.02, 41) > 0.72) headLook += 0.35 * idleK;   // occasional quick reorient
+
     const { joints, pos, prev, rest, edges, restLen, boundary, n } = state;
     for (const J of joints) {
       const g = (gait[J.role] ?? gait.root)(J.limb ?? 0);
-      J.theta = g.A * amp * Math.sin(2 * Math.PI * (g.freq * phase + g.off));
+      const rotOn = (st === 'groove' || st === 'hop' || (!isQuad && st !== 'idle'));
+      J.theta = rotOn ? g.A * amp * Math.sin(2 * Math.PI * (g.freq * phase + g.off)) : 0;
+      if (J.role === 'head') J.theta += headLook;
       if (J.parent < 0) {
-        J.ax = J.x; J.ay = J.y + bounceY;
+        J.ax = J.x + swayU; J.ay = J.y + bounceY + (J.role === 'root' ? rearBob : 0);
       } else {
         const P = joints[J.parent];
         const ox = J.x - P.x, oy = J.y - P.y;
@@ -445,6 +543,56 @@ export default {
         J.ay = P.ay + ox * s + oy * c;
       }
     }
+
+    // walk/hop feet override the rotation chain: stance locks the foot in
+    // world space (expressed as backward drift in local space), swing arcs
+    // to the next plant; hop lifts all feet together.
+    let slidePx = 0;
+    if (isQuad && (st === 'walk' || st === 'hop')) {
+      state.feet ??= {};
+      for (const T of state.tips) {
+        const off = (T.limb === 0 || T.limb === 3) ? 0 : 0.5;
+        const foot = (state.feet[T.name] ??= { plantWX: null });
+        if (st === 'hop') {
+          const air = Math.max(0, Math.sin(2 * Math.PI * phase));
+          T.ax = T.x; T.ay = T.y - 0.10 * H * air * lvl;
+          foot.plantWX = null;
+        } else {
+          // stride clock = `phase`, NOT barPhase: phase is continuous across
+          // the confidence-gate switch (freePhase shadows beatPhase), while
+          // barPhase jumps there — measured ~11 px of foot slide from it
+          const cyc = (phase / Math.max(0.25, params.beatsPerStride) - off) % 1;
+          const c = cyc < 0 ? cyc + 1 : cyc;
+          if (c < 0.6) {
+            // stance: fixed in world = drifting back at body speed in local
+            T.ax = T.x + strideU * (0.3 - c);
+            T.ay = T.y;
+            const wx = world.x + (T.ax - joints[0].x) * S * world.facingVis;
+            if (foot.plantWX === null) foot.plantWX = wx;
+            else if (!world.turn) slidePx = Math.max(slidePx, Math.abs(wx - foot.plantWX));
+          } else {
+            const u = (c - 0.6) / 0.4;
+            T.ax = T.x + strideU * (-0.3 + 0.6 * u);
+            T.ay = T.y - 0.5 * strideU * 0.6 * Math.sin(Math.PI * u);
+            foot.plantWX = null;
+          }
+        }
+        T.theta = 0;
+      }
+      // knees: geometric — midpoint of root joint and foot, bent forward
+      for (const J of joints) {
+        if (J.role !== 'knee') continue;
+        const T = joints.find((q) => q.role === 'limb' && q.limb === J.limb);
+        const R = joints[J.parent];
+        J.ax = (R.ax + T.ax) / 2 + 0.02;
+        J.ay = (R.ay + T.ay) / 2;
+        J.theta = 0;
+      }
+    } else {
+      state.feet = null;
+    }
+    state.slidePx = state.slidePx * 0.9 + slidePx * 0.1;
+
     for (const J of joints) {
       const scale = J.parent < 0 ? bellScale : 1;
       const c = Math.cos(J.theta), s = Math.sin(J.theta);
@@ -457,7 +605,7 @@ export default {
 
     // ── physics ─────────────────────────────────────────────────────────
     const damping = 0.9, centering = 0.004;
-    const groundY = state.bbox.maxY + 0.004;    // rest feet level = floor
+    const groundY = state.bbox.maxY + 0.004;
     for (let i = 0; i < n; i++) {
       if (state.pinned.has(i)) continue;
       const ix = i * 2, iy = ix + 1;
@@ -466,7 +614,7 @@ export default {
       prev[ix] = pos[ix]; prev[iy] = pos[iy];
       pos[ix] += vx + (rest[ix] - pos[ix]) * centering;
       pos[iy] += vy + (rest[iy] - pos[iy]) * centering;
-      if (pos[iy] > groundY) {                  // floor clamp + contact friction
+      if (pos[iy] > groundY) {
         pos[iy] = groundY;
         prev[ix] += (pos[ix] - prev[ix]) * 0.5;
       }
@@ -493,68 +641,57 @@ export default {
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       return;
     }
-    // scale/framing: creature height = 65% canvas height × scale; feet on
-    // the ground line
-    const S = (0.65 * p.height / Math.max(0.05, state.bbox.h)) * params.scale;
-    const ox = p.width * params.xFrac - state.bbox.cx * S;
-    const oy = p.height * params.ground - state.bbox.maxY * S;
-    const X = (i) => ox + pos[i * 2] * S;
-    const Y = (i) => oy + pos[i * 2 + 1] * S;
+    // world transform: mirror + squash/stretch (about root x / ground line).
+    // In walk the horizontal squash component is OFF: sx pivots at the root,
+    // so it would translate planted feet sideways (measured ~12 px of stance
+    // slide, squash oscillation being the dominant term). Vertical squash
+    // carries the look; contact-point-pivoted squash isn't worth the cost.
+    const breath = 0.02 * Math.sin(2 * Math.PI * 0.2 * tSec) * (st === 'idle' ? 1 : 0.4);
+    const sx = world.facingVis * (1 - (st === 'walk' ? 0 : sq));
+    const sy = (1 + sq) * (1 + (isQuad ? breath : 0));
+    const rootX = joints[0].x;
+    const X = (i) => world.x + (pos[i * 2] - rootX) * S * sx;
+    const Y = (i) => groundPx - (state.bbox.maxY - pos[i * 2 + 1]) * S * sy;
     const kick = a.bands?.kick ?? 0, mid = a.bands?.mid ?? 0;
 
     if (params.renderMode === 'goo') {
-      // metaball soft body on the dedicated layer; nothing on the p5 canvas
       const goo = ensureGooLayer(state, params);
-      const sprites = ensureSprites(state);
+      const sprites = ensureSprites(state, params);
       const g = goo.g;
       g.clearRect(0, 0, goo.canvas.width, goo.canvas.height);
       g.globalCompositeOperation = 'lighter';
-      // brightness rides the bands: body/head on kick, limbs on mid — with a
-      // floor high enough that a quiet band can't push parts below threshold
+      // audio drives brightness only (hue fixed by the palette params)
       const aBody = (0.70 + 0.30 * kick) * alpha;
       const aLimb = (0.70 + 0.30 * mid) * alpha;
       for (let i = 0; i < n; i++) {
         const lab = state.labels[i];
-        const sp = sprites[lab] ?? sprites.body;
+        const sp = lab === 'head' ? sprites.head : lab === 'body' ? sprites.body : sprites.limb;
         const r = state.spriteR[i] * S;
         g.globalAlpha = (lab === 'body' || lab === 'head') ? aBody : aLimb;
         g.drawImage(sp, X(i) - r, Y(i) - r, r * 2, r * 2);
       }
       g.globalAlpha = 1;
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
-      window.__creaturePerf = { ms: state.perfMs, nodes: n, edges: restLen.length };
+      window.__creaturePerf = {
+        ms: state.perfMs, nodes: n, edges: restLen.length,
+        state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
+      };
       return;
     }
     if (state.goo) state.goo.g.clearRect(0, 0, state.goo.canvas.width, state.goo.canvas.height);
 
+    // wire diagnostic
     p.push();
     p.colorMode(p.HSB, 360, 100, 100, 1);
-    p.blendMode(p.ADD);   // in-canvas additive: overlaps bloom into glow
-
-    // flesh pass: one soft circle per node — additive overlaps merge into a
-    // continuous glowing body mass (the face fill alone is too sparse)
-    p.noStroke();
-    const fleshD = state.fleshR * 2 * S;
-    for (let i = 0; i < n; i++) {
-      const lab = state.labels[i];
-      const hue = PART_HUE[lab] ?? 210;
-      const bright = 40 + 45 * (lab === 'body' || lab === 'head' ? kick : mid);
-      p.fill(hue, 75, bright, 0.06 * alpha);
-      p.circle(X(i), Y(i), fleshD);
-    }
-
-    // faces (per part hue; brightness kick for body/head, mid for limbs)
+    p.blendMode(p.ADD);
     for (const [lab, list] of Object.entries(state.triByPart)) {
-      const hue = PART_HUE[lab] ?? 210;
       const bright = 35 + 45 * (lab === 'body' || lab === 'head' ? kick : mid);
       p.noStroke();
-      p.fill(hue, 70, bright, 0.32 * alpha);
+      p.fill(hueFor(lab, params), 70, bright, 0.32 * alpha);
       p.beginShape(p.TRIANGLES);
       for (let t = 0; t < list.length; t++) p.vertex(X(list[t]), Y(list[t]));
       p.endShape();
     }
-
-    // boundary glow: wide faint pass under the bright boundary pass
     for (const pass of [{ w: 7, al: 0.10, br: 95 }, { w: 2.5, al: 0.85, br: 100 }]) {
       p.stroke(195, 25, pass.br, pass.al * alpha);
       p.strokeWeight(pass.w);
@@ -566,7 +703,6 @@ export default {
       }
       p.endShape();
     }
-    // interior edges: thin and dim
     p.stroke(200, 15, 70, 0.16 * alpha);
     p.strokeWeight(0.8);
     p.beginShape(p.LINES);
@@ -576,20 +712,13 @@ export default {
       p.vertex(X(edges[e2 * 2 + 1]), Y(edges[e2 * 2 + 1]));
     }
     p.endShape();
-
-    // nodes: only near joints
-    p.noStroke();
-    for (const i of state.drawNodes) {
-      const lab = state.labels[i];
-      const hue = PART_HUE[lab] ?? 210;
-      const bright = 60 + 40 * (lab === 'body' || lab === 'head' ? kick : mid);
-      p.fill(hue, 70, bright, 0.9 * alpha);
-      p.circle(X(i), Y(i), state.nodeR[i]);
-    }
     p.pop();
 
     state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
-    window.__creaturePerf = { ms: state.perfMs, nodes: n, edges: restLen.length };  // capture-harness seam
+    window.__creaturePerf = {
+      ms: state.perfMs, nodes: n, edges: restLen.length,
+      state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
+    };
   },
 
   osc(ctx, address, value) {
@@ -599,7 +728,6 @@ export default {
   },
 
   teardown(ctx) {
-    // the goo layer lives in the page DOM — remove it on unload/hot-reload
     const goo = ctx.state?.goo;
     if (goo) {
       goo.canvas.remove();

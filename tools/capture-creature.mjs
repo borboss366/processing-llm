@@ -59,18 +59,28 @@ try {
     console.log(`[capture] ${shape}: ${perf.fps.toFixed(1)} fps (headless swiftshader), ` +
       `module ${perf.creature ? `${perf.creature.ms.toFixed(2)} ms/frame · ${perf.creature.nodes} nodes · ${perf.creature.edges} edges` : "n/a"}`);
 
-    await page.screenshot({ path: path.join(ROOT, `reports/creature3-${shape}.png`) });
-    const rec = await page.screencast({ path: path.join(ROOT, `reports/creature3-${shape}.webm`) });
-    await new Promise((r) => setTimeout(r, 20_000));
+    await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}.png`) });
+    const rec = await page.screencast({ path: path.join(ROOT, `reports/creature4-${shape}.webm`) });
+    // sample the behaviour state + foot slide once per second during capture
+    const timeline = [];
+    for (let s = 0; s < 30; s++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const cp = await page.evaluate(() => window.__creaturePerf ?? null);
+      if (cp) timeline.push(cp);
+    }
     await rec.stop();
+    const states = timeline.map((c) => c.state);
+    const runs = states.filter((s, i) => i === 0 || s !== states[i - 1]);
+    const maxSlide = Math.max(...timeline.map((c) => c.slidePx ?? 0));
+    console.log(`[capture] ${shape}: states ${runs.join(" → ")} · max stance slide ${maxSlide.toFixed(2)} px`);
 
     // secondary diagnostic: same pose family on black
     ws.send(JSON.stringify({ type: "set-bg", on: false }));
     await new Promise((r) => setTimeout(r, 400));
-    await page.screenshot({ path: path.join(ROOT, `reports/creature3-${shape}-diag.png`) });
+    await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}-diag.png`) });
     if (!bgOff) ws.send(JSON.stringify({ type: "set-bg", on: true }));
     await new Promise((r) => setTimeout(r, 400));
-    console.log(`[capture] ${shape}: wrote reports/creature3-${shape}.png/.webm + -diag.png`);
+    console.log(`[capture] ${shape}: wrote reports/creature4-${shape}.png/.webm + -diag.png`);
   }
 } finally {
   ws.close();

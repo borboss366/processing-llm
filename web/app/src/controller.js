@@ -514,6 +514,10 @@ const ws = createWs({
       // throttle to ~4 Hz — render broadcasts at 10 Hz and updating the UI
       // every frame was causing visible flicker on the level bar + text
       scheduleRenderUiUpdate();
+    } else if (msg.type === 'creature-state') {
+      // creature module (render window) announces behaviour transitions over
+      // the WS relay; the controller owns the session id, so it writes them.
+      sessionLog({ type: 'creature-state', state: msg.state, z: msg.z });
     } else if (msg.type === 'preset-committed') {
       // Render window applied a bar-quantized pick — log arrival→commit
       // delay and the barPhase it landed on (acceptance: commit alignment).
