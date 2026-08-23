@@ -95,8 +95,15 @@ try {
     for (const t of MATRIX) {
       const local = path.join(ROOT, t.file.replace(/^\/music\//, "music/"));
       if (!fs.existsSync(local)) { console.log(`[beat-real] skip ${t.name}: ${t.file} missing`); skipped++; continue; }
-      // fresh browser per track: a reused swiftshader process accumulates
-      // jank across tracks and skewed the DnB read by −5 BPM in matrix mode
+      // fresh browser per track + a 15 s cool-down (reused swiftshader
+      // processes accumulate jank; measured −5 BPM on DnB once). KNOWN
+      // RESIDUAL FLAKE, 2026-08-23: dnb-174 is BISTABLE across runs — it
+      // either locks 174 (Δ<0.5) or settles a confidently-wrong attractor
+      // (~154, CV 0.33): the octave hysteresis in core/audio.js makes early
+      // wrong locks sticky (174/154 ≈ 1.13 is outside its half/double
+      // correction windows) and refinePeriod self-confirms them. Needs a
+      // dedicated PLL work item; do not paper over with tolerance.
+      await new Promise((res) => setTimeout(res, 15_000));
       const b = await launchBrowser();
       let r;
       try { r = await runTrack(b, t); } finally { await b.close(); }

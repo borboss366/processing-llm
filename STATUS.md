@@ -18,6 +18,10 @@ min-hold control). Full guide in `README.md`.
   All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
   VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
   headless browsers skew BPM).
+- **Brief 8 gate captures done (Task 4)**: 30 s per biped over Butterchurn
+  across the breakdown — lit translucent bodies with faces, walking/
+  grooving/idling; ~1.0 ms/frame, slide ≤0.15 px
+  (`reports/2026-08-23-creature-8-gate.md`). Awaiting real-GPU judgment.
 - **Creature face + grounding (brief 8 Task 3)**: sidecar-defined eyes
   anchored to head tissue (blink 4–7 s, saccades on head-look reorients,
   walk-direction lead) and a contact shadow on its own layer under the
@@ -72,9 +76,15 @@ min-hold control). Full guide in `README.md`.
 2. **Director never holds** — leading-question tail prompt + threshold below
    the mix's natural drift; z-score calibration specified as Brief 4 Task 3.
 3. **Preset tags are vision-model-skewed** — Brief 4 Task 4.
-4. **Low-tempo band (60–90 BPM) untested** — Brief 4 Task 5, waiting on the
+4. **DnB beat lock is bistable across runs** — the 174 BPM track either
+   locks correctly (solo Δ−0.19/−0.44) or settles a confidently-wrong ~154
+   attractor (Δ−19.8, conf 0.69): the octave hysteresis makes early wrong
+   locks sticky and refinePeriod self-confirms them. Fresh browsers and
+   cool-downs don't fix it; needs a dedicated PLL work item, not a wider
+   tolerance. Until then `verify --full` can fail on dnb-174.
+5. **Low-tempo band (60–90 BPM) untested** — Brief 4 Task 5, waiting on the
    two tracks (~93 hip-hop, ~81 stomp-clap) in `music/`.
-5. **Operational caveats**: any other Ollama call evicts the director's
+6. **Operational caveats**: any other Ollama call evicts the director's
    prefix cache; preset-description edits need a server restart; harness
    runs must be solo (verify.mjs enforces this by running sequentially).
    The 2-step garage track is marginal for the PLL (confident-median wanders
@@ -82,5 +92,5 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-Brief 8 Task 4 — gate capture (30 s per shape over Butterchurn across the
-breakdown) and STOP for real-GPU judgment.
+User's real-GPU judgment on the Brief 8 gate captures (lit translucent
+body with anatomy vs flat sticker).
