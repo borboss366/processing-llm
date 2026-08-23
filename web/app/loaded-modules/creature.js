@@ -633,6 +633,59 @@ function ensureDensSprites(state) {
 // unions by max instead of stacking; everything else shares R
 const densChannel = (lab) => (lab === 'limb2' ? 'g' : lab === 'limb3' ? 'b' : 'r');
 
+// ── Move tables (brief 9 Task 1) ──────────────────────────────────────────
+// moves/<name>.json: { name, beatsPerLoop, overlay, keys: [{ phase, joints:
+// {jointName: {dx,dy,rot}}, contacts: [jointName...], ease }] } — format
+// documented in MODULE_ABI.md. Playback layers UNDER the procedural
+// bounce/lean/Perlin/simmer (scaled by the move's `overlay`): rot keys join
+// the FK chain (bone lengths hold by construction), dx/dy add after.
+function ensureMove(state, name) {
+  state.moveCache ??= {};
+  const e = state.moveCache[name];
+  if (e) return e.data ?? null;
+  state.moveCache[name] = {};
+  fetch(`/moves/${name}.json`)
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((j) => {
+      if (!Array.isArray(j.keys) || !j.keys.length) throw new Error('no keys');
+      j.keys.sort((k1, k2) => k1.phase - k2.phase);
+      state.moveCache[name].data = j;
+    })
+    .catch((err) => console.error(`[creature] move "${name}" failed to load:`, err));
+  return null;
+}
+
+// piecewise interpolation over the loop phase; `ease` belongs to the segment
+// STARTING at each key. "snap" completes in the first quarter of the segment
+// (smoothstepped — an instant jump would be a joint-speed spike by our own
+// metric), "smooth" smoothsteps the whole span, "linear" is linear.
+function sampleMove(move, moveAcc) {
+  const bpl = Math.max(0.25, move.beatsPerLoop ?? 1);
+  const lp = (((moveAcc % bpl) + bpl) % bpl) / bpl;
+  const keys = move.keys;
+  let i = keys.length - 1;
+  for (let k = 0; k < keys.length; k++) if (keys[k].phase <= lp) i = k;
+  const a = keys[i], b = keys[(i + 1) % keys.length];
+  const span = (((b.phase - a.phase) % 1) + 1) % 1 || 1;
+  let u = ((((lp - a.phase) % 1) + 1) % 1) / span;
+  const ease = a.ease ?? 'smooth';
+  if (ease === 'snap') u = Math.min(1, u * 4);
+  if (ease !== 'linear') u = u * u * (3 - 2 * u);
+  const joints = {};
+  for (const nm of new Set([...Object.keys(a.joints ?? {}), ...Object.keys(b.joints ?? {})])) {
+    const A = a.joints?.[nm] ?? {}, B = b.joints?.[nm] ?? {};
+    joints[nm] = {
+      dx: (A.dx ?? 0) + ((B.dx ?? 0) - (A.dx ?? 0)) * u,
+      dy: (A.dy ?? 0) + ((B.dy ?? 0) - (A.dy ?? 0)) * u,
+      rot: (A.rot ?? 0) + ((B.rot ?? 0) - (A.rot ?? 0)) * u,
+    };
+  }
+  return { joints, contacts: new Set(a.contacts ?? []) };
+}
+
+// FSM dance states cycle through these tables (Task 3: two bars each)
+const GROOVE_MOVES = ['groove', 'tstep-placeholder', 'armwave-placeholder'];
+
 // ── Move-local clock (brief 8.2, hardened brief 9 Task 0b) ────────────────
 // Everything pose-facing (moves, odometry, feet, blends) consumes this clock,
 // never raw beatPhase. PLL nudges, acquisition snaps and free-run↔locked
@@ -676,6 +729,7 @@ export default {
     entrySec: 1,               // …sustained this long (latch; resets on lifecycle idle)
     archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse'
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
+    move: '',                  // force a moves/<name>.json table ('' = auto by state)
     speed: 0.35,               // body-heights per second when walking
     beatsPerStride: 1,
     blendBeats: 0.75,          // pose blend duration on state/turn changes
@@ -803,10 +857,54 @@ export default {
       world.facingVis = 1;
     }
 
+    // ── move table resolution (brief 9 Task 1) ──────────────────────────
+    // `move` param forces one; otherwise dance states cycle the GROOVE_MOVES
+    // tables every two bars. Switches blend through the existing layer.
+    let moveName = null;
+    if (params.move) {
+      moveName = String(params.move) === 'none' ? null : String(params.move);
+    } else if (st === 'groove') {
+      state.grooveIdx ??= 0;
+      state.grooveBars ??= 0;
+      if (wrapped && ++state.grooveBars >= 2) {
+        state.grooveBars = 0;
+        state.grooveIdx = (state.grooveIdx + 1) % GROOVE_MOVES.length;
+      }
+      moveName = GROOVE_MOVES[state.grooveIdx];
+    }
+    const move = moveName ? ensureMove(state, moveName) : null;
+    if ((state.activeMove ?? null) !== (move?.name ?? null)) {
+      state.activeMove = move?.name ?? null;
+      startBlend();
+    }
+    const mvPose = move ? sampleMove(move, state.moveAcc) : null;
+    const ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
+    state.moveOverlay = ov;   // render-side simmer reads this
+
+    // critically damped spring on every table offset: key easing (snap
+    // especially) can attack faster than a few frames, and a raw or
+    // first-order-filtered step still lands a one-frame velocity jump that
+    // the spike metric's growth test rightly flags — a spring builds
+    // velocity from zero, so attacks stay hiccup-free at any frame rate
+    const MV_WN = 10;                    // ≈100 ms response
+    if (mvPose) {
+      const mvS = (state.mvSpring ??= {});
+      for (const nm of new Set([...Object.keys(mvS), ...Object.keys(mvPose.joints)])) {
+        const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0 });  // unkeyed → spring back to 0
+        const sp = (mvS[nm] ??= { dx: { x: 0, v: 0 }, dy: { x: 0, v: 0 }, rot: { x: 0, v: 0 } });
+        for (const ch of ['dx', 'dy', 'rot']) {
+          const s2 = sp[ch];
+          s2.v += (MV_WN * MV_WN * (tk[ch] - s2.x) - 2 * MV_WN * s2.v) * dt;
+          s2.x += s2.v * dt;
+          tk[ch] = s2.x;
+        }
+      }
+    }
+
     // ── skeleton targets per state ──────────────────────────────────────
     const gaitName = params.archetype === 'auto' ? state.gaitName : params.archetype;
     const gait = GAITS[gaitName] ?? GAITS.biped;
-    const amp = params.amplitude * lvl * (st === 'idle' ? 0 : 1);
+    const amp = params.amplitude * lvl * (st === 'idle' ? 0 : 1) * ov;
     const bellScale = !state.hasFeet && st !== 'idle'
       ? 1 + (gait.bellPulse ?? 0) * Math.sin(2 * Math.PI * mPhase) * amp
       : 1 + 0.02 * Math.sin(2 * Math.PI * 0.2 * tSec);
@@ -834,8 +932,10 @@ export default {
     if (!state.hasFeet) {
       bounceY += (st === 'idle' ? 0 : (gait.drift ?? 0) * -H * Math.sin(2 * Math.PI * (mPhase - 0.25)) * params.bounce);
     }
+    // procedural layers ride ON TOP of a table move, scaled by its overlay
+    sq *= ov; bounceY *= ov;
 
-    const idleK = st === 'idle' ? 1 : 0.3;
+    const idleK = (st === 'idle' ? 1 : 0.3) * ov;
     const swayU = ((p.noise(tSec * 0.13, 7) - 0.5) * 2) * 0.02 * state.bbox.w * idleK;
     const rearBob = ((p.noise(tSec * 0.4, 23) - 0.5) * 2) * 0.006 * idleK;
     // head look: the quick reorient is a TARGET that the actual look chases
@@ -852,6 +952,10 @@ export default {
       const g = (gait[J.role] ?? gait.root)(J.limb ?? 0, J.phase ?? 0);
       J.theta = st === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off));
       if (J.role === 'head') J.theta += headLook;
+      // table rot joins the FK chain (children inherit via P.theta), so
+      // authored rotations keep bone lengths by construction
+      const tk = mvPose?.joints[J.name];
+      if (tk?.rot) J.theta += tk.rot;
       if (J.parent < 0) {
         J.ax = J.x + swayU; J.ay = J.y + bounceY + (J.role === 'root' ? rearBob : 0);
       } else {
@@ -862,6 +966,9 @@ export default {
         J.ax = P.ax + ox * c - oy * s;
         J.ay = P.ay + ox * s + oy * c;
       }
+      // dx/dy in shape units, applied after chaining (authoring guidance:
+      // prefer rot on chained limbs — dx/dy there stretches the bone)
+      if (tk) { J.ax += tk.dx || 0; J.ay += tk.dy || 0; }
     }
 
     // weld-test pose sweep (brief 9 Task 0a acceptance): drag the left arm
@@ -927,6 +1034,36 @@ export default {
       }
     } else {
       state.feet = null;
+    }
+    // table-move stance lock (brief 9 Task 1): ground tips listed in the
+    // current segment's `contacts` stay planted at neutral — the body dips
+    // and rotates over them; unlisted feet are free to kick per the table.
+    // The lock weight rides its own critically damped spring: a hard toggle
+    // at a key boundary would step the foot from plant to its table offset
+    // in one frame (measured: v≈1–2 u/s spikes at every contact change).
+    if (state.hasFeet && st !== 'walk' && st !== 'hop') {
+      const cw = (state.contactW ??= {});
+      for (const T of state.tips) {
+        if (!T.ground) continue;
+        const s2 = (cw[T.name] ??= { x: 0, v: 0 });
+        const target = mvPose?.contacts.has(T.name) ? 1 : 0;
+        s2.v += (MV_WN * MV_WN * (target - s2.x) - 2 * MV_WN * s2.v) * dt;
+        s2.x += s2.v * dt;
+        const w = Math.max(0, Math.min(1, s2.x));
+        if (w <= 0.001) continue;
+        T.ax += (T.x - T.ax) * w;
+        T.ay += (T.y - T.ay) * w;
+        T.theta *= 1 - w;
+        const K = joints.find((q) => q.role === 'knee' && q.limb === T.limb);
+        if (K) {
+          const R = joints[K.parent];
+          K.ax += ((R.ax + T.ax) / 2 + 0.02 - K.ax) * w;
+          K.ay += ((R.ay + T.ay) / 2 - K.ay) * w;
+          K.theta *= 1 - w;
+        }
+      }
+    } else {
+      state.contactW = null;
     }
     state.slidePx = state.slidePx * 0.9 + slidePx * 0.1;
 
@@ -1190,7 +1327,7 @@ export default {
       // the body or the shader's colour ramp has no gradient left to shade
       const aBody = 0.30 + 0.10 * kick;
       const aLimb = 0.42 + 0.10 * mid;   // limbs run hotter: stretch headroom
-      const simmer = Number(params.simmer) || 0;
+      const simmer = (Number(params.simmer) || 0) * (state.moveOverlay ?? 1);
       for (let i = 0; i < n; i++) {
         const lab = state.labels[i];
         const sp = lab === 'head' ? sprites.head : lab === 'body' ? sprites.body : sprites.limb;

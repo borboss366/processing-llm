@@ -76,6 +76,7 @@ flowchart LR
   OLLAMA["Ollama<br/>qwen3:8b"]
   SESS[("sessions/*.jsonl")]
   SHAPES[("web/app/shapes/<br/>*.png + *.json")]
+  MOVES[("web/app/moves/<br/>*.json move tables")]
   PRESETS[("web/app/<br/>preset-descriptions/*.md")]
 
   AUDIO -- "render-state (WS, 10 Hz)" --> WSR --> DET
@@ -86,6 +87,7 @@ flowchart LR
   DET -- "decisions, holds, commits" --> SESSR --> SESS
   PADS --> REST
   SHAPES -- "fetch + sample" --> REG
+  MOVES -- "fetch + interpolate" --> REG
   PRESETS -- "catalogue (memoized)" --> DCORE
 
   subgraph TOOLS["tools/ — offline (never in the live path)"]

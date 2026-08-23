@@ -68,6 +68,12 @@ try {
     if (flags.bonesplats !== undefined) {
       await post("/osc", { address: "/creature/boneSplats", value: Number(flags.bonesplats) });
     }
+    if (flags.behavior) {
+      await post("/osc", { address: "/creature/behavior", value: String(flags.behavior) });
+    }
+    if (flags.move) {
+      await post("/osc", { address: "/creature/move", value: String(flags.move) });
+    }
     await post("/browser-modules/trigger", { id: "creature" });
     // enter + beat settle. The BPM estimate swings while its buffers fill in
     // the first ~8 s after audio start; walking during that transient slides

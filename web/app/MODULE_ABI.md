@@ -150,6 +150,50 @@ if (a.beatConfidence >= 0.4 && a.bpm > 0) {
 - `beatsPerSec` — beat rate over the last 3 s
 - `onBeat` — boolean, true on detected bass onsets (legacy; prefer `beatPhase`)
 
+## Creature move tables
+
+Dance moves are data, not code (and the target format for a future mocap
+extractor): one JSON per move in `web/app/moves/` —
+
+```json
+{
+  "name": "tstep",
+  "beatsPerLoop": 2,        // loop length in beats (move-local clock)
+  "overlay": 0.3,           // 0..1 scale on the procedural layers underneath
+  "keys": [
+    {
+      "phase": 0,           // 0..1 position within the loop
+      "joints": {           // offsets from the NEUTRAL pose, by joint name
+        "chest":  { "rot": -0.07 },              // radians, joins the FK chain
+        "footL":  { "dx": -0.05, "dy": -0.015 }  // shape units (0..1, y down)
+      },
+      "contacts": ["footR"],// ground tips planted during the segment
+                            // STARTING at this key (stance lock)
+      "ease": "snap"        // smooth | snap | linear, for the same segment
+    }
+  ]
+}
+```
+
+Rules:
+
+- Playback interpolates piecewise between consecutive keys over the
+  move-local phase (`beatsPerLoop` beats per loop), wrapping last → first.
+  `smooth` smoothsteps the whole segment; `snap` completes in the first
+  quarter and holds (still smoothstepped — an instant jump would flag the
+  joint-speed spike metric); `linear` is linear.
+- The table layers UNDER the procedural bounce/lean/Perlin/simmer: those
+  stay on, scaled by the move's `overlay`.
+- Prefer `rot` keys on chained joints (knees, elbows, hands, chest): they
+  join the FK chain, so bone lengths hold by construction. `dx`/`dy` on a
+  chained joint stretches its bone — keep those small (≤ a few % of the
+  bone) or put them on roots (`pelvis`) and ground tips (kicks).
+- `contacts` lists ground-tip joint names planted from this key until the
+  next: they stay locked to their neutral ground position (knees follow
+  geometrically) while the body moves over them. Unlisted feet are free.
+- The FSM's dance states cycle through their move tables (two bars each);
+  the `move` param forces a specific table by name.
+
 ## Interfaces
 
 Declare in `interfaces: [...]`; configure with a same-named top-level object.
