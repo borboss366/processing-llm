@@ -93,6 +93,13 @@ const CHECKS = [
     cmd: ["node", "tools/capture-creature.mjs", "--verify", "--shape", "biped-1", "--seconds", "5"],
     desc: "creature runs headless; ≤6 ms/frame, stance slide ≤5 px",
   },
+  {
+    name: "weld-sweep",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/weld-sweep.mjs", "--shape", "biped-1"],
+    desc: "arm-across-torso sweep: union-by-max removes the additive weld-flash (≥10% A/B divergence in the flash band)",
+  },
 ];
 
 // ---------------------------------------------------------------------------

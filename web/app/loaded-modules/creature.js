@@ -435,6 +435,7 @@ void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
 const SHADE_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uField;
+uniform sampler2D uDens;
 uniform vec2 uTexel;
 uniform float uD0;
 uniform float uD1;
@@ -447,15 +448,24 @@ uniform vec3 uSecondary;
 uniform float uAlpha;
 in vec2 vUv;
 out vec4 outColor;
+// union-by-max across body groups (brief 9 Task 0a): R = torso+head+legs,
+// G = armL, B = armR. Additive stacking stays WITHIN a channel; a crossing
+// arm takes max, so no weld-flash and no normal smear at the overlap.
+uniform float uUnion;
+float dmax(vec2 uv) {
+  vec3 g = texture(uDens, uv).rgb;
+  // uUnion 0 = legacy additive field (A/B evidence for the weld fix only)
+  return mix(texture(uField, uv).a, max(g.r, max(g.g, g.b)), uUnion);
+}
 void main() {
   vec4 f = texture(uField, vUv);
-  float d = f.a;
+  float d = dmax(vUv);
   if (d < uD0 - 0.06) discard;
-  vec3 base = f.rgb / max(d, 1e-4);
-  float dl = texture(uField, vUv - vec2(uTexel.x, 0.0)).a;
-  float dr = texture(uField, vUv + vec2(uTexel.x, 0.0)).a;
-  float dt = texture(uField, vUv - vec2(0.0, uTexel.y)).a;
-  float db = texture(uField, vUv + vec2(0.0, uTexel.y)).a;
+  vec3 base = f.rgb / max(f.a, 1e-4);
+  float dl = dmax(vUv - vec2(uTexel.x, 0.0));
+  float dr = dmax(vUv + vec2(uTexel.x, 0.0));
+  float dt = dmax(vUv - vec2(0.0, uTexel.y));
+  float db = dmax(vUv + vec2(0.0, uTexel.y));
   vec3 nrm = normalize(vec3((dl - dr) * 4.0, (dt - db) * 4.0, uNz));
   float lam = max(dot(nrm, uLightDir), 0.0);
   float tMid  = smoothstep(uD0, uD0 + 0.14, d);
@@ -516,15 +526,23 @@ function ensureShadeLayer(state) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    const dtex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, dtex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const u = {};
-    for (const name of ['uField', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha']) {
+    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha']) {
       u[name] = gl.getUniformLocation(prog, name);
     }
     const accum = document.createElement('canvas');
+    const dens = document.createElement('canvas');
     const timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
     state.shade = {
-      canvas, gl, prog, tex, u,
+      canvas, gl, prog, tex, dtex, u,
       accum, g: accum.getContext('2d'),
+      dens, dg: dens.getContext('2d'),
       timerExt, gpuMs: 0, passMs: 0, query: null,
     };
   }
@@ -533,6 +551,7 @@ function ensureShadeLayer(state) {
   if (sh.canvas.width !== W || sh.canvas.height !== H) {
     sh.canvas.width = W; sh.canvas.height = H;
     sh.accum.width = Math.ceil(W / 2); sh.accum.height = Math.ceil(H / 2);
+    sh.dens.width = sh.accum.width; sh.dens.height = sh.accum.height;
     sh.gl.viewport(0, 0, W, H);
   }
   return sh;
@@ -587,6 +606,33 @@ function ensureSprites(state, params) {
   return sprites;
 }
 
+// Pure-channel density sprites (brief 9 Task 0a): same radial profile as the
+// colour sprites but writing into exactly one of R/G/B, so 'lighter' blending
+// accumulates each body group's density in its own channel.
+function ensureDensSprites(state) {
+  if (state.densSprites) return state.densSprites;
+  const out = {};
+  for (const [ch, rgb] of [['r', '255,0,0'], ['g', '0,255,0'], ['b', '0,0,255']]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, `rgba(${rgb},1)`);
+    grad.addColorStop(0.35, `rgba(${rgb},0.62)`);
+    grad.addColorStop(0.65, `rgba(${rgb},0.22)`);
+    grad.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    out[ch] = c;
+  }
+  state.densSprites = out;
+  return out;
+}
+
+// group → density channel: arms get their own channels so a crossing arm
+// unions by max instead of stacking; everything else shares R
+const densChannel = (lab) => (lab === 'limb2' ? 'g' : lab === 'limb3' ? 'b' : 'r');
+
 export default {
   id: 'creature',
   oscPrefix: 'creature',
@@ -595,6 +641,7 @@ export default {
   fadeable: { easing: 'cubic-out', maxAlpha: 1 },
   defaults: {
     shape: 'biped-1',          // shapes/<name>.png + .json
+    weldUnion: 1,              // 0 = legacy additive density (A/B diagnostics only)
     archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse'
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
     speed: 0.35,               // body-heights per second when walking
@@ -609,6 +656,7 @@ export default {
     xFrac: 0.5,
     huePrimary: 190, hueSecondary: 150, hueAccent: 315,  // override the shape palette when changed
     swatches: 0,               // diag: render the three palette swatches
+    sweep: -1,                 // weld test: 0..1 drags the left arm across the torso
     renderMode: 'goo',         // 'goo' (shaded metaball) | 'wire' (diagnostic)
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
@@ -796,6 +844,23 @@ export default {
         const c = Math.cos(rot), s = Math.sin(rot);
         J.ax = P.ax + ox * c - oy * s;
         J.ay = P.ay + ox * s + oy * c;
+      }
+    }
+
+    // weld-test pose sweep (brief 9 Task 0a acceptance): drag the left arm
+    // across the torso by rotating its chain about the chest
+    if (Number(params.sweep) >= 0) {
+      const t = Math.min(1, Number(params.sweep));
+      const chest = joints.find((J) => J.role === 'rootMid') ?? joints[0];
+      for (const J of joints) {
+        if (J.limb !== 2) continue;
+        const ox = J.x - chest.x, oy = J.y - chest.y;
+        const dir = Math.sign(J.x - 0.5) || 1;      // toward the body centre
+        const ang = t * 1.5 * dir;
+        const c = Math.cos(ang), s2 = Math.sin(ang);
+        J.ax = chest.ax + ox * c - oy * s2;
+        J.ay = chest.ay + ox * s2 + oy * c;
+        J.theta = ang;
       }
     }
 
@@ -1073,12 +1138,16 @@ export default {
     if (params.renderMode === 'goo') {
       const sh = ensureShadeLayer(state);
       const sprites = ensureSprites(state, params);
+      const dens = ensureDensSprites(state);
       const gl = sh.gl;
       const g = sh.g;
+      const dg = sh.dg;
       const tPass = performance.now();
 
       g.clearRect(0, 0, sh.accum.width, sh.accum.height);
       g.globalCompositeOperation = 'lighter';
+      dg.clearRect(0, 0, sh.dens.width, sh.dens.height);
+      dg.globalCompositeOperation = 'lighter';
       // low per-sprite alpha ON PURPOSE: density must not saturate inside
       // the body or the shader's colour ramp has no gradient left to shade
       const aBody = 0.30 + 0.10 * kick;
@@ -1091,6 +1160,8 @@ export default {
         const r = state.spriteR[i] * S * wob * 0.5;
         g.globalAlpha = (lab === 'body' || lab === 'head') ? aBody : aLimb;
         g.drawImage(sp, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
+        dg.globalAlpha = g.globalAlpha;
+        dg.drawImage(dens[densChannel(lab)], X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
       }
       // bone splats (brief 8.1): sprites lerped along every bone so a limb
       // can NEVER sever, whatever the spring state. Splat COUNT scales with
@@ -1102,6 +1173,7 @@ export default {
         for (const B of state.bones) {
           const J = joints[B.j], P = joints[B.p];
           const sp = B.label === 'head' ? sprites.head : B.label === 'body' ? sprites.body : sprites.limb;
+          const dsp = dens[densChannel(B.label)];
           // 2× alpha + 1.2× radius: a single-chain splat peaks ~0.25-0.30
           // after gradient/downsample losses — measured dipping below the
           // 0.18 threshold at the wrist. The guarantee must not be marginal.
@@ -1110,11 +1182,13 @@ export default {
           const len = Math.hypot(J.ax - P.ax, J.ay - P.ay);
           const N = Math.max(5, Math.ceil(len / (rU * 0.5)));
           g.globalAlpha = Math.min(1, ((B.label === 'body' || B.label === 'head') ? aBody : aLimb) * 2);
+          dg.globalAlpha = g.globalAlpha;
           for (let k = 0; k <= N; k++) {
             const t = k / N;
             const bx = mapX(P.ax + (J.ax - P.ax) * t) * 0.5;
             const by = mapY(P.ay + (J.ay - P.ay) * t) * 0.5;
             g.drawImage(sp, bx - r, by - r, r * 2, r * 2);
+            dg.drawImage(dsp, bx - r, by - r, r * 2, r * 2);
             splatCount++;
           }
           // tip bones also bridge joint → live centroid of the pinned
@@ -1133,6 +1207,7 @@ export default {
               const bx = mapX(J.ax + (cx - J.ax) * t) * 0.5;
               const by = mapY(J.ay + (cy - J.ay) * t) * 0.5;
               g.drawImage(sp, bx - r, by - r, r * 2, r * 2);
+              dg.drawImage(dsp, bx - r, by - r, r * 2, r * 2);
               splatCount++;
             }
           }
@@ -1140,7 +1215,9 @@ export default {
         window.__creatureSplats = splatCount;
       }
       g.globalAlpha = 1;
+      dg.globalAlpha = 1;
       window.__creatureAccum = sh.accum;   // harness seam: component counting
+      window.__creatureDens = sh.dens;     // harness seam: weld overlap masks
       // on-demand node dump for sever forensics (computed only when called)
       window.__creatureDump = () => {
         const out = [];
@@ -1188,10 +1265,22 @@ export default {
         query = gl.createQuery();
         gl.beginQuery(sh.timerExt.TIME_ELAPSED_EXT, query);
       }
+      gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, sh.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sh.accum);
+      // density canvas: premultiplied PASSTHROUGH — the channel sums ARE the
+      // per-group densities; un-premultiplying would divide them by the summed
+      // alpha and deflate every channel wherever groups overlap
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, sh.dtex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sh.dens);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.activeTexture(gl.TEXTURE0);
       gl.useProgram(sh.prog);
       gl.uniform1i(sh.u.uField, 0);
+      gl.uniform1i(sh.u.uDens, 1);
+      gl.uniform1f(sh.u.uUnion, Number(params.weldUnion ?? 1) === 0 ? 0 : 1);
       gl.uniform2f(sh.u.uTexel, 1 / sh.accum.width, 1 / sh.accum.height);
       gl.uniform1f(sh.u.uD0, Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.18)));
       gl.uniform1f(sh.u.uD1, Number(params.shadeD1) || 0.55);

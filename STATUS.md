@@ -11,6 +11,18 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Metaball welding fixed (brief 9 Task 0a)**: density now accumulates in
+  per-group channels (R torso+head+legs, G armL, B armR; bone splats route
+  to their group) on a second half-res canvas, shaded on `d = max(R,G,B)` —
+  additive stacking stays within a channel, a crossing arm slides over the
+  body as a distinct surface (crease, no melt). Colour buffer unchanged
+  (normalised by summed density; no winning-channel weighting needed —
+  arms/torso share the primary hue as predicted). A/B evidence via the
+  `weldUnion` diagnostic toggle: the legacy additive field brightens the
+  flash band (pixels where summed density materially exceeds max) by up to
+  20.6% (biped-1) / 38.8% (biped-2); `tools/weld-sweep.mjs` is in
+  `verify --full` and FAILS if the union path stops diverging from
+  additive. Frame budget unaffected (capture check PASS).
 - **Umbrella verification runner**: `node tools/verify.mjs` (fast tier:
   synthetic PLL, module ABI check, prompt-prefix byte-stability — ~1 s) and
   `--full` (adds the real-track genre matrix, a seeded replay of the latest
