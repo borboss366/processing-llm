@@ -18,6 +18,12 @@ min-hold control). Full guide in `README.md`.
   All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
   VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
   headless browsers skew BPM).
+- **Creature shaded render (brief 8 Task 1)**: the goo threshold is now a
+  WebGL2 shading pass — density-gradient normals, Lambert key light, colour
+  ramp, rim, specular, ±6% surface simmer; reads as a lit translucent body.
+  Module JS 1.0 ms/frame; shade pass 0.8 ms wall (GPU number pending real
+  display — swiftshader's 27 ms is software GL)
+  (`reports/2026-08-23-creature-5-shaded.md`).
 - **Creature v4: locomotion + behaviour (brief 7)**: world-space walking
   with planted feet (max stance slide 2.78 px ≈ 0.6% body height, phase-
   locked odometry), bar-wrap state machine idle/walk/groove/hop on an energy
@@ -65,6 +71,5 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-User judgment on the creature v4 locomotion captures (real GPU); then
-bitmap silhouettes (Brief 6 Task 5) and director-driven behaviour, with
-Brief 4 Task 3 (change-detector calibration + hold) still queued.
+Brief 8 Task 2 — drawn silhouettes (PNG + JSON sidecar as the creature's
+authoring interface).

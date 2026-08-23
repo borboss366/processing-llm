@@ -73,7 +73,10 @@ try {
       return { fps: frames / 5, creature: window.__creaturePerf ?? null };
     });
     console.log(`[capture] ${shape}: ${perf.fps.toFixed(1)} fps (headless swiftshader), ` +
-      `module ${perf.creature ? `${perf.creature.ms.toFixed(2)} ms/frame · ${perf.creature.nodes} nodes · ${perf.creature.edges} edges` : "n/a"}`);
+      `module ${perf.creature ? `${perf.creature.ms.toFixed(2)} ms/frame · ${perf.creature.nodes} nodes · ${perf.creature.edges} edges` : "n/a"}` +
+      (perf.creature?.passMs !== undefined
+        ? ` · shade pass ${perf.creature.passMs} ms wall${perf.creature.gpuMs ? ` / ${perf.creature.gpuMs} ms GPU` : " (no GPU timer ext)"}`
+        : ""));
 
     const rec = verify ? null : await (async () => {
       await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}.png`) });

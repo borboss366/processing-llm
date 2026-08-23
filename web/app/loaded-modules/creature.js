@@ -16,8 +16,10 @@
  * a 60% stance), so world-space slide is zero by construction — measured
  * anyway and exposed via window.__creaturePerf.slidePx.
  *
- * Render: gooey metaball layer (brief 6 Task 1) — invisible node sprites +
- * SVG blur/threshold filter. renderMode:'wire' keeps the old diagnostic.
+ * Render (brief 8): shaded metaball — node sprites accumulate a density +
+ * colour field at half res; a WebGL2 fragment shader thresholds and lights
+ * it (gradient normal, Lambert key light, density colour ramp, rim,
+ * specular). renderMode:'wire' keeps the old diagnostic.
  */
 
 // ── SDF / geometry helpers ─────────────────────────────────────────────────
@@ -305,42 +307,133 @@ function build(state, params) {
   });
 }
 
-// ── Gooey layer (brief 6) ──────────────────────────────────────────────────
-function ensureGooLayer(state, params) {
-  if (!state.goo) {
+// ── Shaded metaball layer (brief 8, supersedes the SVG gooey filter) ──────
+// Sprites accumulate a density field (alpha) + premultiplied part colour
+// (rgb) into a HALF-RES 2D canvas; a WebGL2 fragment shader on the creature
+// layer thresholds and SHADES it: gradient pseudo-normal + Lambert key
+// light, colour ramp on density (dark saturated edge → base → whitened
+// core), rim light at the d0 crossing, one soft specular above d1.
+
+const SHADE_VS = `#version 300 es
+layout(location=0) in vec2 aPos;
+out vec2 vUv;
+void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const SHADE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uField;
+uniform vec2 uTexel;
+uniform float uD0;        // body threshold
+uniform float uD1;        // core/specular threshold
+uniform float uNz;        // normal flatness
+uniform vec3 uLightDir;   // normalized key light
+uniform float uLightInt;  // breathes with smoothedLevel
+uniform float uCore;      // core brightening, rides the kick band
+uniform vec3 uAccent;     // rim tint
+uniform float uAlpha;     // lifecycle alpha
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec4 f = texture(uField, vUv);
+  float d = f.a;
+  if (d < uD0 - 0.06) discard;
+  vec3 base = f.rgb / max(d, 1e-4);
+
+  // pseudo-normal from ±1-texel density taps (stabler than dFdx on a
+  // magnified half-res texture — deliberate deviation from the brief)
+  float dl = texture(uField, vUv - vec2(uTexel.x, 0.0)).a;
+  float dr = texture(uField, vUv + vec2(uTexel.x, 0.0)).a;
+  float dt = texture(uField, vUv - vec2(0.0, uTexel.y)).a;
+  float db = texture(uField, vUv + vec2(0.0, uTexel.y)).a;
+  vec3 n = normalize(vec3((dl - dr) * 4.0, (dt - db) * 4.0, uNz));
+
+  float lam = max(dot(n, uLightDir), 0.0);
+
+  // colour ramp on density
+  float tMid  = smoothstep(uD0, uD0 + 0.14, d);          // edge → base
+  float tCore = smoothstep(uD1, uD1 + 0.22, d);          // base → core
+  vec3 edgeC = base * base * 1.4;                        // darker, more saturated
+  vec3 coreC = mix(base, vec3(1.0), 0.35) * (1.0 + 0.45 * uCore);
+  vec3 c = mix(edgeC, base, tMid);
+  c = mix(c, coreC, tCore);
+  c *= 0.45 + 0.65 * lam * uLightInt;
+
+  // rim: narrow band where d crosses uD0, tinted toward the accent
+  float rim = smoothstep(uD0 - 0.05, uD0, d) * (1.0 - smoothstep(uD0, uD0 + 0.05, d));
+  c += rim * mix(vec3(1.0), uAccent, 0.6) * 0.9;
+
+  // specular: one soft hotspot, only in the dense core
+  vec3 h = normalize(uLightDir + vec3(0.0, 0.0, 1.0));
+  c += pow(max(dot(n, h), 0.0), 28.0) * smoothstep(uD1, uD1 + 0.1, d) * 0.6;
+
+  float a = smoothstep(uD0 - 0.03, uD0 + 0.03, d) * uAlpha;
+  outColor = vec4(c * a, a);   // premultiplied
+}`;
+
+function compileShadeProgram(gl) {
+  const mk = (type, src) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      throw new Error(`creature shader: ${gl.getShaderInfoLog(s)}`);
+    }
+    return s;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, mk(gl.VERTEX_SHADER, SHADE_VS));
+  gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, SHADE_FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error(`creature shader link: ${gl.getProgramInfoLog(prog)}`);
+  }
+  return prog;
+}
+
+function ensureShadeLayer(state) {
+  if (!state.shade) {
     const canvas = document.createElement('canvas');
-    canvas.id = 'creature-goo';
+    canvas.id = 'creature-shade';
     canvas.style.cssText =
       'position:absolute; inset:0; width:100%; height:100%; pointer-events:none;';
     const fg = document.getElementById('fg-container');
     (fg ?? document.body).before(canvas);
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', '0'); svg.setAttribute('height', '0');
-    svg.style.position = 'absolute';
-    svg.innerHTML =
-      `<defs><filter id="creature-goo-f">` +
-      `<feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>` +
-      `<feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/>` +
-      `</filter></defs>`;
-    document.body.appendChild(svg);
-    canvas.style.filter = 'url(#creature-goo-f)';
-    state.goo = { canvas, g: canvas.getContext('2d'), svg, blur: 6, threshold: 0.42 };
+
+    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false });
+    if (!gl) throw new Error('creature: WebGL2 unavailable');
+    const prog = compileShadeProgram(gl);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    const u = {};
+    for (const name of ['uField', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uAlpha']) {
+      u[name] = gl.getUniformLocation(prog, name);
+    }
+    const accum = document.createElement('canvas');
+    const timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    state.shade = {
+      canvas, gl, prog, tex, u,
+      accum, g: accum.getContext('2d'),
+      timerExt, gpuMs: 0, passMs: 0, query: null,
+    };
   }
-  const goo = state.goo;
-  const blur = Number(params.gooBlur) || 6;
-  const thr = Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.42));
-  if (blur !== goo.blur || thr !== goo.threshold) {
-    goo.blur = blur; goo.threshold = thr;
-    const slope = 18;
-    goo.svg.querySelector('feGaussianBlur').setAttribute('stdDeviation', String(blur));
-    goo.svg.querySelector('feColorMatrix').setAttribute('values',
-      `1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${slope} ${(0.5 - slope * thr).toFixed(2)}`);
+  const sh = state.shade;
+  const W = window.innerWidth, H = window.innerHeight;
+  if (sh.canvas.width !== W || sh.canvas.height !== H) {
+    sh.canvas.width = W; sh.canvas.height = H;
+    sh.accum.width = Math.ceil(W / 2); sh.accum.height = Math.ceil(H / 2);
+    sh.gl.viewport(0, 0, W, H);
   }
-  if (goo.canvas.width !== window.innerWidth || goo.canvas.height !== window.innerHeight) {
-    goo.canvas.width = window.innerWidth;
-    goo.canvas.height = window.innerHeight;
-  }
-  return goo;
+  return sh;
 }
 
 function ensureSprites(state, params) {
@@ -387,9 +480,12 @@ export default {
     ground: 0.82,
     xFrac: 0.5,
     hueBody: 190, hueLimbs: 150, hueAccent: 315,   // two families + accent
-    renderMode: 'goo',
-    gooBlur: 6,
-    gooThreshold: 0.42,
+    renderMode: 'goo',         // 'goo' (shaded metaball) | 'wire' (diagnostic)
+    gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
+    shadeD1: 0.55,             // d1: core/specular threshold
+    shadeNz: 0.6,              // pseudo-normal flatness
+    lightX: -0.6, lightY: -0.75,  // key light direction (canvas coords)
+    simmer: 1.0,               // ±6% sprite-radius noise
   },
 
   setup(ctx) {
@@ -650,7 +746,10 @@ export default {
     // ── render ──────────────────────────────────────────────────────────
     const alpha = (ctx.lifecycle?.alpha ?? 1);
     if (alpha <= 0.001) {
-      if (state.goo) state.goo.g.clearRect(0, 0, state.goo.canvas.width, state.goo.canvas.height);
+      if (state.shade) {
+        const { gl } = state.shade;
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      }
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       return;
     }
@@ -668,30 +767,81 @@ export default {
     const kick = a.bands?.kick ?? 0, mid = a.bands?.mid ?? 0;
 
     if (params.renderMode === 'goo') {
-      const goo = ensureGooLayer(state, params);
+      const sh = ensureShadeLayer(state);
       const sprites = ensureSprites(state, params);
-      const g = goo.g;
-      g.clearRect(0, 0, goo.canvas.width, goo.canvas.height);
+      const gl = sh.gl;
+      const g = sh.g;
+      const tPass = performance.now();
+
+      // 1) accumulate density + premult colour at half res, with simmer:
+      //    each sprite radius wobbles ±6% on a slow noise field
+      g.clearRect(0, 0, sh.accum.width, sh.accum.height);
       g.globalCompositeOperation = 'lighter';
-      // audio drives brightness only (hue fixed by the palette params)
-      const aBody = (0.70 + 0.30 * kick) * alpha;
-      const aLimb = (0.70 + 0.30 * mid) * alpha;
+      // low per-sprite alpha ON PURPOSE: overlaps must not saturate density
+      // to 1.0 inside the body, or the shader's colour ramp has no gradient
+      // left to shade (first attempt rendered a flat white interior)
+      const aBody = 0.30 + 0.10 * kick;
+      const aLimb = 0.30 + 0.10 * mid;
+      const simmer = Number(params.simmer) || 0;
       for (let i = 0; i < n; i++) {
         const lab = state.labels[i];
         const sp = lab === 'head' ? sprites.head : lab === 'body' ? sprites.body : sprites.limb;
-        const r = state.spriteR[i] * S;
+        const wob = 1 + 0.06 * simmer * (p.noise(i * 0.37, tSec * 0.22) * 2 - 1);
+        const r = state.spriteR[i] * S * wob * 0.5;   // half-res coords
         g.globalAlpha = (lab === 'body' || lab === 'head') ? aBody : aLimb;
-        g.drawImage(sp, X(i) - r, Y(i) - r, r * 2, r * 2);
+        g.drawImage(sp, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
       }
       g.globalAlpha = 1;
+
+      // 2) shaded threshold pass on the GL layer
+      let query = null;
+      if (sh.timerExt && !sh.query) {
+        query = gl.createQuery();
+        gl.beginQuery(sh.timerExt.TIME_ELAPSED_EXT, query);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, sh.tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sh.accum);
+      gl.useProgram(sh.prog);
+      gl.uniform1i(sh.u.uField, 0);
+      gl.uniform2f(sh.u.uTexel, 1 / sh.accum.width, 1 / sh.accum.height);
+      gl.uniform1f(sh.u.uD0, Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.42)));
+      gl.uniform1f(sh.u.uD1, Number(params.shadeD1) || 0.72);
+      gl.uniform1f(sh.u.uNz, Number(params.shadeNz) || 0.6);
+      const lx = Number.isFinite(+params.lightX) ? +params.lightX : -0.6;
+      const ly = Number.isFinite(+params.lightY) ? +params.lightY : -0.75;
+      const lm = Math.hypot(lx, ly, 0.5) || 1;
+      gl.uniform3f(sh.u.uLightDir, lx / lm, -ly / lm, 0.5 / lm);   // canvas y-down → GL y-up
+      gl.uniform1f(sh.u.uLightInt, 0.65 + 0.55 * level);
+      gl.uniform1f(sh.u.uCore, kick);
+      const ah = ((Number(params.hueAccent) || 315) % 360) * Math.PI / 180;
+      gl.uniform3f(sh.u.uAccent,
+        0.5 + 0.5 * Math.cos(ah), 0.5 + 0.5 * Math.cos(ah - 2.094), 0.5 + 0.5 * Math.cos(ah + 2.094));
+      gl.uniform1f(sh.u.uAlpha, alpha);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (query) { gl.endQuery(sh.timerExt.TIME_ELAPSED_EXT); sh.query = query; }
+      // harvest a previous frame's timer query (async by design)
+      if (sh.query && !query) {
+        if (gl.getQueryParameter(sh.query, gl.QUERY_RESULT_AVAILABLE)) {
+          sh.gpuMs = gl.getQueryParameter(sh.query, gl.QUERY_RESULT) / 1e6;
+          gl.deleteQuery(sh.query); sh.query = null;
+        }
+      }
+      sh.passMs = sh.passMs * 0.9 + (performance.now() - tPass) * 0.1;
+
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       window.__creaturePerf = {
         ms: state.perfMs, nodes: n, edges: restLen.length,
         state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
+        passMs: +sh.passMs.toFixed(2), gpuMs: +sh.gpuMs.toFixed(2),
       };
       return;
     }
-    if (state.goo) state.goo.g.clearRect(0, 0, state.goo.canvas.width, state.goo.canvas.height);
+    if (state.shade) {
+      const { gl } = state.shade;
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    }
 
     // wire diagnostic
     p.push();
@@ -741,11 +891,12 @@ export default {
   },
 
   teardown(ctx) {
-    const goo = ctx.state?.goo;
-    if (goo) {
-      goo.canvas.remove();
-      goo.svg.remove();
-      ctx.state.goo = null;
+    // the shade layer lives in the page DOM — remove it on unload/hot-reload
+    const sh = ctx.state?.shade;
+    if (sh) {
+      sh.gl.getExtension('WEBGL_lose_context')?.loseContext();
+      sh.canvas.remove();
+      ctx.state.shade = null;
     }
   },
 };
