@@ -36,7 +36,7 @@ const seek = Number(flags.seek ?? 120);
 const bgOff = flags.bg === "off";               // primary captures: Butterchurn ON
 const verify = !!flags.verify;
 const seconds = Number(flags.seconds ?? (verify ? 5 : 30));
-const shapes = flags.shape && flags.shape !== "both" ? [String(flags.shape)] : ["quadruped", "jelly"];
+const shapes = flags.shape && flags.shape !== "both" ? [String(flags.shape)] : ["biped-1", "biped-2"];
 
 const post = (p, body) => fetch(`http://localhost:3000${p}`, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),

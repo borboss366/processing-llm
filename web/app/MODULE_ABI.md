@@ -89,6 +89,51 @@ All values smoothed (~1 s EMA) and normalised 0..1 unless noted:
 continuous gait phase driving a skeleton, confidence-gated with free-run
 fallback) and `loaded-modules/stick-dancer.js` (minimal bounce).
 
+## Creature shape files
+
+The creature's authoring interface (and the format a future LLM shape
+designer will emit): a pair in `web/app/shapes/` —
+
+- **`<name>.png`** — 128×128 or 256×256 silhouette, white = inside
+  (opaque + white channel; anything else is outside). Tissue is
+  rejection-sampled against it.
+- **`<name>.json`** — the sidecar:
+
+```json
+{
+  "name": "biped-1",
+  "archetype": "biped",              // gait table: biped | trot | pulse
+  "palette": { "hueBody": 190, "hueLimbs": 150, "hueAccent": 315 },
+  "pinRadius": 0.07,                 // joint pin capture radius
+  "ground": 0.905,                   // ground line, image fraction
+  "eyes": [ { "x": -0.035, "y": -0.01, "r": 0.013 } ],   // head-relative
+  "joints": [
+    { "name": "pelvis", "x": 0.50, "y": 0.53, "parent": null, "role": "root" },
+    { "name": "kneeL",  "x": 0.435,"y": 0.70, "parent": "pelvis", "role": "knee", "limb": 0 },
+    { "name": "footL",  "x": 0.415,"y": 0.875,"parent": "kneeL", "role": "limb",
+      "limb": 0, "paw": true, "ground": true, "phase": 0 }
+  ],
+  "parts": [
+    { "label": "head",  "x": 0.50, "y": 0.15, "r": 0.13 },
+    { "label": "limb0", "x": 0.43, "y": 0.75, "r": 0.155 }
+  ]
+}
+```
+
+All coordinates are image fractions (0..1, y down). Rules:
+
+- `joints`: parents by name, and a parent must be listed before its
+  children. `role` ∈ root | rootMid | head | knee | limb. `limb` ties a
+  knee to its tip. `paw: true` pins a 9-node rigid cluster; `ground: true`
+  marks a walking foot (stance/swing cycle); `phase` is the gait offset
+  (0 / 0.5 for left/right alternation — also used for arm counter-swing).
+- `parts`: labelled circles. `limb*` regions are sampled as RING CHAINS
+  along the region's principal axis (continuous ropes); everything else is
+  grid-sampled as body/head flesh. Regions should cover their limb snugly —
+  body sampling excludes them.
+- `palette` sets the part hues; the module's `hue*` params override it
+  when changed from their defaults.
+
 **Recommended fallback** — while `beatConfidence < 0.4` the PLL is acquiring
 and `beatPhase` may jump; don't freeze, free-run your own phase at
 `lastConfidentBpm`:

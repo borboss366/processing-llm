@@ -90,7 +90,7 @@ const CHECKS = [
     name: "creature-capture",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
-    cmd: ["node", "tools/capture-creature.mjs", "--verify", "--shape", "quadruped", "--seconds", "5"],
+    cmd: ["node", "tools/capture-creature.mjs", "--verify", "--shape", "biped-1", "--seconds", "5"],
     desc: "creature runs headless; ≤6 ms/frame, stance slide ≤5 px",
   },
 ];

@@ -18,6 +18,12 @@ min-hold control). Full guide in `README.md`.
   All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
   VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
   headless browsers skew BPM).
+- **Creature shapes are drawn silhouettes (brief 8 Task 2)**: PNG + JSON
+  sidecar in `web/app/shapes/` is the authoring interface (documented in
+  MODULE_ABI.md); limbs ring-fitted along PCA axes; capsule shapes deleted.
+  Shipped: the user's two bipeds with a new `biped` gait (anti-phase feet,
+  counter-swinging arms). 0.88 ms/frame at 585 nodes, slide 0.02 px
+  (`reports/2026-08-23-creature-6-drawn-shapes.md`).
 - **Creature shaded render (brief 8 Task 1)**: the goo threshold is now a
   WebGL2 shading pass — density-gradient normals, Lambert key light, colour
   ramp, rim, specular, ±6% surface simmer; reads as a lit translucent body.
@@ -71,5 +77,4 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-Brief 8 Task 2 — drawn silhouettes (PNG + JSON sidecar as the creature's
-authoring interface).
+Brief 8 Task 3 — face (eyes/blink/saccade) and contact shadow.
