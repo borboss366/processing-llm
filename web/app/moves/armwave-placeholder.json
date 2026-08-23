@@ -1,0 +1,78 @@
+{
+  "name": "armwave-placeholder",
+  "beatsPerLoop": 8,
+  "overlay": 0.25,
+  "keys": [
+    {
+      "phase": 0,
+      "joints": {
+        "elbowL": { "rot": 0.85 }, "handL": { "rot": 0.2 },
+        "elbowR": { "rot": -0.55 }, "handR": { "rot": -0.1 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.125,
+      "joints": {
+        "elbowL": { "rot": 0.55 }, "handL": { "rot": 0.55 },
+        "elbowR": { "rot": -0.55 }, "chest": { "rot": 0.06 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.25,
+      "joints": {
+        "handL": { "rot": 0.15 }, "chest": { "rot": 0.12 },
+        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.75 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.375,
+      "joints": {
+        "chest": { "rot": 0.06 },
+        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.3 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.5,
+      "joints": {
+        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.85 }, "handR": { "rot": -0.6 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.625,
+      "joints": {
+        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.3 },
+        "chest": { "rot": 0.06 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.75,
+      "joints": {
+        "chest": { "rot": 0.12 }, "elbowL": { "rot": 0.7 },
+        "elbowR": { "rot": -0.55 }, "handR": { "rot": -0.1 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.875,
+      "joints": {
+        "elbowL": { "rot": 0.85 }, "handL": { "rot": 0.4 },
+        "elbowR": { "rot": -0.55 }
+      },
+      "contacts": ["footL", "footR"],
+      "ease": "smooth"
+    }
+  ]
+}

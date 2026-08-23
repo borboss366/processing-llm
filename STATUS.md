@@ -11,6 +11,20 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Move tables (brief 9 Tasks 1–2)**: dance moves are data —
+  `web/app/moves/<name>.json` ({name, beatsPerLoop, overlay, keys:
+  [{phase, joints:{name:{dx,dy,rot}}, contacts, ease}]}, documented in
+  MODULE_ABI.md). Playback interpolates piecewise over the move-local
+  clock and layers UNDER the procedural bounce/lean/Perlin/simmer (scaled
+  by the move's `overlay`); rot keys join the FK chain so bone lengths
+  hold; `contacts` plants ground tips (stance lock). Every table offset
+  and the contact-lock weight ride critically damped springs (~100 ms):
+  raw key attacks and contact toggles stepped joints 1–2 u/s in one frame
+  (7 spikes in the first tstep run) — springs build velocity from zero,
+  0 spikes after. FSM groove cycles the three tables two bars each;
+  `move` param forces one. Shipped: `groove` (ported from code),
+  `tstep-placeholder`, `armwave-placeholder` — placeholders use
+  tutorial-standard timing, USER'S QUARTER-SPEED NOTES STILL PENDING.
 - **PLL acquisition snaps tamed + entry gating (brief 9 Task 0b)**: the
   move clock is now an exported pure function (`stepMoveClock`) verified
   frame-by-frame by `tools/move-clock-test.mjs` (fast tier): acquisition
