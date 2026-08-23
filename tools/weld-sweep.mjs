@@ -67,6 +67,7 @@ try {
   await new Promise((r) => setTimeout(r, 1500));
   await post("/osc", { address: "/creature/shape", value: shape });
   await post("/osc", { address: "/creature/behavior", value: "idle" });
+  await post("/osc", { address: "/creature/entryConf", value: 0 });   // diagnostic run: no confidence gate
   await post("/browser-modules/trigger", { id: "creature" });
   await new Promise((r) => setTimeout(r, 4000));
 

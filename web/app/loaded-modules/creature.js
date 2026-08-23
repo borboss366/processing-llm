@@ -1089,15 +1089,19 @@ export default {
     // joint-target speed metric (brief 8.2 Task 3): max per-frame target
     // displacement across joints, vs a rolling median; spikes outside a
     // declared transition window (or hop) are the "hiccup" signal
-    {
-      // velocity over the UNCLAMPED frame delta: a stalled frame advances
-      // targets by the real elapsed phase, and dividing by the 80 ms-clamped
-      // dt inflates v into a false spike
-      const dtReal = Math.max(1e-3, p.deltaTime / 1000);
-      let vmax = 0;
+    if ((state.spkLast ??= t0) <= t0 - 40) {
+      // velocity over a fixed ≥40 ms wall-clock window, NOT per frame: frame
+      // durations at capture fps mix 17 ms bursts into 50-67 ms gaps, and a
+      // burst frame divides normal jitter by a tiny dt into a phantom spike
+      // (measured: walk handR 0.97 u/s at dtReal 0.017 among 20 fps frames).
+      // A real teleport still lands inside one window as a huge displacement.
+      const dtReal = Math.max(1e-3, (t0 - state.spkLast) / 1000);
+      state.spkLast = t0;
+      let vmax = 0, vJoint = '';
       for (const J of joints) {
         if (J.pax !== undefined) {
-          vmax = Math.max(vmax, Math.hypot(J.ax - J.pax, J.ay - J.pay) / dtReal);
+          const v = Math.hypot(J.ax - J.pax, J.ay - J.pay) / dtReal;
+          if (v > vmax) { vmax = v; vJoint = J.name; }
         }
         J.pax = J.ax; J.pay = J.ay;
       }
@@ -1111,12 +1115,19 @@ export default {
       // plain 3×median rule flagged 60+ legitimate loud-groove frames.
       const vPrev = jm.vPrev ?? 0;
       jm.vPrev = vmax;
-      if (median > 0.05 && vmax > 3 * median && vmax > 2.5 * vPrev + 0.05) {
+      // acceleration bound makes the growth test frame-rate independent: at
+      // capture fps (~15-21) a half-beat arm pump has only 3 samples, so the
+      // 2.5×-prev ratio fires on smooth motion (measured: handL 0.81 u/s from
+      // 0.3, a 7.6 u/s² build — dance-speed). A true hiccup is a step:
+      // ≥25 u/s² even at 15 fps, >100 at display rates.
+      const accel = (vmax - vPrev) / dtReal;
+      if (median > 0.05 && vmax > 3 * median && vmax > 2.5 * vPrev + 0.05 && accel > 20) {
         jm.spikesAll++;
         if (!inWindow) jm.spikesFlagged++;
         (jm.log ??= []).push({
           state: st, v: +vmax.toFixed(2), med: +median.toFixed(2),
-          inWindow,
+          joint: vJoint, inWindow,
+          dtReal: +dtReal.toFixed(3), applied: +state.moveApplied.toFixed(4),
           dPhase: +((phase - (state.lastPhaseForSpike ?? phase))).toFixed(4),
           barWrap: wrapped,
         });

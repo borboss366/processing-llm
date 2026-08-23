@@ -11,6 +11,17 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Brief 9 gate captures done (Task 3)**: 30 s per biped, FSM cycling
+  walk/groove/idle/hop with groove rotating all three move tables two
+  bars each, palette rule on, over the clean Butterchurn preset —
+  0 spikes, components 1, slide ≤0.18 px, ~2 ms/frame, weld sweeps
+  26.2%/36.3% flash removed (`reports/creature4-biped-{1,2}.png/.webm`,
+  `reports/2026-08-24-creature-11-moves.md`). Two spike-metric
+  refinements shipped en route (both measured false positives of
+  sampling, not motion): an acceleration bound (>20 u/s²) so 3-frame
+  dance swings at capture fps can't trip the growth test, and velocity
+  measured over a fixed ≥40 ms window so a lone 17 ms frame can't divide
+  jitter into a phantom spike. Awaiting real-GPU judgment.
 - **Move tables (brief 9 Tasks 1–2)**: dance moves are data —
   `web/app/moves/<name>.json` ({name, beatsPerLoop, overlay, keys:
   [{phase, joints:{name:{dx,dy,rot}}, contacts, ease}]}, documented in
@@ -147,5 +158,8 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-User's real-GPU judgment on the Brief 8 gate captures (lit translucent
-body with anatomy vs flat sticker).
+1. User's real-GPU judgment on the Brief 9 gate captures (three dance
+   moves cycling, welded-arm crossings, entry gating).
+2. User's quarter-speed timing notes for `tstep` and `armwave` — the
+   shipped tables are tutorial-standard placeholders
+   (`*-placeholder.json`) until then.
