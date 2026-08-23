@@ -14,15 +14,15 @@
     { "name": "kneeR",    "x": 0.565, "y": 0.70, "parent": "pelvis", "role": "knee", "limb": 1 },
     { "name": "footR",    "x": 0.575, "y": 0.875, "parent": "kneeR", "role": "limb", "limb": 1, "paw": true, "ground": true, "phase": 0.5 },
     { "name": "elbowL",   "x": 0.32, "y": 0.44, "parent": "chest",   "role": "knee", "limb": 2 },
-    { "name": "handL",    "x": 0.255, "y": 0.585, "parent": "elbowL", "role": "limb", "limb": 2, "phase": 0.5 },
+    { "name": "handL",    "x": 0.245, "y": 0.615, "parent": "elbowL", "role": "limb", "limb": 2, "paw": true, "phase": 0.5 },
     { "name": "elbowR",   "x": 0.68, "y": 0.44, "parent": "chest",   "role": "knee", "limb": 3 },
-    { "name": "handR",    "x": 0.745, "y": 0.585, "parent": "elbowR", "role": "limb", "limb": 3, "phase": 0 }
+    { "name": "handR",    "x": 0.755, "y": 0.615, "parent": "elbowR", "role": "limb", "limb": 3, "paw": true, "phase": 0 }
   ],
   "parts": [
     { "label": "head",  "x": 0.50, "y": 0.15, "r": 0.13 },
     { "label": "limb0", "x": 0.43, "y": 0.75, "r": 0.155 },
     { "label": "limb1", "x": 0.57, "y": 0.75, "r": 0.155 },
-    { "label": "limb2", "x": 0.29, "y": 0.50, "r": 0.145 },
-    { "label": "limb3", "x": 0.71, "y": 0.50, "r": 0.145 }
+    { "label": "limb2", "x": 0.27, "y": 0.55, "r": 0.145 },
+    { "label": "limb3", "x": 0.73, "y": 0.55, "r": 0.145 }
   ]
 }

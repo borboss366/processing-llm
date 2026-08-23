@@ -197,6 +197,53 @@ function buildFromShape(state, params, shape) {
     }
   }
 
+  // Orphan removal: tissue whose spring graph is disconnected from the main
+  // body can NEVER stay attached (no springs reach it) — it renders as a
+  // free-floating blob. Root cause of the original severed-mitt symptom:
+  // drawn mitts poking outside the sidecar limb regions got body-sampled
+  // into isolated k-NN islands. Keep only the largest component.
+  {
+    const adj0 = Array.from({ length: xs.length }, () => []);
+    for (const key of edgeSet) {
+      const i = (key / 4096) | 0, j = key % 4096;
+      adj0[i].push(j); adj0[j].push(i);
+    }
+    const comp = new Int32Array(xs.length).fill(-1);
+    let nc = 0;
+    for (let s0 = 0; s0 < xs.length; s0++) {
+      if (comp[s0] !== -1) continue;
+      const stack = [s0]; comp[s0] = nc;
+      while (stack.length) {
+        const q = stack.pop();
+        for (const nb of adj0[q]) if (comp[nb] === -1) { comp[nb] = nc; stack.push(nb); }
+      }
+      nc++;
+    }
+    if (nc > 1) {
+      const sizes = new Array(nc).fill(0);
+      for (let i = 0; i < xs.length; i++) sizes[comp[i]]++;
+      const keep = sizes.indexOf(Math.max(...sizes));
+      const remap = new Int32Array(xs.length).fill(-1);
+      const nxs = [], nys = [], nlabels = [];
+      for (let i = 0; i < xs.length; i++) {
+        if (comp[i] !== keep) continue;
+        remap[i] = nxs.length;
+        nxs.push(xs[i]); nys.push(ys[i]); nlabels.push(labels[i]);
+      }
+      const newEdges = new Set();
+      for (const key of edgeSet) {
+        const i = remap[(key / 4096) | 0], j = remap[key % 4096];
+        if (i !== -1 && j !== -1) newEdges.add(i < j ? i * 4096 + j : j * 4096 + i);
+      }
+      console.warn(`[creature] dropped ${xs.length - nxs.length} orphan tissue nodes in ${nc - 1} disconnected island(s) — check the shape's part regions cover all extremities`);
+      xs.length = 0; xs.push(...nxs);
+      ys.length = 0; ys.push(...nys);
+      labels.length = 0; labels.push(...nlabels);
+      edgeSet.clear();
+      for (const k2 of newEdges) edgeSet.add(k2);
+    }
+  }
+
   const n = xs.length;
   const pos = new Float32Array(n * 2), prev = new Float32Array(n * 2), rest = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) {
@@ -251,9 +298,20 @@ function buildFromShape(state, params, shape) {
   const pinR = Number(json.pinRadius) || 0.07;
   const pinned = new Set();
   for (const J of joints) {
-    const want = J.paw ? 9 : 4;
+    // paws pin EVERY node of their part within the paw radius — a count cap
+    // left the fist's distal rings free to whip off on springs and sever
+    // (brief 8.1; measured blobs 18-57 px beyond the joint)
+    const want = J.paw ? Infinity : 4;
+    // Pin audit (brief 8.1 step 3): a joint grabs only nodes of ITS part —
+    // a wrist pinning forearm ring nodes dragged the whole chain and
+    // stretched it past the density threshold. limb joints → their limb
+    // label; head → head; roots → body.
+    const wantLab = J.limb != null ? `limb${J.limb}` : J.role === 'head' ? 'head' : 'body';
     const byDist = [];
-    for (let i = 0; i < n; i++) byDist.push([Math.hypot(xs[i] - J.x, ys[i] - J.y), i]);
+    for (let i = 0; i < n; i++) {
+      if (labels[i] !== wantLab) continue;
+      byDist.push([Math.hypot(xs[i] - J.x, ys[i] - J.y), i]);
+    }
     byDist.sort((a, b) => a[0] - b[0]);
     J.pins = [];
     for (let m = 0; m < byDist.length && J.pins.length < want; m++) {
@@ -286,6 +344,13 @@ function buildFromShape(state, params, shape) {
     (triByPart[labels[tris[t]]] ??= []).push(tris[t], tris[t + 1], tris[t + 2]);
   }
 
+  // per-part sprite-radius floors — also the bone-splat radius per part
+  // limb floor 2.1×: swings stretch ring spacing ~2×, and sprites must still
+  // overlap at max excursion or the rope thins below the goo threshold
+  // between nodes (brief 8.1 step 4 — measured 0.15-0.22 vs 0.18 when
+  // stretched, borderline exactly where mitts severed)
+  const partFloor = { body: 1.9 * medLen, head: 1.9 * medLen };
+  for (const lab of new Set(labels)) if (/^limb/.test(lab)) partFloor[lab] = 2.1 * medLen;
   const spriteR = new Float32Array(n);
   {
     const sum = new Float32Array(n), cnt = new Float32Array(n);
@@ -294,18 +359,43 @@ function buildFromShape(state, params, shape) {
       sum[edges[e2 * 2 + 1]] += restLen[e2]; cnt[edges[e2 * 2 + 1]]++;
     }
     for (let i = 0; i < n; i++) {
-      let r = 1.4 * (cnt[i] ? sum[i] / cnt[i] : medLen);
-      if (labels[i] === 'body' || labels[i] === 'head') r = Math.max(r, 1.9 * medLen);
-      spriteR[i] = r;
+      const local = 1.4 * (cnt[i] ? sum[i] / cnt[i] : medLen);
+      spriteR[i] = Math.max(local, partFloor[labels[i]] ?? 0);
     }
   }
 
   const headNodes = [];
   for (let i = 0; i < n; i++) if (labels[i] === 'head') headNodes.push(i);
 
+  // bones (parent→joint segments) for splats + length preservation checks.
+  // groundChain bones (hip→knee→foot of walking legs) stretch BY DESIGN in
+  // stance/swing; they are measured separately from rotation-driven bones.
+  const partOf = (J) => (J.limb != null ? `limb${J.limb}` : J.role === 'head' ? 'head' : 'body');
+  const groundLimbs = new Set(joints.filter((J) => J.ground).map((J) => J.limb));
+  const bones = [];
+  for (let ji = 0; ji < joints.length; ji++) {
+    const J = joints[ji];
+    if (J.parent < 0) continue;
+    const P = joints[J.parent];
+    bones.push({
+      j: ji, p: J.parent,
+      label: partOf(J),
+      restLen: Math.hypot(J.x - P.x, J.y - P.y),
+      groundChain: J.limb != null && groundLimbs.has(J.limb),
+      tip: J.role === 'limb',
+    });
+  }
+
+  // per-limb node lists for the density probe (step 4 measurement)
+  const limbNodeIdx = {};
+  for (let i = 0; i < n; i++) {
+    if (/^limb/.test(labels[i])) (limbNodeIdx[labels[i]] ??= []).push(i);
+  }
+
   Object.assign(state, {
     n, pos, prev, rest, edges, restLen, boundary, joints, pinned,
     nodeR, drawNodes, labels, triByPart, medLen, spriteR, headNodes,
+    bones, limbNodeIdx, partFloor, limbDensity: {}, densityFrame: 0,
     tips: joints.filter((J) => J.role === 'limb'),
     hasFeet: joints.some((J) => J.ground),
     gaitName: json.archetype ?? 'biped',
@@ -517,6 +607,9 @@ export default {
     shadeNz: 0.6,              // pseudo-normal flatness
     lightX: -0.6, lightY: -0.75,
     simmer: 1.0,
+    boneSplats: 1,             // brief 8.1: skeleton density guarantee
+    densityProbe: 0,           // verification only: ANY canvas readback
+                               // demotes the accum to CPU for the session
   },
 
   setup(ctx) {
@@ -721,6 +814,19 @@ export default {
       }
     }
 
+    // bone-length preservation (brief 8.1 step 2): rotation-driven bones
+    // must stay within 3% of rest length; ground-chain bones stretch by
+    // design (stance/swing) and are tracked separately.
+    let boneDevRot = 0, boneDevGround = 0;
+    for (const B of state.bones) {
+      const J = joints[B.j], P = joints[B.p];
+      const dev = Math.abs(Math.hypot(J.ax - P.ax, J.ay - P.ay) - B.restLen) / B.restLen;
+      if (B.groundChain) boneDevGround = Math.max(boneDevGround, dev);
+      else boneDevRot = Math.max(boneDevRot, dev);
+    }
+    state.boneDevRot = Math.max(state.boneDevRot ?? 0, boneDevRot);
+    state.boneDevGround = Math.max(state.boneDevGround ?? 0, boneDevGround);
+
     // ── physics ─────────────────────────────────────────────────────────
     const damping = 0.9, centering = 0.004;
     const groundY = state.bbox.maxY + 0.004;
@@ -855,7 +961,7 @@ export default {
       // low per-sprite alpha ON PURPOSE: density must not saturate inside
       // the body or the shader's colour ramp has no gradient left to shade
       const aBody = 0.30 + 0.10 * kick;
-      const aLimb = 0.30 + 0.10 * mid;
+      const aLimb = 0.42 + 0.10 * mid;   // limbs run hotter: stretch headroom
       const simmer = Number(params.simmer) || 0;
       for (let i = 0; i < n; i++) {
         const lab = state.labels[i];
@@ -865,7 +971,96 @@ export default {
         g.globalAlpha = (lab === 'body' || lab === 'head') ? aBody : aLimb;
         g.drawImage(sp, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
       }
+      // bone splats (brief 8.1): sprites lerped along every bone so a limb
+      // can NEVER sever, whatever the spring state. Splat COUNT scales with
+      // bone length / radius (deviation from the brief's fixed N=5: at limb
+      // radius, 5 splats on a long arm bone leave sub-threshold gaps and
+      // the chain itself is dotted — measured components=3 with N=5).
+      if (Number(params.boneSplats) !== 0) {
+        let splatCount = 0;
+        for (const B of state.bones) {
+          const J = joints[B.j], P = joints[B.p];
+          const sp = B.label === 'head' ? sprites.head : B.label === 'body' ? sprites.body : sprites.limb;
+          // 2× alpha + 1.2× radius: a single-chain splat peaks ~0.25-0.30
+          // after gradient/downsample losses — measured dipping below the
+          // 0.18 threshold at the wrist. The guarantee must not be marginal.
+          const rU = (state.partFloor[B.label] ?? state.medLen * 1.4) * 1.2;
+          const r = rU * S * 0.5;
+          const len = Math.hypot(J.ax - P.ax, J.ay - P.ay);
+          const N = Math.max(5, Math.ceil(len / (rU * 0.5)));
+          g.globalAlpha = Math.min(1, ((B.label === 'body' || B.label === 'head') ? aBody : aLimb) * 2);
+          for (let k = 0; k <= N; k++) {
+            const t = k / N;
+            const bx = mapX(P.ax + (J.ax - P.ax) * t) * 0.5;
+            const by = mapY(P.ay + (J.ay - P.ay) * t) * 0.5;
+            g.drawImage(sp, bx - r, by - r, r * 2, r * 2);
+            splatCount++;
+          }
+          // tip bones also bridge joint → live centroid of the pinned
+          // cluster: pin offsets ROTATE with the joint, so during a swing
+          // the fist orbits the wrist SIDEWAYS off the bone line — a
+          // straight-line overshoot points the wrong way (measured: the
+          // severed mitt sat beside, not beyond, the chain end)
+          if (B.tip && J.pins.length) {
+            let cx = 0, cy = 0;
+            for (const pin of J.pins) { cx += pos[pin.i * 2]; cy += pos[pin.i * 2 + 1]; }
+            cx /= J.pins.length; cy /= J.pins.length;
+            const len2 = Math.hypot(cx - J.ax, cy - J.ay);
+            const N2 = Math.max(3, Math.ceil(len2 / (rU * 0.5)));
+            for (let k = 0; k <= N2; k++) {
+              const t = k / N2;
+              const bx = mapX(J.ax + (cx - J.ax) * t) * 0.5;
+              const by = mapY(J.ay + (cy - J.ay) * t) * 0.5;
+              g.drawImage(sp, bx - r, by - r, r * 2, r * 2);
+              splatCount++;
+            }
+          }
+        }
+        window.__creatureSplats = splatCount;
+      }
       g.globalAlpha = 1;
+      window.__creatureAccum = sh.accum;   // harness seam: component counting
+      // on-demand node dump for sever forensics (computed only when called)
+      window.__creatureDump = () => {
+        const out = [];
+        for (let i = 0; i < n; i++) {
+          out.push({ i, x: Math.round(X(i)), y: Math.round(Y(i)),
+                     lab: state.labels[i], pin: state.pinned.has(i) ? 1 : 0 });
+        }
+        return out;
+      };
+      window.__creatureJoints = joints.map((J) => ({
+        name: J.name, ax: +J.ax.toFixed(3), ay: +J.ay.toFixed(3),
+        sx: Math.round(mapX(J.ax)), sy: Math.round(mapY(J.ay)),
+        theta: +(J.theta ?? 0).toFixed(3), pins: J.pins.length,
+      }));
+
+      // density probe (brief 8.1 step 4): every 30th frame, min accumulated
+      // density along each limb's tissue nodes. NEVER getImageData the accum
+      // itself — that permanently flips it into readback mode (measured:
+      // module 1 ms → 9 ms). Blit to a CPU scratch canvas and read that.
+      if (Number(params.densityProbe) !== 0 &&
+          (state.densityFrame = (state.densityFrame + 1) % 30) === 0) {
+        if (!sh.probe) {
+          sh.probe = document.createElement('canvas');
+          sh.probeG = sh.probe.getContext('2d', { willReadFrequently: true });
+        }
+        if (sh.probe.width !== sh.accum.width || sh.probe.height !== sh.accum.height) {
+          sh.probe.width = sh.accum.width; sh.probe.height = sh.accum.height;
+        }
+        sh.probeG.clearRect(0, 0, sh.probe.width, sh.probe.height);
+        sh.probeG.drawImage(sh.accum, 0, 0);
+        const img = sh.probeG.getImageData(0, 0, sh.accum.width, sh.accum.height).data;
+        for (const [lab, idxs] of Object.entries(state.limbNodeIdx)) {
+          let dMin = 1;
+          for (const i of idxs) {
+            const axp = Math.max(0, Math.min(sh.accum.width - 1, (X(i) * 0.5) | 0));
+            const ayp = Math.max(0, Math.min(sh.accum.height - 1, (Y(i) * 0.5) | 0));
+            dMin = Math.min(dMin, img[(ayp * sh.accum.width + axp) * 4 + 3] / 255);
+          }
+          state.limbDensity[lab] = Math.min(state.limbDensity[lab] ?? 1, +dMin.toFixed(3));
+        }
+      }
 
       let query = null;
       if (sh.timerExt && !sh.query) {
@@ -909,6 +1104,10 @@ export default {
         ms: state.perfMs, nodes: n, edges: restLen.length,
         state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
         passMs: +sh.passMs.toFixed(2), gpuMs: +sh.gpuMs.toFixed(2),
+        d0: Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.18)),
+        boneDevRot: +(state.boneDevRot ?? 0).toFixed(4),
+        boneDevGround: +(state.boneDevGround ?? 0).toFixed(4),
+        limbDensity: state.limbDensity,
       };
       return;
     }
@@ -949,6 +1148,20 @@ export default {
       p.vertex(X(edges[e2 * 2 + 1]), Y(edges[e2 * 2 + 1]));
     }
     p.endShape();
+    // bone splats as outlines in the diagnostic
+    if (Number(params.boneSplats) !== 0) {
+      p.noFill();
+      p.stroke(60, 80, 100, 0.7 * alpha);
+      p.strokeWeight(1.2);
+      for (const B of state.bones) {
+        const J = joints[B.j], P = joints[B.p];
+        const r = (state.partFloor[B.label] ?? state.medLen * 1.4) * S;
+        for (let k = 1; k <= 5; k++) {
+          const t = k / 6;
+          p.circle(mapX(P.ax + (J.ax - P.ax) * t), mapY(P.ay + (J.ay - P.ay) * t), r * 2);
+        }
+      }
+    }
     p.pop();
 
     drawEyes();

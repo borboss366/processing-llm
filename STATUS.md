@@ -18,6 +18,14 @@ min-hold control). Full guide in `README.md`.
   All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
   VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
   headless browsers skew BPM).
+- **Limb severing fixed (brief 8.1)**: components = 1 across 30 s captures
+  with the full move set, both bipeds. Root cause was orphan spring-graph
+  islands (mitt tissue outside the sidecar limb regions, body-sampled into
+  isolated k-NN clumps); build now drops disconnected components with a
+  warning, regions cover the fists, bone splats guarantee skeleton density,
+  paws pin their whole part region, limb floors sized for max-excursion
+  stretch. Clean-path ~1.0 ms/frame; density probes and component counts
+  are permanent harness checks (`reports/2026-08-23-creature-9-severing.md`).
 - **Brief 8 gate captures done (Task 4)**: 30 s per biped over Butterchurn
   across the breakdown — lit translucent bodies with faces, walking/
   grooving/idling; ~1.0 ms/frame, slide ≤0.15 px

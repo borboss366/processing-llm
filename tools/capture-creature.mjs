@@ -49,14 +49,20 @@ await new Promise((res, rej) => { ws.on("open", res); ws.on("error", rej); });
 
 const failures = [];
 try {
-  const page = await openRenderWithFile(browser, MIX, { seekSec: seek });
-  if (bgOff) ws.send(JSON.stringify({ type: "set-bg", on: false }));
-
   await post("/browser-modules/load", { id: "creature" });
-  await new Promise((r) => setTimeout(r, 1500));   // module import + setup
 
   for (const shape of shapes) {
+    // fresh page per shape: probe-phase readbacks demote the accum canvas
+    // for the whole page session, which polluted the next shape's clean
+    // budget phase (measured: biped-2 read 6.3 ms after biped-1's probes).
+    // The server replays module-load on WS connect, so the module re-arms.
+    const page = await openRenderWithFile(browser, MIX, { seekSec: seek });
+    if (bgOff) ws.send(JSON.stringify({ type: "set-bg", on: false }));
+    await new Promise((r) => setTimeout(r, 1500));   // module import + setup
     await post("/osc", { address: "/creature/shape", value: shape });
+    if (flags.bonesplats !== undefined) {
+      await post("/osc", { address: "/creature/boneSplats", value: Number(flags.bonesplats) });
+    }
     await post("/browser-modules/trigger", { id: "creature" });
     // enter + beat settle. The BPM estimate swings while its buffers fill in
     // the first ~8 s after audio start; walking during that transient slides
@@ -72,6 +78,11 @@ try {
       });
       return { fps: frames / 5, creature: window.__creaturePerf ?? null };
     });
+    // phase 1 (above) ran with ZERO readbacks — budget is judged on it.
+    // phase 2 (timeline below) turns on probes + component reads, which
+    // demote the accum canvas to CPU for the session; its ms is diagnostic.
+    const phase1Ms = perf.creature?.ms ?? Infinity;
+    await post("/osc", { address: "/creature/densityProbe", value: 1 });
     console.log(`[capture] ${shape}: ${perf.fps.toFixed(1)} fps (headless swiftshader), ` +
       `module ${perf.creature ? `${perf.creature.ms.toFixed(2)} ms/frame · ${perf.creature.nodes} nodes · ${perf.creature.edges} edges` : "n/a"}` +
       (perf.creature?.passMs !== undefined
@@ -83,11 +94,51 @@ try {
       return page.screencast({ path: path.join(ROOT, `reports/creature4-${shape}.webm`) });
     })();
 
-    // behaviour state + foot slide timeline over the capture window
+    // behaviour state + foot slide + connected-components timeline.
+    // Components: threshold the density accum at d0, flood-fill count blobs
+    // ≥4 px — must be exactly 1 (the shadow is a separate layer). >1 means
+    // a limb severed (brief 8.1 acceptance).
     const timeline = [];
     for (let s = 0; s < seconds; s++) {
       await new Promise((r) => setTimeout(r, 1000));
-      const cp = await page.evaluate(() => window.__creaturePerf ?? null);
+      const cp = await page.evaluate(() => {
+        const perf = window.__creaturePerf ?? null;
+        const c = window.__creatureAccum;
+        if (!perf || !c) return perf;
+        // never getImageData the live accum (flips it to readback mode and
+        // costs ~6 ms/frame for the rest of the session) — copy first
+        if (!window.__accumScratch) {
+          window.__accumScratch = document.createElement("canvas");
+          window.__accumScratchG = window.__accumScratch.getContext("2d", { willReadFrequently: true });
+        }
+        const w = c.width, h = c.height;
+        if (window.__accumScratch.width !== w || window.__accumScratch.height !== h) {
+          window.__accumScratch.width = w; window.__accumScratch.height = h;
+        }
+        window.__accumScratchG.clearRect(0, 0, w, h);
+        window.__accumScratchG.drawImage(c, 0, 0);
+        const a = window.__accumScratchG.getImageData(0, 0, w, h).data;
+        const thr = (perf.d0 ?? 0.18) * 255;
+        const mask = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) mask[i] = a[i * 4 + 3] >= thr ? 1 : 0;
+        let comps = 0;
+        const stack = [];
+        for (let s2 = 0; s2 < w * h; s2++) {
+          if (mask[s2] !== 1) continue;
+          let area = 0;
+          stack.push(s2); mask[s2] = 2;
+          while (stack.length) {
+            const q = stack.pop(); area++;
+            const qx = q % w, qy = (q / w) | 0;
+            if (qx > 0 && mask[q - 1] === 1) { mask[q - 1] = 2; stack.push(q - 1); }
+            if (qx < w - 1 && mask[q + 1] === 1) { mask[q + 1] = 2; stack.push(q + 1); }
+            if (qy > 0 && mask[q - w] === 1) { mask[q - w] = 2; stack.push(q - w); }
+            if (qy < h - 1 && mask[q + w] === 1) { mask[q + w] = 2; stack.push(q + w); }
+          }
+          if (area >= 4) comps++;
+        }
+        return { ...perf, components: comps };
+      });
       if (cp) timeline.push(cp);
     }
     if (rec) await rec.stop();
@@ -95,11 +146,18 @@ try {
     const states = timeline.map((c) => c.state);
     const runs = states.filter((s, i) => i === 0 || s !== states[i - 1]);
     const maxSlide = timeline.length ? Math.max(...timeline.map((c) => c.slidePx ?? 0)) : 0;
-    const maxMs = timeline.length ? Math.max(...timeline.map((c) => c.ms ?? 0)) : Infinity;
-    console.log(`[capture] ${shape}: states ${runs.join(" → ") || "n/a"} · max stance slide ${maxSlide.toFixed(2)} px · max ${maxMs === Infinity ? "n/a" : maxMs.toFixed(2)} ms/frame`);
+    const maxMs = phase1Ms;   // pre-readback measurement (see phase note)
+    const maxComps = timeline.length ? Math.max(...timeline.map((c) => c.components ?? 1)) : 0;
+    const boneRot = timeline.length ? Math.max(...timeline.map((c) => c.boneDevRot ?? 0)) : 0;
+    const boneGnd = timeline.length ? Math.max(...timeline.map((c) => c.boneDevGround ?? 0)) : 0;
+    const dens = timeline.at(-1)?.limbDensity ?? {};
+    console.log(`[capture] ${shape}: states ${runs.join(" → ") || "n/a"} · max stance slide ${maxSlide.toFixed(2)} px · clean-path ${maxMs === Infinity ? "n/a" : maxMs.toFixed(2)} ms/frame`);
+    console.log(`[capture] ${shape}: components max ${maxComps} · bone dev rot ${(boneRot * 100).toFixed(1)}% / ground ${(boneGnd * 100).toFixed(1)}% · limb min density ${JSON.stringify(dens)}`);
 
     if (maxMs > MS_BUDGET) failures.push(`${shape}:ms=${maxMs.toFixed(1)}`);
     if (states.includes("walk") && maxSlide > SLIDE_BUDGET) failures.push(`${shape}:slide=${maxSlide.toFixed(1)}`);
+    if (maxComps > 1) failures.push(`${shape}:components=${maxComps}`);
+    if (boneRot >= 0.03) failures.push(`${shape}:boneDev=${(boneRot * 100).toFixed(1)}%`);
     if (!timeline.length) failures.push(`${shape}:no-perf-samples`);
 
     if (!verify) {
@@ -111,6 +169,7 @@ try {
       await new Promise((r) => setTimeout(r, 400));
       console.log(`[capture] ${shape}: wrote reports/creature4-${shape}.png/.webm + -diag.png`);
     }
+    await page.close();
   }
 } finally {
   ws.close();
