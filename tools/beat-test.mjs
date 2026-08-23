@@ -87,5 +87,13 @@ const scenarios = [
 ];
 
 let allOk = true;
-for (const sc of scenarios) allOk = runScenario(sc) && allOk;
+const failed = [];
+for (const sc of scenarios) {
+  const ok = runScenario(sc);
+  if (!ok) failed.push(`${sc.bpm}bpm@${sc.tickHz}hz`);
+  allOk = ok && allOk;
+}
+console.log(allOk
+  ? `VERIFY:PASS pll-synthetic scenarios=${scenarios.length}`
+  : `VERIFY:FAIL pll-synthetic reason=${failed.join(",")}`);
 process.exit(allOk ? 0 : 1);

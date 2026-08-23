@@ -119,6 +119,14 @@ function formatCatalogueEntry(p: PresetDesc, i: number): string {
   return `${i + 1}. [${tagStr}] ${p.name} — ${p.description}`;
 }
 
+/** Pure: slug-sorted items + the numbered catalogue block. Exported so
+ *  tools/replay.mjs --check-prefix can verify byte-stability across two
+ *  independent loads (the memoized getStableCatalogue would hide drift). */
+export function stableCatalogueFromItems(items: PresetDesc[]): StableCatalogue {
+  const sorted = [...items].sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  return { items: sorted, text: sorted.map(formatCatalogueEntry).join("\n") };
+}
+
 // Memoized per directory: the catalogue text is part of the stable prompt
 // prefix and must not be rebuilt (or re-ordered) per call. Consequence:
 // editing preset .md files now needs a server restart to take effect in the
@@ -127,12 +135,7 @@ let catalogueCache: { dir: string; value: StableCatalogue } | null = null;
 
 export async function getStableCatalogue(dir: string): Promise<StableCatalogue> {
   if (catalogueCache && catalogueCache.dir === dir) return catalogueCache.value;
-  const items = (await loadPresetDescriptions(dir))
-    .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
-  const value: StableCatalogue = {
-    items,
-    text: items.map(formatCatalogueEntry).join("\n"),
-  };
+  const value = stableCatalogueFromItems(await loadPresetDescriptions(dir));
   catalogueCache = { dir, value };
   return value;
 }

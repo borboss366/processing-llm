@@ -11,6 +11,13 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Umbrella verification runner**: `node tools/verify.mjs` (fast tier:
+  synthetic PLL, module ABI check, prompt-prefix byte-stability — ~1 s) and
+  `--full` (adds the real-track genre matrix, a seeded replay of the latest
+  session, and a headless creature run with frame-cost + foot-slide budgets).
+  All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
+  VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
+  headless browsers skew BPM).
 - **Creature v4: locomotion + behaviour (brief 7)**: world-space walking
   with planted feet (max stance slide 2.78 px ≈ 0.6% body height, phase-
   locked odometry), bar-wrap state machine idle/walk/groove/hop on an energy
@@ -52,7 +59,9 @@ min-hold control). Full guide in `README.md`.
    two tracks (~93 hip-hop, ~81 stomp-clap) in `music/`.
 5. **Operational caveats**: any other Ollama call evicts the director's
    prefix cache; preset-description edits need a server restart; harness
-   runs must be solo.
+   runs must be solo (verify.mjs enforces this by running sequentially).
+   The 2-step garage track is marginal for the PLL (confident-median wanders
+   ±2.5 across runs; documented ±3 tolerance in the matrix).
 
 ## Next
 

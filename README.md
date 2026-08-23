@@ -65,9 +65,12 @@ and hot-loads it into a running server.
   replay: pure prompt construction (`buildDirectorPrompt`, with a `memory`
   variant that shows the model its last N picks), catalogue prefilter,
   response parsing, Ollama call.
-- `tools/` — offline authoring/evaluation CLIs (`modgen/gen.mjs`,
-  `replay.mjs`, `beat-test.mjs` — synthetic-clock acceptance harness for the
-  beat-phase tracker).
+- `tools/` — offline authoring/evaluation CLIs: `modgen/gen.mjs`,
+  `replay.mjs`, `beat-test.mjs` / `beat-test-real.mjs` (beat-tracker
+  harnesses), `capture-creature.mjs`, `wav-tempo.mjs`, `check-modules.mjs`,
+  and `verify.mjs` — the umbrella runner (`node tools/verify.mjs` for the
+  fast tier, `--full` for everything; needs server+vite+Ollama up for the
+  full tier).
 - `sessions/` (gitignored) — one .jsonl per Auto-Director run: every director
   decision (feature window, request, raw LLM response, pick, latency), hold
   tick, and operator action.

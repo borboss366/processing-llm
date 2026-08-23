@@ -553,6 +553,14 @@ export default {
       for (const T of state.tips) {
         const off = (T.limb === 0 || T.limb === 3) ? 0 : 0.5;
         const foot = (state.feet[T.name] ??= { plantWX: null });
+        if (world.turn) {
+          // during the mirror squish the body pauses while phase advances,
+          // and the flip moves every foot's world x — plants are void. Hold
+          // feet at rest and re-plant fresh after the turn.
+          T.ax = T.x; T.ay = T.y; T.theta = 0;
+          foot.plantWX = null;
+          continue;
+        }
         if (st === 'hop') {
           const air = Math.max(0, Math.sin(2 * Math.PI * phase));
           T.ax = T.x; T.ay = T.y - 0.10 * H * air * lvl;
@@ -564,7 +572,12 @@ export default {
           const cyc = (phase / Math.max(0.25, params.beatsPerStride) - off) % 1;
           const c = cyc < 0 ? cyc + 1 : cyc;
           if (c < 0.6) {
-            // stance: fixed in world = drifting back at body speed in local
+            // stance: fixed in world = drifting back at body speed in local.
+            // Uses the LIVE strideU — the same value the odometry advances
+            // world.x with. Freezing it per-stance was tried and desyncs
+            // body from feet (they must share one stride at every instant);
+            // residual slide is then only the BPM EMA's drift within one
+            // stance, small once the estimate has settled.
             T.ax = T.x + strideU * (0.3 - c);
             T.ay = T.y;
             const wx = world.x + (T.ax - joints[0].x) * S * world.facingVis;

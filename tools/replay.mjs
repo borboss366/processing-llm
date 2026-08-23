@@ -24,12 +24,16 @@ import {
   DEFAULT_HISTORY_N,
   DEFAULT_CATALOGUE_WINDOW,
   DEFAULT_PROMPT_VARIANT,
+  buildDirectorPrefix,
   buildDirectorPrompt,
   callDirectorLLM,
   getStableCatalogue,
+  loadPresetDescriptions,
   parseDirectorResponse,
   prefilterCandidates,
+  stableCatalogueFromItems,
 } from "../src/director/director.ts";
+import { parseArgs } from "./args.mjs";
 
 // Deterministic RNG (mulberry32) so --seed makes candidate sampling — and,
 // via Ollama's seed option, generation — reproducible for fair A/B replays.
@@ -45,22 +49,38 @@ function mulberry32(a) {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // ── args ──────────────────────────────────────────────────────────────────
-const argv = process.argv.slice(2);
-const flags = {};
-const positional = [];
-for (let i = 0; i < argv.length; i++) {
-  if (argv[i].startsWith("--")) { flags[argv[i].slice(2)] = argv[++i]; }
-  else positional.push(argv[i]);
+const { flags, positional } = parseArgs(process.argv.slice(2));
+
+// --check-prefix: byte-stability of the director prompt prefix across two
+// independent catalogue loads. No session, no Ollama.
+if (flags["check-prefix"]) {
+  const dir = path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), "web/app/preset-descriptions");
+  const a = buildDirectorPrefix(stableCatalogueFromItems(await loadPresetDescriptions(dir)).text);
+  const b = buildDirectorPrefix(stableCatalogueFromItems(await loadPresetDescriptions(dir)).text);
+  const ok = a === b && a.length > 1000;
+  console.log(ok
+    ? `VERIFY:PASS director-prompt-stable bytes=${a.length}`
+    : `VERIFY:FAIL director-prompt-stable reason=${a.length <= 1000 ? "prefix-too-short" : "prefix-mismatch"}`);
+  process.exit(ok ? 0 : 1);
 }
-const file = positional[0];
+
+let file = positional[0];
+if (!file && flags["latest"]) {
+  const dir = "sessions";
+  const entries = (await fs.readdir(dir).catch(() => []))
+    .filter((f) => f.endsWith(".jsonl") && !f.endsWith("-beat.json"));
+  const stats = await Promise.all(entries.map(async (f) => ({ f, m: (await fs.stat(path.join(dir, f))).mtimeMs })));
+  file = stats.sort((x, y) => y.m - x.m)[0]?.f;
+  if (file) file = path.join(dir, file);
+}
 const variant = flags["prompt-variant"] ?? DEFAULT_PROMPT_VARIANT;
 const historyN = Number(flags["history-n"] ?? DEFAULT_HISTORY_N);
 const catalogueWindow = Number(flags["catalogue-window"] ?? DEFAULT_CATALOGUE_WINDOW);
-const model = flags["model"];
+const model = typeof flags["model"] === "string" ? flags["model"] : undefined;
 const seed = flags["seed"] !== undefined ? Number(flags["seed"]) : undefined;
 
 if (!file || !["memory", "no-memory"].includes(variant)) {
-  console.error("usage: node tools/replay.mjs sessions/<file>.jsonl [--prompt-variant memory|no-memory] [--history-n N] [--catalogue-window N] [--model m] [--seed N]");
+  console.error("usage: node tools/replay.mjs sessions/<file>.jsonl | --latest [--prompt-variant memory|no-memory] [--history-n N] [--catalogue-window N] [--model m] [--seed N] [--check-prefix]");
   process.exit(1);
 }
 
@@ -99,6 +119,8 @@ const recent = [];       // replay's own anti-repeat window
 const history = [];      // replay's own memory
 let changed = 0;
 let holds = 0;
+let offList = 0;
+let errors = 0;
 const t0 = Date.now();
 
 console.log(col("#", 3) + col("t+", 7) + col("original pick", 36) + col("new pick", 36) + col("ms", 7) + col("peval", 7) + "description");
@@ -128,11 +150,12 @@ for (let i = 0; i < windows.length; i++) {
       ...(model ? { model } : {}),
       ...(seed !== undefined ? { seed: seed * 1000 + i } : {}),
     });
-    const { description, hold, pick, filter, offList } =
+    const { description, hold, pick, filter, offList: off } =
       parseDirectorResponse(llm.raw, catalogue.items, candidateNumbers);
     const origLabel = w.response?.hold ? "HOLD" : w.response?.preset;
     const newLabel = hold ? "HOLD" : pick.name;
     if (hold) holds++;
+    if (off) offList++;
     if (newLabel !== origLabel) changed++;
     if (!hold) {
       recent.push(pick.slug);
@@ -140,9 +163,10 @@ for (let i = 0; i < windows.length; i++) {
       history.push({ profile: w.stats, preset: pick.name, filter });
     }
     row = col(String(i + 1), 3) + col(`${Math.round((w.t - sessionT0) / 1000)}s`, 7) +
-          col(origLabel, 36) + col((offList ? "⚠ " : "") + newLabel, 36) +
+          col(origLabel, 36) + col((off ? "⚠ " : "") + newLabel, 36) +
           col(String(llm.ms), 7) + col(String(llm.promptEvalCount), 7) + trunc(description, 56);
   } catch (err) {
+    errors++;
     row = col(String(i + 1), 3) + col(`${Math.round((w.t - sessionT0) / 1000)}s`, 7) +
           col(w.response?.preset, 36) + col(`ERROR: ${err.message}`, 36) + col("-", 7) + col("-", 7);
   }
@@ -153,3 +177,8 @@ console.log("─".repeat(128));
 console.log(`[replay] ${windows.length} windows in ${((Date.now() - t0) / 1000).toFixed(1)}s · ` +
             `${changed}/${windows.length} decisions differ from the recorded session · ` +
             `${holds} hold(s) · ⚠ = off-list pick corrected`);
+const ok = errors === 0 && offList === 0 && windows.length > 0;
+console.log(`VERIFY:${ok ? "PASS" : "FAIL"} replay windows=${windows.length} changed=${changed} ` +
+            `holds=${holds} offlist=${offList} errors=${errors}` +
+            (ok ? "" : ` reason=${errors ? "replay-errors" : offList ? "off-list-picks" : "no-windows"}`));
+process.exitCode = ok ? 0 : 1;
