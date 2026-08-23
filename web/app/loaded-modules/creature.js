@@ -300,9 +300,12 @@ function buildFromShape(state, params, shape) {
     }
   }
 
+  const headNodes = [];
+  for (let i = 0; i < n; i++) if (labels[i] === 'head') headNodes.push(i);
+
   Object.assign(state, {
     n, pos, prev, rest, edges, restLen, boundary, joints, pinned,
-    nodeR, drawNodes, labels, triByPart, medLen, spriteR,
+    nodeR, drawNodes, labels, triByPart, medLen, spriteR, headNodes,
     tips: joints.filter((J) => J.role === 'limb'),
     hasFeet: joints.some((J) => J.ground),
     gaitName: json.archetype ?? 'biped',
@@ -311,6 +314,7 @@ function buildFromShape(state, params, shape) {
     bbox: { minX, maxX, minY, maxY, h: maxY - minY, w: maxX - minX, cx: (minX + maxX) / 2 },
     freePhase: 0, perfMs: 0, sprites: null, spriteKey: '',
     world: null, feet: null,
+    eye: { nextBlinkMs: 0, blinkUntilMs: 0, saccade: 0, prevLook: 0 },
     beh: { state: 'walk', lastBar: 0, lowBars: 0, em: 0.2, ev: 0.01 },
     slidePx: 0,
     builtShape: params.shape, builtCount: params.nodeCount,
@@ -436,6 +440,27 @@ function ensureShadeLayer(state) {
     sh.gl.viewport(0, 0, W, H);
   }
   return sh;
+}
+
+// Contact shadow lives on its own 2D canvas UNDER the shade layer (the
+// brief: drawn under the shaded body, not through the density field).
+function ensureShadowLayer(state) {
+  if (!state.shadow) {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'creature-shadow';
+    canvas.style.cssText =
+      'position:absolute; inset:0; width:100%; height:100%; pointer-events:none;';
+    // below the shade canvas (which ensureShadeLayer put before #fg-container)
+    (state.shade?.canvas ?? document.getElementById('fg-container') ?? document.body)
+      .before(canvas);
+    state.shadow = { canvas, g: canvas.getContext('2d') };
+  }
+  const sd = state.shadow;
+  if (sd.canvas.width !== window.innerWidth || sd.canvas.height !== window.innerHeight) {
+    sd.canvas.width = window.innerWidth;
+    sd.canvas.height = window.innerHeight;
+  }
+  return sd;
 }
 
 function ensureSprites(state, params) {
@@ -734,6 +759,7 @@ export default {
         const { gl } = state.shade;
         gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
       }
+      if (state.shadow) state.shadow.g.clearRect(0, 0, state.shadow.canvas.width, state.shadow.canvas.height);
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       return;
     }
@@ -744,6 +770,78 @@ export default {
     const X = (i) => world.x + (pos[i * 2] - rootX) * S * sx;
     const Y = (i) => groundPx - (state.bbox.maxY - pos[i * 2 + 1]) * S * sy;
     const kick = a.bands?.kick ?? 0, mid = a.bands?.mid ?? 0;
+    const mapX = (x) => world.x + (x - rootX) * S * sx;
+    const mapY = (y) => groundPx - (state.bbox.maxY - y) * S * sy;
+
+    // ── contact shadow: soft ellipse under the body, on its own layer ───
+    {
+      const sdw = ensureShadowLayer(state);
+      const g2 = sdw.g;
+      g2.clearRect(0, 0, sdw.canvas.width, sdw.canvas.height);
+      const feet = state.tips.filter((T) => T.ground);
+      let cx, w;
+      if (feet.length) {
+        const xsF = feet.map((T) => mapX(T.ax));
+        cx = xsF.reduce((s2, v) => s2 + v, 0) / xsF.length;
+        w = Math.max(...xsF) - Math.min(...xsF) + 0.14 * state.bbox.w * S;
+      } else {
+        cx = mapX(state.bbox.cx);
+        w = state.bbox.w * S * 0.5;
+      }
+      const airborne = st === 'hop' ? Math.max(0, Math.sin(2 * Math.PI * phase)) : 0;
+      const low = Math.max(0, -sq);                      // squash → wider, darker
+      w *= 1 + 3 * low;
+      const h2 = 0.030 * S * (1 + 2 * low);
+      const op = 0.38 * alpha * (1 - 0.7 * airborne) * (1 + 3 * low);
+      const cy = groundPx + h2 * 0.25;
+      g2.save();
+      g2.translate(cx, cy);
+      g2.scale(w / 2, h2 / 2);
+      const grad = g2.createRadialGradient(0, 0, 0, 0, 0, 1);
+      grad.addColorStop(0, `rgba(0,0,0,${Math.min(0.6, op).toFixed(3)})`);
+      grad.addColorStop(0.7, `rgba(0,0,0,${Math.min(0.6, op * 0.55).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g2.fillStyle = grad;
+      g2.beginPath();
+      g2.arc(0, 0, 1, 0, Math.PI * 2);
+      g2.fill();
+      g2.restore();
+    }
+
+    // ── eyes: blink every 4–7 s, saccade on quick head reorients ────────
+    const eye = state.eye;
+    if (!eye.nextBlinkMs) eye.nextBlinkMs = t0 + 4000 + Math.random() * 3000;
+    if (t0 > eye.nextBlinkMs) {
+      eye.blinkUntilMs = t0 + 130;                       // two-frame-ish collapse
+      eye.nextBlinkMs = t0 + 4000 + Math.random() * 3000;
+    }
+    const lookDelta = headLook - eye.prevLook;
+    eye.prevLook = headLook;
+    if (Math.abs(lookDelta) > 0.12) eye.saccade = Math.max(-1, Math.min(1, lookDelta * 4)) * 0.014;
+    eye.saccade *= Math.exp(-dt * 9);
+    const drawEyes = () => {
+      const hn = state.headNodes;
+      if (!hn.length) return;
+      let hcx = 0, hcy = 0;
+      for (const i of hn) { hcx += pos[i * 2]; hcy += pos[i * 2 + 1]; }
+      hcx /= hn.length; hcy /= hn.length;
+      const neck = joints.find((J) => J.role === 'head');
+      const th = (neck?.theta ?? 0) * 0.6;
+      const cth = Math.cos(th), sth = Math.sin(th);
+      const walkShift = (st === 'walk' || st === 'hop') ? 0.014 : 0;
+      const blink = t0 < eye.blinkUntilMs ? 0.12 : 1;
+      const eyes = state.eyes.length ? state.eyes : [{ x: 0.02, y: -0.01, r: 0.013 }];
+      p.push();
+      p.noStroke();
+      p.fill(8, 12, 14, 235 * alpha);
+      for (const E of eyes) {
+        const ox = E.x + walkShift + eye.saccade, oy = E.y;
+        const ex = hcx + ox * cth - oy * sth;
+        const ey = hcy + ox * sth + oy * cth;
+        p.ellipse(mapX(ex), mapY(ey), E.r * 2 * S, E.r * 2 * S * blink);
+      }
+      p.pop();
+    };
 
     if (params.renderMode === 'goo') {
       const sh = ensureShadeLayer(state);
@@ -804,6 +902,8 @@ export default {
       }
       sh.passMs = sh.passMs * 0.9 + (performance.now() - tPass) * 0.1;
 
+      drawEyes();   // p5 canvas sits above the shade layer
+
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       window.__creaturePerf = {
         ms: state.perfMs, nodes: n, edges: restLen.length,
@@ -851,6 +951,8 @@ export default {
     p.endShape();
     p.pop();
 
+    drawEyes();
+
     state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
     window.__creaturePerf = {
       ms: state.perfMs, nodes: n, edges: restLen.length,
@@ -870,6 +972,11 @@ export default {
       sh.gl.getExtension('WEBGL_lose_context')?.loseContext();
       sh.canvas.remove();
       ctx.state.shade = null;
+    }
+    const sdw = ctx.state?.shadow;
+    if (sdw) {
+      sdw.canvas.remove();
+      ctx.state.shadow = null;
     }
   },
 };

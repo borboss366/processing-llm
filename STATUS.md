@@ -18,6 +18,11 @@ min-hold control). Full guide in `README.md`.
   All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
   VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
   headless browsers skew BPM).
+- **Creature face + grounding (brief 8 Task 3)**: sidecar-defined eyes
+  anchored to head tissue (blink 4–7 s, saccades on head-look reorients,
+  walk-direction lead) and a contact shadow on its own layer under the
+  shaded body (feet-spread width, squash-coupled, fades at hop apex).
+  1.13 ms/frame total (`reports/2026-08-23-creature-7-face-shadow.md`).
 - **Creature shapes are drawn silhouettes (brief 8 Task 2)**: PNG + JSON
   sidecar in `web/app/shapes/` is the authoring interface (documented in
   MODULE_ABI.md); limbs ring-fitted along PCA axes; capsule shapes deleted.
@@ -77,4 +82,5 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-Brief 8 Task 3 — face (eyes/blink/saccade) and contact shadow.
+Brief 8 Task 4 — gate capture (30 s per shape over Butterchurn across the
+breakdown) and STOP for real-GPU judgment.
