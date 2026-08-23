@@ -45,6 +45,68 @@ npm run modgen -- --id comet-trail "a comet with a fading particle trail that pu
 writes `web/app/loaded-modules/<id>.js` (contract: `web/app/MODULE_ABI.md`)
 and hot-loads it into a running server.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph RENDER["Render window — localhost:5173/"]
+    AUDIO["core/audio.js<br/>features + beat PLL<br/>(beatPhase, confidence)"]
+    BC["Butterchurn canvas<br/>(background)"]
+    SHADE["creature shade layer<br/>(WebGL2 metaball)"]
+    REG["p5 + core/registry.js<br/>loaded-modules/*"]
+    COMMIT["bar-quantized<br/>pick commit"]
+    AUDIO -- "audio.state" --> REG
+    AUDIO -- "audio.state" --> SHADE
+    COMMIT --> BC
+  end
+
+  subgraph CTRL["Controller window — /controller.html"]
+    DET["change detector<br/>(profile distance, hysteresis,<br/>min-hold)"]
+    PADS["pad grid + mapping"]
+  end
+
+  subgraph SERVER["Node server :3000 — src/"]
+    WSR["WS relay /ws"]
+    REST["REST: browser-modules,<br/>osc, mappings, music, loaded"]
+    DIRR["/director route"]
+    SESSR["/session/append"]
+  end
+
+  DCORE["src/director/director.ts<br/>stable prefix + tail,<br/>prefilter, parse"]
+  OLLAMA["Ollama<br/>qwen3:8b"]
+  SESS[("sessions/*.jsonl")]
+  SHAPES[("web/app/shapes/<br/>*.png + *.json")]
+  PRESETS[("web/app/<br/>preset-descriptions/*.md")]
+
+  AUDIO -- "render-state (WS, 10 Hz)" --> WSR --> DET
+  DET -- "POST /director" --> DIRR --> DCORE --> OLLAMA
+  DIRR -- "pick / hold" --> DET
+  DET -- "apply-pick (WS)" --> WSR
+  WSR -- "commit at bar wrap" --> COMMIT
+  DET -- "decisions, holds, commits" --> SESSR --> SESS
+  PADS --> REST
+  SHAPES -- "fetch + sample" --> REG
+  PRESETS -- "catalogue (memoized)" --> DCORE
+
+  subgraph TOOLS["tools/ — offline (never in the live path)"]
+    VERIFY["verify.mjs<br/>fast/full check runner"]
+    REPLAY["replay.mjs<br/>seeded director A/B"]
+    BEAT["beat-test*.mjs<br/>PLL harnesses"]
+    CAP["capture-creature.mjs"]
+    MODGEN["modgen/gen.mjs"]
+  end
+
+  SESS --> REPLAY --> DCORE
+  BEAT -. "headless Chrome" .-> RENDER
+  CAP -. "headless Chrome" .-> RENDER
+  MODGEN -- "writes" --> REG
+  MODGEN --> OLLAMA
+```
+
+The live path (render + controller + server) stays boring; everything slow
+or failure-prone lives in `tools/`. This diagram is kept current by rule —
+see `CLAUDE.md`.
+
 ## Layout
 
 - `src/` — Node controller server (`npm run server`,

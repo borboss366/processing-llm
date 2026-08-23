@@ -40,6 +40,12 @@ task by task, under these permanent rules.
   contradictions between sections.
 - Evidence goes in `reports/<date>-<topic>.md`, committed. Sessions and
   audio files are never committed (`sessions/`, `music/` are gitignored).
+- The README's Architecture section holds ONE Mermaid diagram at component
+  level (processes, files, data flows — never functions). Any commit that
+  adds, removes, renames, or rewires a component shown there updates the
+  diagram in the SAME commit. Do not add a second diagram; do not let it
+  grow below component altitude — if a change is invisible at this level,
+  the diagram doesn't change.
 - Every experiment kept in-tree has a README paragraph: what it is, why
   isolated, what promotes it or kills it.
 
