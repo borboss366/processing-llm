@@ -18,6 +18,14 @@ min-hold control). Full guide in `README.md`.
   All 6 checks PASS as of 2026-08-23; harnesses emit machine-readable
   VERIFY:PASS/FAIL lines. Checks run sequentially by design (parallel
   headless browsers skew BPM).
+- **Brief 8.2 polish done**: debris identified as Butterchurn's own preset
+  scribbles (harness pins a clean preset); palette rule enforced
+  (primary body+limbs / secondary core-tint only / accent head+rim, swatch
+  diag); hiccups eliminated — pose blending on FSM+turn changes,
+  continuous move-local phase, low-passed head-look, sin² groove bounce
+  (the max(0,sin) velocity kink was the regular-interval slam). Joint-speed
+  spike metric permanent in the harness: 0 flagged over 30 s both shapes
+  (`reports/2026-08-23-creature-10-polish.md`).
 - **Limb severing fixed (brief 8.1)**: components = 1 across 30 s captures
   with the full move set, both bipeds. Root cause was orphan spring-graph
   islands (mitt tissue outside the sidecar limb regions, body-sampled into

@@ -28,6 +28,10 @@ const { WebSocket } = require("ws");
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MIX = "/music/Y2Mate.is - Boris Brejcha Style Minimal Techno Mix 2025 - Mixed by Granada.mp3";
+// pinned preset: the default (first Geiss match) draws wiry waveform
+// scribbles that read as debris around the figure (brief 8.2 Task 1 —
+// confirmed present with the creature unloaded)
+const CLEAN_PRESET = "Flexi - mindblob [shiny mix]";
 const MS_BUDGET = 6;      // module physics+draw budget per frame (brief 6)
 const SLIDE_BUDGET = 5;   // px of stance foot slide considered "planted"
 
@@ -57,6 +61,7 @@ try {
     // budget phase (measured: biped-2 read 6.3 ms after biped-1's probes).
     // The server replays module-load on WS connect, so the module re-arms.
     const page = await openRenderWithFile(browser, MIX, { seekSec: seek });
+    ws.send(JSON.stringify({ type: "load-preset-by-name", name: CLEAN_PRESET, blendSec: 0 }));
     if (bgOff) ws.send(JSON.stringify({ type: "set-bg", on: false }));
     await new Promise((r) => setTimeout(r, 1500));   // module import + setup
     await post("/osc", { address: "/creature/shape", value: shape });
@@ -151,20 +156,28 @@ try {
     const boneRot = timeline.length ? Math.max(...timeline.map((c) => c.boneDevRot ?? 0)) : 0;
     const boneGnd = timeline.length ? Math.max(...timeline.map((c) => c.boneDevGround ?? 0)) : 0;
     const dens = timeline.at(-1)?.limbDensity ?? {};
+    const spikesAll = timeline.at(-1)?.spikesAll ?? 0;
+    const spikesFlagged = timeline.at(-1)?.spikesFlagged ?? 0;
     console.log(`[capture] ${shape}: states ${runs.join(" → ") || "n/a"} · max stance slide ${maxSlide.toFixed(2)} px · clean-path ${maxMs === Infinity ? "n/a" : maxMs.toFixed(2)} ms/frame`);
     console.log(`[capture] ${shape}: components max ${maxComps} · bone dev rot ${(boneRot * 100).toFixed(1)}% / ground ${(boneGnd * 100).toFixed(1)}% · limb min density ${JSON.stringify(dens)}`);
+    console.log(`[capture] ${shape}: joint-speed spikes all=${spikesAll} flagged(outside windows)=${spikesFlagged}`);
+    const slog = timeline.at(-1)?.spikeLog ?? [];
+    if (slog.length) console.log(`[capture] ${shape}: spike log ${JSON.stringify(slog)}`);
 
     if (maxMs > MS_BUDGET) failures.push(`${shape}:ms=${maxMs.toFixed(1)}`);
     if (states.includes("walk") && maxSlide > SLIDE_BUDGET) failures.push(`${shape}:slide=${maxSlide.toFixed(1)}`);
     if (maxComps > 1) failures.push(`${shape}:components=${maxComps}`);
     if (boneRot >= 0.03) failures.push(`${shape}:boneDev=${(boneRot * 100).toFixed(1)}%`);
+    if (spikesFlagged > 0) failures.push(`${shape}:spikes=${spikesFlagged}`);
     if (!timeline.length) failures.push(`${shape}:no-perf-samples`);
 
     if (!verify) {
-      // secondary diagnostic: same pose family on black
+      // secondary diagnostic: same pose family on black + palette swatches
       ws.send(JSON.stringify({ type: "set-bg", on: false }));
+      await post("/osc", { address: "/creature/swatches", value: 1 });
       await new Promise((r) => setTimeout(r, 400));
       await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}-diag.png`) });
+      await post("/osc", { address: "/creature/swatches", value: 0 });
       if (!bgOff) ws.send(JSON.stringify({ type: "set-bg", on: true }));
       await new Promise((r) => setTimeout(r, 400));
       console.log(`[capture] ${shape}: wrote reports/creature4-${shape}.png/.webm + -diag.png`);

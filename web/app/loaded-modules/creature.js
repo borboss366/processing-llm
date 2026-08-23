@@ -51,14 +51,19 @@ const GAITS = {
   },
 };
 
-const DEFAULT_HUES = { hueBody: 190, hueLimbs: 150, hueAccent: 315 };
+// Palette rule (brief 8.2): PRIMARY colours body + limbs, SECONDARY only
+// tints the core brightening (never a region hue), ACCENT does head + rim.
+const DEFAULT_HUES = { huePrimary: 190, hueSecondary: 150, hueAccent: 315 };
 
 // User-set hue params (via OSC) win; otherwise the shape's palette.
-function hueFor(lab, params, palette) {
-  const key = lab === 'head' ? 'hueAccent' : lab === 'body' ? 'hueBody' : 'hueLimbs';
+function paletteHue(which, params, palette) {
+  const key = which === 'accent' ? 'hueAccent' : which === 'secondary' ? 'hueSecondary' : 'huePrimary';
   const p = Number(params[key]);
   if (Number.isFinite(p) && p !== DEFAULT_HUES[key]) return p;
-  return Number(palette?.[key] ?? DEFAULT_HUES[key]);
+  return Number(palette?.[which] ?? DEFAULT_HUES[key]);
+}
+function hueFor(lab, params, palette) {
+  return paletteHue(lab === 'head' ? 'accent' : 'primary', params, palette);
 }
 
 // ── Shape loading: PNG silhouette + JSON sidecar ──────────────────────────
@@ -438,6 +443,7 @@ uniform vec3 uLightDir;
 uniform float uLightInt;
 uniform float uCore;
 uniform vec3 uAccent;
+uniform vec3 uSecondary;
 uniform float uAlpha;
 in vec2 vUv;
 out vec4 outColor;
@@ -455,7 +461,7 @@ void main() {
   float tMid  = smoothstep(uD0, uD0 + 0.14, d);
   float tCore = smoothstep(uD1, uD1 + 0.22, d);
   vec3 edgeC = base * base * 1.4;
-  vec3 coreC = mix(base, vec3(1.0), 0.35) * (1.0 + 0.45 * uCore);
+  vec3 coreC = mix(base, mix(vec3(1.0), uSecondary, 0.45), 0.4) * (1.0 + 0.45 * uCore);
   vec3 c = mix(edgeC, base, tMid);
   c = mix(c, coreC, tCore);
   c *= 0.45 + 0.65 * lam * uLightInt;
@@ -511,7 +517,7 @@ function ensureShadeLayer(state) {
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     const u = {};
-    for (const name of ['uField', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uAlpha']) {
+    for (const name of ['uField', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha']) {
       u[name] = gl.getUniformLocation(prog, name);
     }
     const accum = document.createElement('canvas');
@@ -555,9 +561,9 @@ function ensureShadowLayer(state) {
 
 function ensureSprites(state, params) {
   const hues = {
-    body: hueFor('body', params, state.palette),
-    head: hueFor('head', params, state.palette),
-    limb: hueFor('limb', params, state.palette),
+    body: paletteHue('primary', params, state.palette),
+    head: paletteHue('accent', params, state.palette),
+    limb: paletteHue('primary', params, state.palette),   // primary covers limbs too
   };
   const key = `${hues.body}|${hues.head}|${hues.limb}`;
   if (state.sprites && state.spriteKey === key) return state.sprites;
@@ -593,6 +599,7 @@ export default {
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
     speed: 0.35,               // body-heights per second when walking
     beatsPerStride: 1,
+    blendBeats: 0.75,          // pose blend duration on state/turn changes
     amplitude: 1.0,
     bounce: 1.0,
     stiffness: 0.75,
@@ -600,7 +607,8 @@ export default {
     scale: 1.0,
     ground: 0.82,
     xFrac: 0.5,
-    hueBody: 190, hueLimbs: 150, hueAccent: 315,   // override the shape palette when changed
+    huePrimary: 190, hueSecondary: 150, hueAccent: 315,  // override the shape palette when changed
+    swatches: 0,               // diag: render the three palette swatches
     renderMode: 'goo',         // 'goo' (shaded metaball) | 'wire' (diagnostic)
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
@@ -641,6 +649,22 @@ export default {
       phase = state.freePhase;
     }
     const beatSec = 60 / bpmUsed;
+    // Move-local phase (brief 8.2): accumulates from beatPhase deltas with a
+    // per-frame cap, so PLL nudges and clock-source switches spread over the
+    // following frames (debt-based catch-up) instead of stepping the pose.
+    {
+      const nominal = dt / beatSec;
+      let dRaw = phase - (state.mvLast ?? phase);
+      if (dRaw < -0.5) dRaw += 1;
+      if (dRaw < 0) dRaw = 0;
+      state.mvLast = phase;
+      state.phaseDebt = (state.phaseDebt ?? 0) + dRaw;
+      const applied = Math.min(state.phaseDebt, nominal * 1.6);
+      state.phaseDebt -= applied;
+      state.moveAcc = (state.moveAcc ?? 0) + applied;
+      state.moveApplied = applied;
+    }
+    const mPhase = state.moveAcc % 1;
     const level = a.smoothedLevel ?? 0;
     const lvl = Math.min(1, 0.35 + level * 1.3);
 
@@ -666,8 +690,20 @@ export default {
         next = z > 1.5 ? 'hop' : z > 0.5 ? 'groove' : 'walk';
       }
     }
+    // pose blending trigger: FSM change or a turn boundary. Same-state
+    // re-selection each bar is a strict no-op (no phase resets, no re-latch
+    // — moveAcc/freePhase/feet run on untouched).
+    const startBlend = () => {
+      state.blend = {
+        from: state.joints.map((J) => ({ ax: J.bax ?? J.ax ?? J.x, ay: J.bay ?? J.ay ?? J.y, th: J.btheta ?? J.theta ?? 0 })),
+        start: state.moveAcc,
+        durBeats: Math.max(0.1, Number(params.blendBeats) || 0.75),
+      };
+      if (state.jm) state.jm.transitionUntil = t0 + state.blend.durBeats * beatSec * 1000 + 250;
+    };
     if (next !== beh.state) {
       beh.state = next;
+      startBlend();
       try { window.__ws?.send({ type: 'creature-state', state: next, z: +z.toFixed(2) }); } catch {}
     }
     const st = beh.state;
@@ -680,20 +716,17 @@ export default {
     const speedU = params.speed * state.bbox.h;
     const strideU = speedU * beatSec * Math.max(0.25, params.beatsPerStride);
 
-    let dPhase = phase - (world.lastPhase ?? phase);
-    if (dPhase < -0.5) dPhase += 1;
-    if (dPhase < 0) dPhase = 0;
-    world.lastPhase = phase;
+    const dPhase = state.moveApplied;   // same clock as the move phase
 
     if (state.hasFeet && st === 'walk') {
       if (world.turn) {
         const u = Math.min(1, (t0 - world.turn.t0) / 400);
         world.facingVis = world.turn.from + (world.turn.to - world.turn.from) * u;
-        if (u >= 1) { world.facing = world.turn.to; world.turn = null; }
+        if (u >= 1) { world.facing = world.turn.to; world.turn = null; startBlend(); }
       } else {
         world.x += dPhase * strideU * S * world.facing;
-        if (world.facing > 0 && world.x > p.width * 0.82) world.turn = { t0, from: 1, to: -1 };
-        if (world.facing < 0 && world.x < p.width * 0.18) world.turn = { t0, from: -1, to: 1 };
+        if (world.facing > 0 && world.x > p.width * 0.82) { world.turn = { t0, from: 1, to: -1 }; startBlend(); }
+        if (world.facing < 0 && world.x < p.width * 0.18) { world.turn = { t0, from: -1, to: 1 }; startBlend(); }
         world.facingVis = world.facing;
       }
     } else if (!state.hasFeet) {
@@ -710,38 +743,49 @@ export default {
     const gait = GAITS[gaitName] ?? GAITS.biped;
     const amp = params.amplitude * lvl * (st === 'idle' ? 0 : 1);
     const bellScale = !state.hasFeet && st !== 'idle'
-      ? 1 + (gait.bellPulse ?? 0) * Math.sin(2 * Math.PI * phase) * amp
+      ? 1 + (gait.bellPulse ?? 0) * Math.sin(2 * Math.PI * mPhase) * amp
       : 1 + 0.02 * Math.sin(2 * Math.PI * 0.2 * tSec);
 
     let sq = 0, bounceY = 0;
     const H = state.bbox.h;
     if (st === 'walk') {
-      const s = Math.cos(4 * Math.PI * phase);
+      const s = Math.cos(4 * Math.PI * mPhase);
       sq = 0.05 * s * lvl;
       bounceY = -(gait.bounce ?? 0.05) * H * ((s + 1) / 2) * lvl * params.bounce;
     } else if (st === 'groove') {
-      const s = Math.sin(4 * Math.PI * phase);
+      const s = Math.sin(4 * Math.PI * mPhase);
       sq = 0.05 * s * lvl;
-      bounceY = -0.08 * H * Math.max(0, Math.sin(4 * Math.PI * phase)) * lvl * params.bounce;
+      // sin² bounce: max(0,sin) has a velocity KINK at each zero crossing
+      // (root steps 0 → ~1.8 u/s instantly, twice a beat) — the metric's
+      // last surviving spike, and a real visible hiccup. sin² keeps the
+      // twice-per-beat bounce with zero-velocity touchdowns.
+      const b2 = Math.sin(2 * Math.PI * mPhase);
+      bounceY = -0.08 * H * b2 * b2 * lvl * params.bounce;
     } else if (st === 'hop') {
-      const air = Math.max(0, Math.sin(2 * Math.PI * phase));
+      const air = Math.max(0, Math.sin(2 * Math.PI * mPhase));
       sq = (air > 0 ? 0.07 * air : -0.06) * lvl;
       bounceY = -0.13 * H * air * lvl * params.bounce;
     }
     if (!state.hasFeet) {
-      bounceY += (st === 'idle' ? 0 : (gait.drift ?? 0) * -H * Math.sin(2 * Math.PI * (phase - 0.25)) * params.bounce);
+      bounceY += (st === 'idle' ? 0 : (gait.drift ?? 0) * -H * Math.sin(2 * Math.PI * (mPhase - 0.25)) * params.bounce);
     }
 
     const idleK = st === 'idle' ? 1 : 0.3;
     const swayU = ((p.noise(tSec * 0.13, 7) - 0.5) * 2) * 0.02 * state.bbox.w * idleK;
     const rearBob = ((p.noise(tSec * 0.4, 23) - 0.5) * 2) * 0.006 * idleK;
-    let headLook = ((p.noise(tSec * 0.07, 13) - 0.5) * 2) * 0.45 * idleK;
-    if (p.noise(tSec * 0.02, 41) > 0.72) headLook += 0.35 * idleK;
+    // head look: the quick reorient is a TARGET that the actual look chases
+    // through a low-pass (~150 ms). The old form added 0.35 rad as a step
+    // that toggled frame-to-frame at the noise threshold — a literal head
+    // twitch, and the top spike source in the hiccup trace (brief 8.2).
+    const lookTarget = (((p.noise(tSec * 0.07, 13) - 0.5) * 2) * 0.45 +
+      (p.noise(tSec * 0.02, 41) > 0.72 ? 0.35 : 0)) * idleK;
+    state.headLook = (state.headLook ?? 0) + (lookTarget - (state.headLook ?? 0)) * Math.min(1, dt * 7);
+    const headLook = state.headLook;
 
     const { joints, pos, prev, rest, edges, restLen, boundary, n } = state;
     for (const J of joints) {
       const g = (gait[J.role] ?? gait.root)(J.limb ?? 0, J.phase ?? 0);
-      J.theta = st === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * phase + g.off));
+      J.theta = st === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off));
       if (J.role === 'head') J.theta += headLook;
       if (J.parent < 0) {
         J.ax = J.x + swayU; J.ay = J.y + bounceY + (J.role === 'root' ? rearBob : 0);
@@ -769,17 +813,17 @@ export default {
           continue;
         }
         if (st === 'hop') {
-          const air = Math.max(0, Math.sin(2 * Math.PI * phase));
+          const air = Math.max(0, Math.sin(2 * Math.PI * mPhase));
           T.ax = T.x; T.ay = T.y - 0.10 * H * air * lvl;
           foot.plantWX = null;
         } else {
-          const cyc = (phase / Math.max(0.25, params.beatsPerStride) - T.phase) % 1;
+          const cyc = (mPhase / Math.max(0.25, params.beatsPerStride) - T.phase) % 1;
           const c = cyc < 0 ? cyc + 1 : cyc;
           if (c < 0.6) {
             T.ax = T.x + strideU * (0.3 - c);
             T.ay = T.y;
             const wx = world.x + (T.ax - joints[0].x) * S * world.facingVis;
-            if (foot.plantWX === null) foot.plantWX = wx;
+            if (foot.plantWX === null || state.blend) foot.plantWX = wx;   // re-anchor while blending
             else slidePx = Math.max(slidePx, Math.abs(wx - foot.plantWX));
           } else {
             const u = (c - 0.6) / 0.4;
@@ -804,6 +848,66 @@ export default {
     }
     state.slidePx = state.slidePx * 0.9 + slidePx * 0.1;
 
+    // pose blending (brief 8.2): previous pose → new move stream over
+    // blendBeats (smoothstep) while phase runs on
+    if (state.blend) {
+      const bt = (state.moveAcc - state.blend.start) / state.blend.durBeats;
+      if (bt >= 1) {
+        state.blend = null;
+      } else {
+        const sm = bt * bt * (3 - 2 * bt);
+        for (let ji = 0; ji < joints.length; ji++) {
+          const F = state.blend.from[ji];
+          const J = joints[ji];
+          J.ax = F.ax + (J.ax - F.ax) * sm;
+          J.ay = F.ay + (J.ay - F.ay) * sm;
+          J.theta = F.th + (J.theta - F.th) * sm;
+        }
+      }
+    }
+    for (const J of joints) { J.bax = J.ax; J.bay = J.ay; J.btheta = J.theta; }
+
+    // joint-target speed metric (brief 8.2 Task 3): max per-frame target
+    // displacement across joints, vs a rolling median; spikes outside a
+    // declared transition window (or hop) are the "hiccup" signal
+    {
+      // velocity over the UNCLAMPED frame delta: a stalled frame advances
+      // targets by the real elapsed phase, and dividing by the 80 ms-clamped
+      // dt inflates v into a false spike
+      const dtReal = Math.max(1e-3, p.deltaTime / 1000);
+      let vmax = 0;
+      for (const J of joints) {
+        if (J.pax !== undefined) {
+          vmax = Math.max(vmax, Math.hypot(J.ax - J.pax, J.ay - J.pay) / dtReal);
+        }
+        J.pax = J.ax; J.pay = J.ay;
+      }
+      const jm = (state.jm ??= { buf: new Float64Array(120), i: 0, n: 0, spikesAll: 0, spikesFlagged: 0, transitionUntil: 0 });
+      const sorted = Array.from(jm.buf.slice(0, jm.n)).sort((a, b) => a - b);
+      const median = jm.n > 30 ? sorted[(jm.n / 2) | 0] : 0;
+      const inWindow = t0 < jm.transitionUntil || st === 'hop';
+      // discontinuity test: sustained fast passages (loud groove ramping the
+      // amplitude) keep v continuous frame-to-frame; a hiccup is a JUMP both
+      // vs the rolling median and vs the previous frame's own speed. The
+      // plain 3×median rule flagged 60+ legitimate loud-groove frames.
+      const vPrev = jm.vPrev ?? 0;
+      jm.vPrev = vmax;
+      if (median > 0.05 && vmax > 3 * median && vmax > 2.5 * vPrev + 0.05) {
+        jm.spikesAll++;
+        if (!inWindow) jm.spikesFlagged++;
+        (jm.log ??= []).push({
+          state: st, v: +vmax.toFixed(2), med: +median.toFixed(2),
+          inWindow,
+          dPhase: +((phase - (state.lastPhaseForSpike ?? phase))).toFixed(4),
+          barWrap: wrapped,
+        });
+        if (jm.log.length > 10) jm.log.shift();
+      }
+      state.lastPhaseForSpike = phase;
+      jm.buf[jm.i] = vmax; jm.i = (jm.i + 1) % 120; jm.n = Math.min(120, jm.n + 1);
+      state.jointSpeed = vmax; state.jointMedian = median;
+    }
+
     for (const J of joints) {
       const scale = J.parent < 0 ? bellScale : 1;
       const c = Math.cos(J.theta), s = Math.sin(J.theta);
@@ -818,11 +922,14 @@ export default {
     // must stay within 3% of rest length; ground-chain bones stretch by
     // design (stance/swing) and are tracked separately.
     let boneDevRot = 0, boneDevGround = 0;
+    // bone lengths measured OUTSIDE blend windows: position-lerp blending
+    // transiently bends lengths ~5% by construction (declared transition)
+    const inBlend = !!state.blend;
     for (const B of state.bones) {
       const J = joints[B.j], P = joints[B.p];
       const dev = Math.abs(Math.hypot(J.ax - P.ax, J.ay - P.ay) - B.restLen) / B.restLen;
       if (B.groundChain) boneDevGround = Math.max(boneDevGround, dev);
-      else boneDevRot = Math.max(boneDevRot, dev);
+      else if (!inBlend) boneDevRot = Math.max(boneDevRot, dev);
     }
     state.boneDevRot = Math.max(state.boneDevRot ?? 0, boneDevRot);
     state.boneDevGround = Math.max(state.boneDevGround ?? 0, boneDevGround);
@@ -894,7 +1001,7 @@ export default {
         cx = mapX(state.bbox.cx);
         w = state.bbox.w * S * 0.5;
       }
-      const airborne = st === 'hop' ? Math.max(0, Math.sin(2 * Math.PI * phase)) : 0;
+      const airborne = st === 'hop' ? Math.max(0, Math.sin(2 * Math.PI * mPhase)) : 0;
       const low = Math.max(0, -sq);                      // squash → wider, darker
       w *= 1 + 3 * low;
       const h2 = 0.030 * S * (1 + 2 * low);
@@ -939,6 +1046,20 @@ export default {
       const eyes = state.eyes.length ? state.eyes : [{ x: 0.02, y: -0.01, r: 0.013 }];
       p.push();
       p.noStroke();
+      if (Number(params.swatches) !== 0) {
+        const sw = [
+          ['primary', paletteHue('primary', params, state.palette)],
+          ['secondary', paletteHue('secondary', params, state.palette)],
+          ['accent', paletteHue('accent', params, state.palette)],
+        ];
+        p.push();
+        p.colorMode(p.HSB, 360, 100, 100, 1);
+        sw.forEach(([, hue], k) => {
+          p.fill(hue, 80, 90, 1);
+          p.rect(16 + k * 44, 16, 36, 36);
+        });
+        p.pop();
+      }
       p.fill(8, 12, 14, 235 * alpha);
       for (const E of eyes) {
         const ox = E.x + walkShift + eye.saccade, oy = E.y;
@@ -1081,9 +1202,14 @@ export default {
       gl.uniform3f(sh.u.uLightDir, lx / lm, -ly / lm, 0.5 / lm);
       gl.uniform1f(sh.u.uLightInt, 0.65 + 0.55 * level);
       gl.uniform1f(sh.u.uCore, kick);
-      const ah = ((hueFor('head', params, state.palette)) % 360) * Math.PI / 180;
-      gl.uniform3f(sh.u.uAccent,
-        0.5 + 0.5 * Math.cos(ah), 0.5 + 0.5 * Math.cos(ah - 2.094), 0.5 + 0.5 * Math.cos(ah + 2.094));
+      const hue2rgb = (deg) => {
+        const r2 = (deg % 360) * Math.PI / 180;
+        return [0.5 + 0.5 * Math.cos(r2), 0.5 + 0.5 * Math.cos(r2 - 2.094), 0.5 + 0.5 * Math.cos(r2 + 2.094)];
+      };
+      const acc = hue2rgb(paletteHue('accent', params, state.palette));
+      const sec = hue2rgb(paletteHue('secondary', params, state.palette));
+      gl.uniform3f(sh.u.uAccent, acc[0], acc[1], acc[2]);
+      gl.uniform3f(sh.u.uSecondary, sec[0], sec[1], sec[2]);
       gl.uniform1f(sh.u.uAlpha, alpha);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -1104,6 +1230,10 @@ export default {
         ms: state.perfMs, nodes: n, edges: restLen.length,
         state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
         passMs: +sh.passMs.toFixed(2), gpuMs: +sh.gpuMs.toFixed(2),
+        jointSpeed: +(state.jointSpeed ?? 0).toFixed(3),
+        spikesAll: state.jm?.spikesAll ?? 0,
+        spikesFlagged: state.jm?.spikesFlagged ?? 0,
+        spikeLog: state.jm?.log ?? [],
         d0: Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.18)),
         boneDevRot: +(state.boneDevRot ?? 0).toFixed(4),
         boneDevGround: +(state.boneDevGround ?? 0).toFixed(4),
