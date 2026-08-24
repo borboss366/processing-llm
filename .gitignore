@@ -19,3 +19,4 @@ _attic/
 .vscode/
 .DS_Store
 *.log
+spool/

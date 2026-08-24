@@ -1,14 +1,15 @@
 {
   "name": "processing-llm",
   "version": "1.0.0",
-  "description": "Browser VJ controller — two-window p5+Butterchurn MVP",
+  "description": "Browser VJ controller \u2014 two-window p5+Butterchurn MVP",
   "main": "src/server.ts",
   "type": "module",
   "scripts": {
     "server": "tsx src/server.ts",
     "modgen": "node tools/modgen/gen.mjs",
     "verify": "node tools/verify.mjs",
-    "build": "tsc"
+    "build": "tsc",
+    "submit": "tsx --env-file-if-exists=.env services/submit/server.ts"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +24,9 @@
     "@types/ws": "^8.18.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "ws": "^8.21.0"
+    "qrcode": "^1.5.4",
+    "upng-js": "^2.1.0",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
   }
 }

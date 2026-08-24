@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>draw yourself into the show</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { background: #0c0c14; color: #dde; font: 16px/1.4 system-ui, sans-serif;
+               overscroll-behavior: none; touch-action: pan-y; }
+  main { max-width: 520px; margin: 0 auto; padding: 12px; }
+  h1 { font-size: 19px; padding: 6px 2px 10px; font-weight: 600; }
+  h1 small { color: #778; font-weight: 400; font-size: 13px; display: block; }
+  #wrap { position: relative; width: 100%; aspect-ratio: 1; border-radius: 12px;
+          overflow: hidden; background: #000; touch-action: none; }
+  #wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button { background: #23233a; color: #dde; border: 0; border-radius: 9px;
+           padding: 10px 14px; font-size: 15px; }
+  button.on { background: #4a4aff; color: #fff; }
+  button:active { transform: scale(0.96); }
+  #submit { background: #17b26a; color: #fff; flex: 1; font-weight: 600; }
+  .pal { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+  .pal .role { flex: 1; }
+  .pal .role div { font-size: 12px; color: #889; margin-bottom: 4px; }
+  .chip { width: 100%; height: 34px; border-radius: 8px; border: 2px solid #333; }
+  .chip.on { border-color: #fff; }
+  #colors { display: none; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  #colors.open { display: flex; }
+  #colors button { width: 38px; height: 38px; padding: 0; border-radius: 50%; }
+  #preview { width: 64px; height: 64px; }
+  #msg { margin-top: 12px; min-height: 22px; font-size: 14px; color: #f88; }
+  #done { display: none; text-align: center; padding: 60px 20px; }
+  #done h2 { font-size: 22px; margin-bottom: 8px; }
+  #done p { color: #99a; }
+</style>
+</head>
+<body>
+<main>
+  <div id="draw-ui">
+    <h1>draw yourself into the show
+      <small>fill the ghost figure — your creature will dance on stage</small></h1>
+    <div id="wrap">
+      <canvas id="ghost"></canvas>
+      <canvas id="ink"></canvas>
+    </div>
+    <div class="bar">
+      <button id="b-brush" class="on">brush</button>
+      <button id="b-erase">eraser</button>
+      <button id="b-size">size: big</button>
+      <button id="b-undo">undo</button>
+      <button id="b-clear">clear</button>
+    </div>
+    <div class="pal">
+      <div class="role"><div>body</div><button class="chip" id="c-primary"></button></div>
+      <div class="role"><div>glow</div><button class="chip" id="c-secondary"></button></div>
+      <div class="role"><div>head</div><button class="chip" id="c-accent"></button></div>
+      <canvas id="preview" width="64" height="64"></canvas>
+    </div>
+    <div id="colors"></div>
+    <div class="bar"><button id="submit">send it to the stage</button></div>
+    <div id="msg"></div>
+  </div>
+  <div id="done">
+    <h2>you're in the queue ✨</h2>
+    <p>waiting for the VJ — watch the stage</p>
+    <p style="margin-top:20px"><button id="again">draw another</button></p>
+  </div>
+</main>
+<script>
+const TOKEN = "__TOKEN__";
+const S = 512;                       // backing resolution
+const ink = document.getElementById('ink');
+const ghost = document.getElementById('ghost');
+ink.width = ink.height = ghost.width = ghost.height = S;
+const g = ink.getContext('2d');
+const gg = ghost.getContext('2d');
+
+// ── ghost template underlay ──────────────────────────────────────────────
+let tpl = null;
+fetch('/api/template').then(r => r.json()).then(t => {
+  tpl = t;
+  gg.clearRect(0, 0, S, S);
+  gg.strokeStyle = 'rgba(150,160,220,0.28)';
+  gg.lineCap = 'round';
+  gg.lineWidth = 34;
+  const J = {}; t.joints.forEach(j => J[j.name] = j);
+  const seg = (a, b) => { gg.beginPath(); gg.moveTo(J[a].x*S, J[a].y*S); gg.lineTo(J[b].x*S, J[b].y*S); gg.stroke(); };
+  seg('pelvis','chest'); seg('chest','neck');
+  seg('pelvis','kneeL'); seg('kneeL','footL');
+  seg('pelvis','kneeR'); seg('kneeR','footR');
+  seg('chest','elbowL'); seg('elbowL','handL');
+  seg('chest','elbowR'); seg('elbowR','handR');
+  gg.beginPath(); gg.arc(0.5*S, 0.14*S, 0.1*S, 0, 7); gg.stroke();
+  gg.fillStyle = 'rgba(190,200,255,0.55)';
+  t.joints.forEach(j => { gg.beginPath(); gg.arc(j.x*S, j.y*S, 6, 0, 7); gg.fill(); });
+});
+
+// ── drawing ──────────────────────────────────────────────────────────────
+let erasing = false, big = true, drawing = false, last = null;
+const undoStack = [];
+const brushR = () => big ? 26 : 13;
+function pt(e) {
+  const r = ink.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: (t.clientX - r.left) / r.width * S, y: (t.clientY - r.top) / r.height * S };
+}
+function stroke(a, b) {
+  g.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
+  g.strokeStyle = '#fff'; g.fillStyle = '#fff';
+  g.lineCap = 'round'; g.lineWidth = brushR() * 2;
+  g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+}
+function down(e) {
+  e.preventDefault();
+  if (undoStack.length >= 20) undoStack.shift();
+  undoStack.push(g.getImageData(0, 0, S, S));
+  drawing = true; last = pt(e); stroke(last, last);
+}
+function move(e) {
+  if (!drawing) return;
+  e.preventDefault();
+  const p = pt(e); stroke(last, p); last = p;
+}
+function up() { drawing = false; }
+ink.addEventListener('pointerdown', down);
+ink.addEventListener('pointermove', move);
+window.addEventListener('pointerup', up);
+
+// ── tools ────────────────────────────────────────────────────────────────
+const el = (id) => document.getElementById(id);
+el('b-brush').onclick = () => { erasing = false; el('b-brush').classList.add('on'); el('b-erase').classList.remove('on'); };
+el('b-erase').onclick = () => { erasing = true; el('b-erase').classList.add('on'); el('b-brush').classList.remove('on'); };
+el('b-size').onclick = () => { big = !big; el('b-size').textContent = 'size: ' + (big ? 'big' : 'small'); };
+el('b-undo').onclick = () => { const s = undoStack.pop(); if (s) g.putImageData(s, 0, 0); };
+el('b-clear').onclick = () => { undoStack.push(g.getImageData(0, 0, S, S)); g.clearRect(0, 0, S, S); };
+
+// ── palette ──────────────────────────────────────────────────────────────
+const SET = ['#4dd9e8','#5ee89a','#ffd24d','#ff8b4d','#ff5d7e','#e84dd9','#8b5dff','#5d8bff','#ffffff','#9aa2b0'];
+const pal = { primary: '#4dd9e8', secondary: '#5ee89a', accent: '#ff5d7e' };
+let picking = null;
+const colorsDiv = el('colors');
+SET.forEach(c => {
+  const b = document.createElement('button');
+  b.style.background = c;
+  b.onclick = () => { if (picking) { pal[picking] = c; refreshPal(); } colorsDiv.classList.remove('open'); picking = null; refreshChips(); };
+  colorsDiv.appendChild(b);
+});
+function refreshChips() {
+  for (const k of ['primary','secondary','accent']) {
+    const chip = el('c-' + k);
+    chip.style.background = pal[k];
+    chip.classList.toggle('on', picking === k);
+  }
+}
+for (const k of ['primary','secondary','accent']) {
+  el('c-' + k).onclick = () => { picking = picking === k ? null : k; colorsDiv.classList.toggle('open', !!picking); refreshChips(); };
+}
+function refreshPal() {
+  refreshChips();
+  const p = el('preview').getContext('2d');
+  p.clearRect(0, 0, 64, 64);
+  p.fillStyle = pal.primary; p.beginPath(); p.arc(32, 38, 20, 0, 7); p.fill();
+  p.fillStyle = pal.secondary; p.globalAlpha = 0.55; p.beginPath(); p.arc(32, 38, 11, 0, 7); p.fill();
+  p.globalAlpha = 1; p.fillStyle = pal.accent; p.beginPath(); p.arc(32, 14, 9, 0, 7); p.fill();
+}
+refreshPal();
+
+// ── submit ───────────────────────────────────────────────────────────────
+el('submit').onclick = async () => {
+  el('msg').textContent = '';
+  // composite ink over black (server expects white-on-black)
+  const out = document.createElement('canvas');
+  out.width = out.height = S;
+  const og = out.getContext('2d');
+  og.fillStyle = '#000'; og.fillRect(0, 0, S, S);
+  og.drawImage(ink, 0, 0);
+  let res, body;
+  try {
+    res = await fetch('/api/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, png: out.toDataURL('image/png'), palette: pal }),
+    });
+    body = await res.json();
+  } catch { el('msg').textContent = 'network hiccup — try again'; return; }
+  if (body.ok) {
+    el('draw-ui').style.display = 'none';
+    el('done').style.display = 'block';
+  } else {
+    el('msg').textContent = body.reason ?? 'rejected — try again';
+  }
+};
+el('again').onclick = () => {
+  el('done').style.display = 'none';
+  el('draw-ui').style.display = 'block';
+  g.clearRect(0, 0, S, S);
+};
+</script>
+</body>
+</html>
