@@ -107,6 +107,12 @@ const CHECKS = [
     desc: "arm-across-torso sweep: union-by-max removes the additive weld-flash (≥10% A/B divergence in the flash band)",
   },
   {
+    name: "audience-e2e",
+    tier: "full",
+    cmd: ["node", "tools/audience-e2e.mjs"],
+    desc: "phone-page submission E2E: all validation verdicts + moderation (self-contained service)",
+  },
+  {
     name: "post-ab",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

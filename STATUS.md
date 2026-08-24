@@ -11,6 +11,24 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Audience pipeline (brief 11)**: `npm run submit` starts the ONLY
+  phone-facing process (`services/submit/`, :3210): phone drawing page
+  at `/e/<token>` (ghost template underlay, brush/eraser/undo, 3-swatch
+  palette, ~11 KB), server-side re-encode to a 256×256 mask + validation
+  (coverage 8–60%, ≥95% connected, template joints covered) with
+  human-readable rejections, 128 KB/20-per-min/token limits, disk spool.
+  Controller's Audience panel moderates the queue; Perform hot-swaps the
+  creature to `audience:<id>` (new swapEnv fade); every submission
+  reuses `shapes/biped-front.json` joints. `qr-overlay` module shows the
+  event QR on stage; README documents cloudflared/tailscale one-liners.
+  Verified: `tools/audience-e2e.mjs` (verify --full) — all 7 validation
+  verdicts + moderation green; `tools/audience-soak.mjs` — a synthetic
+  audience shape performs (587 nodes, 1.9 ms/frame,
+  `reports/audience-stage.png`) and 50 submissions over a 10-min set
+  left frame cost flat (1.59 ms soak vs 1.95 baseline)
+  (`reports/2026-08-24-audience-pipeline.md`). Deviation: no
+  pre-existing safe-scene existed — the panel's Panic button (bg off +
+  default shape) is the minimal one the brief assumed.
 - **Compositor: staging + post (brief 10)**: one WebGL2 canvas
   (`core/compositor.js`) composites bg/shadow/creature/p5 with bloom
   bleed of the creature's bright pixels (1/8-res separable blur),
@@ -176,9 +194,10 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-1. User's real-GPU judgment on the Brief 10 gate captures (does the
-   figure sit IN the scene, does the frame breathe, do highlights still
-   clip) and the ≤1.5 ms post budget measured on real hardware.
-2. User's quarter-speed timing notes for `tstep` and `armwave` — the
-   shipped tables are tutorial-standard placeholders
-   (`*-placeholder.json`) until then.
+1. Brief 11 gate: the user draws on a real phone (`npm run submit`,
+   scan the printed URL), approves in the controller's Audience panel,
+   Performs, and judges 30 s on the real GPU (photo-of-phone → stage
+   still pair for the report).
+2. Still pending: real-GPU verdict on the Brief 10 post/framing
+   captures, and the quarter-speed timing notes for the two
+   `*-placeholder` move tables.
