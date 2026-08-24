@@ -75,6 +75,23 @@
       </section>
 
       <section class="controller-section">
+        <div class="section-title">Audience (draw-a-dancer)</div>
+        <div class="row">
+          <span id="aud-status" class="status">submission service offline — npm run submit</span>
+          <button id="aud-qr">Show QR on stage</button>
+          <button id="aud-panic" style="background:#5a1020;">Panic: clear stage</button>
+        </div>
+        <div style="margin-top:8px;">
+          <div class="status">Pending — approve or reject</div>
+          <div id="aud-pending" style="display:flex; gap:8px; flex-wrap:wrap; max-height:210px; overflow-y:auto; margin-top:6px;"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="status">Stage list — approved, in order</div>
+          <div id="aud-stage" style="display:flex; gap:8px; flex-wrap:wrap; max-height:210px; overflow-y:auto; margin-top:6px;"></div>
+        </div>
+      </section>
+
+      <section class="controller-section">
         <div class="section-title">Mapping (JSON)</div>
         <textarea id="mapping-editor" class="mapping-editor" spellcheck="false"></textarea>
         <div class="row" style="margin-top:8px;">

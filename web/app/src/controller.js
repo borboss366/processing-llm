@@ -915,3 +915,100 @@ els.btnForceChange?.addEventListener('click', async () => {
   if (!stats) { els.moodStatus.textContent = 'no audio samples yet'; return; }
   await callDirector(stats, { force: true });
 });
+
+// ─── Audience pipeline (brief 11) — approve queue + stage list ───────────
+// Polls the submission service (via the /submit-api vite proxy) every 2 s.
+// The render path only ever sees approved ids: Perform sets the creature's
+// shape to audience:<id> (the module hot-swap fades out/in) and logs an
+// audience-shape event to the session stream.
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $('aud-status'), pendingEl = $('aud-pending'), stageEl = $('aud-stage');
+  if (!statusEl) return;
+  let lastPendingCount = 0;
+  let nextUpId = null;
+  let performedId = null;
+
+  const card = (id, buttonsHtml) => `
+    <div style="background:#16162a; border-radius:8px; padding:6px; width:104px;" data-aud="${id}">
+      <img src="/submit-api/api/thumb/${id}.png" width="92" height="92"
+           style="border-radius:6px; background:#000; image-rendering:pixelated;">
+      <div style="display:flex; gap:4px; margin-top:4px;">${buttonsHtml}</div>
+    </div>`;
+
+  async function moderate(id, verdict) {
+    await fetch('/submit-api/api/moderate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, verdict }),
+    }).catch(() => {});
+    sessionLog({ kind: 'audience-shape', action: verdict, id });
+    poll();
+  }
+
+  async function perform(id) {
+    performedId = id;
+    await fetch('/browser-modules/load', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'creature' }),
+    }).catch(() => {});
+    await engine.dispatchAction({ osc: { address: '/creature/shape', value: `audience:${id}` } });
+    await engine.dispatchAction({ trigger: 'creature' });
+    sessionLog({ kind: 'audience-shape', action: 'perform', id });
+    poll();
+  }
+
+  // Panic (deviation: no pre-existing safe-scene/blackout was found in the
+  // repo — this builds the minimal one the brief assumes): background off,
+  // creature back to the default shape, audience id cleared.
+  $('aud-panic')?.addEventListener('click', async () => {
+    performedId = null;
+    ws.send({ type: 'set-bg', on: false });
+    await engine.dispatchAction({ osc: { address: '/creature/shape', value: 'biped-1' } });
+    await engine.dispatchAction({ osc: { address: '/creature/behavior', value: 'idle' } });
+    sessionLog({ kind: 'audience-shape', action: 'panic' });
+    statusEl.textContent = 'PANIC: stage cleared (bg off, default shape). Re-enable Background manually.';
+  });
+
+  $('aud-qr')?.addEventListener('click', async () => {
+    await fetch('/browser-modules/load', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'qr-overlay' }),
+    }).catch(() => {});
+    await engine.dispatchAction({ trigger: 'qr-overlay' });
+    sessionLog({ kind: 'audience-shape', action: 'qr-shown' });
+  });
+
+  async function poll() {
+    let q;
+    try {
+      q = await (await fetch('/submit-api/api/queue')).json();
+    } catch {
+      statusEl.textContent = 'submission service offline — npm run submit';
+      return;
+    }
+    statusEl.textContent = `${q.pending.length} pending · ${q.approved.length} approved · ${q.rejected.length} rejected`;
+
+    pendingEl.innerHTML = q.pending.map((id) => card(id, `
+      <button data-act="approve" data-id="${id}" style="flex:1; background:#0e4429;">✓</button>
+      <button data-act="reject" data-id="${id}" style="flex:1; background:#5a1020;">✗</button>`)).join('');
+    if (q.pending.length > lastPendingCount) pendingEl.scrollTop = pendingEl.scrollHeight;
+    lastPendingCount = q.pending.length;
+
+    stageEl.innerHTML = q.approved.map((id) => card(id, `
+      <button data-act="perform" data-id="${id}" style="flex:1; background:${performedId === id ? '#4a4aff' : '#0e4429'};">▶</button>
+      <button data-act="nextup" data-id="${id}" style="flex:1; background:${nextUpId === id ? '#8a6d00' : '#23233a'};">next</button>`)).join('');
+  }
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b || !b.closest('#aud-pending, #aud-stage')) return;
+    const { act, id } = b.dataset;
+    if (act === 'approve') moderate(id, 'approve');
+    else if (act === 'reject') moderate(id, 'reject');
+    else if (act === 'perform') perform(id);
+    else if (act === 'nextup') { nextUpId = nextUpId === id ? null : id; poll(); }
+  });
+
+  setInterval(poll, 2000);
+  poll();
+})();

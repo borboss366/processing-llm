@@ -17,6 +17,13 @@ export default defineConfig({
       '/director':        'http://localhost:3000',
       '/session':         'http://localhost:3000',
       '/music':           'http://localhost:3000',
+      // Audience submission service (brief 11) — approve queue + approved
+      // shape files + event QR. The render/controller side reads ONLY
+      // /submit-api/api/approved/* and the queue/thumb/moderate endpoints.
+      '/submit-api': {
+        target: 'http://localhost:3210',
+        rewrite: (p) => p.replace(/^\/submit-api/, ''),
+      },
       // WebSocket bridge
       '/ws': { target: 'ws://localhost:3000', ws: true },
     },

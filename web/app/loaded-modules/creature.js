@@ -70,10 +70,15 @@ function hueFor(lab, params, palette) {
 const shapeCache = new Map();
 function loadShape(name) {
   if (shapeCache.has(name)) return shapeCache.get(name);
+  // audience:<id> = an operator-APPROVED submission (brief 11); the submit
+  // service re-encoded the mask server-side — never raw phone data
+  const base = name.startsWith('audience:')
+    ? `/submit-api/api/approved/${name.slice(9)}`
+    : `/shapes/${name}`;
   const promise = (async () => {
-    const json = await (await fetch(`/shapes/${name}.json`)).json();
+    const json = await (await fetch(`${base}.json`)).json();
     const img = new Image();
-    img.src = `/shapes/${name}.png`;
+    img.src = `${base}.png`;
     await img.decode();
     const c = document.createElement('canvas');
     c.width = img.width; c.height = img.height;
@@ -801,8 +806,17 @@ export default {
     const dt = Math.min(0.08, p.deltaTime / 1000);
     const tSec = t0 / 1000;
 
-    if (state.builtShape !== params.shape || state.builtCount !== params.nodeCount) {
+    // shape hot-swap (brief 11): with a body on stage, fade it out through
+    // swapEnv before rebuilding, then fade the new one in — the audience
+    // Perform button re-uses this instead of a reload
+    state.swapEnv ??= 1;
+    const shapeChanged = state.builtShape !== params.shape || state.builtCount !== params.nodeCount;
+    if (shapeChanged && state.n && state.swapEnv > 0.02) {
+      state.swapEnv = Math.max(0, state.swapEnv - dt / 0.9);
+    } else if (shapeChanged) {
       startBuild(state, params);
+    } else {
+      state.swapEnv = Math.min(1, state.swapEnv + dt / 0.9);
     }
     if (!state.n) return;               // shape still loading
 
@@ -1258,7 +1272,7 @@ export default {
       }
     }
     state.entry.env = state.entry.ok ? Math.min(1, state.entry.env + dt / 0.9) : 0;
-    const alpha = (ctx.lifecycle?.alpha ?? 1) * state.entry.env;
+    const alpha = (ctx.lifecycle?.alpha ?? 1) * state.entry.env * (state.swapEnv ?? 1);
     window.__creaturePhase = {
       maxRaw: +(state.mvMaxRaw ?? 0).toFixed(4),
       maxApplied: +(state.mvMaxApplied ?? 0).toFixed(4),
