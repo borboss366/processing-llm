@@ -106,6 +106,13 @@ const CHECKS = [
     cmd: ["node", "tools/weld-sweep.mjs", "--shape", "biped-1"],
     desc: "arm-across-torso sweep: union-by-max removes the additive weld-flash (≥10% A/B divergence in the flash band)",
   },
+  {
+    name: "post-ab",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/post-ab.mjs", "--shape", "biped-1", "--seconds", "6"],
+    desc: "compositor active, post/bypass A/B differs, no page errors",
+  },
 ];
 
 // ---------------------------------------------------------------------------

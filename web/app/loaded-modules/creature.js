@@ -1150,8 +1150,24 @@ export default {
       // 2.5×-prev ratio fires on smooth motion (measured: handL 0.81 u/s from
       // 0.3, a 7.6 u/s² build — dance-speed). A true hiccup is a step:
       // ≥25 u/s² even at 15 fps, >100 at display rates.
+      // The acceleration bound is TEMPO-SCALED: a beat-locked swing of
+      // amplitude ~0.15×H peaks at 0.15·H·(2π/beatSec)² — at 128 BPM that
+      // is ~21 u/s², and a fixed bound of 20 sat right on it (measured:
+      // recurring walk handR flags at accel 21–25 across runs). A hiccup is
+      // acceleration the dance could not physically produce: 2× that peak.
+      // Sampling-adequacy gate: when the window exceeds beatSec/6 (~10 fps
+      // headless under the compositor), a half-beat swing is ~2 samples and
+      // aliasing can double the apparent velocity — smoothness is simply
+      // unverifiable there, so only a gross teleport can be judged — and the
+      // bound must exceed a full swing arc per window (measured: 0.15×H
+      // flagged legitimate 93 ms-window arm swings), so 0.3×body height.
       const accel = (vmax - vPrev) / dtReal;
-      if (median > 0.05 && vmax > 3 * median && vmax > 2.5 * vPrev + 0.05 && accel > 20) {
+      const wPeak = 2 * Math.PI / beatSec;
+      const accelBound = Math.max(20, 2 * 0.15 * state.bbox.h * wPeak * wPeak);
+      const adequate = dtReal <= beatSec / 6;
+      const teleport = vmax * dtReal > 0.3 * state.bbox.h;
+      if (median > 0.05 &&
+          ((adequate && vmax > 3 * median && vmax > 2.5 * vPrev + 0.05 && accel > accelBound) || teleport)) {
         jm.spikesAll++;
         if (!inWindow) jm.spikesFlagged++;
         (jm.log ??= []).push({

@@ -40,6 +40,7 @@ const seek = Number(flags.seek ?? 120);
 const bgOff = flags.bg === "off";               // primary captures: Butterchurn ON
 const verify = !!flags.verify;
 const seconds = Number(flags.seconds ?? (verify ? 5 : 30));
+const TAG = flags.tag ? `-${flags.tag}` : "";
 const shapes = flags.shape && flags.shape !== "both" ? [String(flags.shape)] : ["biped-1", "biped-2"];
 
 const post = (p, body) => fetch(`http://localhost:3000${p}`, {
@@ -61,7 +62,7 @@ try {
     // budget phase (measured: biped-2 read 6.3 ms after biped-1's probes).
     // The server replays module-load on WS connect, so the module re-arms.
     const page = await openRenderWithFile(browser, MIX, { seekSec: seek });
-    ws.send(JSON.stringify({ type: "load-preset-by-name", name: CLEAN_PRESET, blendSec: 0 }));
+    ws.send(JSON.stringify({ type: "load-preset-by-name", name: String(flags.preset ?? CLEAN_PRESET), blendSec: 0 }));
     if (bgOff) ws.send(JSON.stringify({ type: "set-bg", on: false }));
     await new Promise((r) => setTimeout(r, 1500));   // module import + setup
     await post("/osc", { address: "/creature/shape", value: shape });
@@ -74,7 +75,20 @@ try {
     if (flags.move) {
       await post("/osc", { address: "/creature/move", value: String(flags.move) });
     }
+    // post OFF by default: the compositor halves headless swiftshader fps
+    // (20 → 11), under-sampling 2-frame walk swings into phantom spike
+    // flags. Creature health (spikes/components/budget) is render-agnostic;
+    // pass --post 1 for brief-10 media captures through the post pipeline.
+    await post("/osc", { address: "/post/post", value: flags.post !== undefined ? Number(flags.post) : 0 });
     await post("/browser-modules/trigger", { id: "creature" });
+    // the entry gate (brief 9) holds the creature until beatConfidence
+    // sustains — wait for materialisation or the perf phase samples nothing
+    const tGate = Date.now();
+    while (Date.now() - tGate < 25_000) {
+      const ok = await page.evaluate(() => window.__creaturePhase?.entryOk ?? false);
+      if (ok) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
     // enter + beat settle. The BPM estimate swings while its buffers fill in
     // the first ~8 s after audio start; walking during that transient slides
     // feet (stride tracks the estimate), so measurement waits it out.
@@ -101,8 +115,8 @@ try {
         : ""));
 
     const rec = verify ? null : await (async () => {
-      await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}.png`) });
-      return page.screencast({ path: path.join(ROOT, `reports/creature4-${shape}.webm`) });
+      await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}${TAG}.png`) });
+      return page.screencast({ path: path.join(ROOT, `reports/creature4-${shape}${TAG}.webm`) });
     })();
 
     // behaviour state + foot slide + connected-components timeline.
@@ -190,11 +204,11 @@ try {
       ws.send(JSON.stringify({ type: "set-bg", on: false }));
       await post("/osc", { address: "/creature/swatches", value: 1 });
       await new Promise((r) => setTimeout(r, 400));
-      await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}-diag.png`) });
+      await page.screenshot({ path: path.join(ROOT, `reports/creature4-${shape}${TAG}-diag.png`) });
       await post("/osc", { address: "/creature/swatches", value: 0 });
       if (!bgOff) ws.send(JSON.stringify({ type: "set-bg", on: true }));
       await new Promise((r) => setTimeout(r, 400));
-      console.log(`[capture] ${shape}: wrote reports/creature4-${shape}.png/.webm + -diag.png`);
+      console.log(`[capture] ${shape}: wrote reports/creature4-${shape}${TAG}.png/.webm + -diag.png`);
     }
     await page.close();
   }

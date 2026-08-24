@@ -11,6 +11,24 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Compositor: staging + post (brief 10)**: one WebGL2 canvas
+  (`core/compositor.js`) composites bg/shadow/creature/p5 with bloom
+  bleed of the creature's bright pixels (1/8-res separable blur),
+  contact shadow multiplied toward the local background colour, ambient
+  pickup in the creature shader (dark edge band leans to a 64×36 bg
+  sample, shadow side strongest), then post (luminance-weighted grain,
+  vignette, edge-only chromatic aberration, highlight knee) and framing
+  (Perlin drift 1%, confidence-gated beat-zoom spring 1.5%, bar accent
+  0.5%; base zoom always covers the motion margin so edges can't
+  expose). Params `/osc /post/*`; `post 0` bypasses to DOM compositing.
+  Director colour grade rides the composite while active. Evidence:
+  30 s per biped over clean AND busy presets post-on all green, A/B
+  still pairs, `tools/post-ab.mjs` in verify --full
+  (`reports/2026-08-24-post-staging.md`). Springs everywhere substep
+  (wn·h ≤ 0.5) after the zoom spring measurably diverged at the 80 ms
+  stall clamp. Spike metric: tempo-scaled acceleration bound + sampling-
+  adequacy gate (3× consecutive clean verify runs). ≤1.5 ms post budget
+  judged on the dev GPU — awaiting real-GPU verdict.
 - **Brief 9 gate captures done (Task 3)**: 30 s per biped, FSM cycling
   walk/groove/idle/hop with groove rotating all three move tables two
   bars each, palette rule on, over the clean Butterchurn preset —
@@ -158,8 +176,9 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-1. User's real-GPU judgment on the Brief 9 gate captures (three dance
-   moves cycling, welded-arm crossings, entry gating).
+1. User's real-GPU judgment on the Brief 10 gate captures (does the
+   figure sit IN the scene, does the frame breathe, do highlights still
+   clip) and the ≤1.5 ms post budget measured on real hardware.
 2. User's quarter-speed timing notes for `tstep` and `armwave` — the
    shipped tables are tutorial-standard placeholders
    (`*-placeholder.json`) until then.
