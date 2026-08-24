@@ -11,6 +11,26 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Desktop draw + move workbench + ghost (brief 12)**: the drawing page
+  works with a mouse (pointer events, `Draw` button in the controller via
+  loopback-only `/api/info`; mouse-drag E2E case green). Move workbench:
+  `moves/*.json` hot-reload (server fs.watch validates BEFORE broadcast —
+  parse errors go to the director log, creature keeps the last good
+  table), `clockMode manual` + `phaseScrub` freeze the clock and
+  procedural overlays for pose inspection, play-from-here resumes live
+  with zero spikes (`tools/workbench-check.mjs`, verify --full: hot edit
+  moved the pose by exactly its delta, 0/0 spikes; found+fixed: blends
+  freeze under a pinned clock, so manual edits now apply instantly).
+  Ghost flagship: `shapes/ghost-placeholder` (structure is the
+  deliverable), `grounded:false` float set via the existing hasFeet gate,
+  two-axis Perlin stage wander + bar-accent swoops, 3 hem tips with
+  tentacle phases, ghost gait table, big sidecar eyes, halloween palette
+  presets on the phone page. 30 s dark-preset gate green (components 1,
+  0 spikes, 2.15 ms/frame) — awaiting GPU judgment
+  (`reports/2026-08-24-workbench-ghost.md`). Open finding: an idle page
+  runs rAF at 120 Hz and the PLL loses confidence (pre-existing,
+  logged).
+
 - **Audience pipeline (brief 11)**: `npm run submit` starts the ONLY
   phone-facing process (`services/submit/`, :3210): phone drawing page
   at `/e/<token>` (ghost template underlay, brush/eraser/undo, 3-swatch
@@ -194,10 +214,9 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-1. Brief 11 gate: the user draws on a real phone (`npm run submit`,
-   scan the printed URL), approves in the controller's Audience panel,
-   Performs, and judges 30 s on the real GPU (photo-of-phone → stage
-   still pair for the report).
-2. Still pending: real-GPU verdict on the Brief 10 post/framing
-   captures, and the quarter-speed timing notes for the two
-   `*-placeholder` move tables.
+1. Brief 12 gate: GPU judgment on the ghost (sheet-ghost read, float/
+   swoop feel) — then the user's workbench session to author real move
+   timing (replaces the `*-placeholder` tables).
+2. Still open: brief 11 phone gate (real phone drawing performed), brief
+   10 post/framing GPU verdict, dnb-174 bistable PLL + the idle-page
+   120 Hz PLL finding (same family).

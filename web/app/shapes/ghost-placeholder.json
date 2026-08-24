@@ -1,0 +1,32 @@
+{
+  "name": "ghost-placeholder",
+  "archetype": "ghost",
+  "grounded": false,
+  "palette": { "primary": 130, "secondary": 160, "accent": 30 },
+  "pinRadius": 0.07,
+  "ground": 0.93,
+  "eyes": [
+    { "x": -0.042, "y": 0.0, "r": 0.032 },
+    { "x": 0.042, "y": 0.0, "r": 0.032 }
+  ],
+  "joints": [
+    { "name": "root", "x": 0.5, "y": 0.48, "parent": null, "role": "root" },
+    { "name": "spine", "x": 0.5, "y": 0.32, "parent": "root", "role": "rootMid" },
+    { "name": "head", "x": 0.5, "y": 0.18, "parent": "spine", "role": "head" },
+    { "name": "shoulderL", "x": 0.34, "y": 0.36, "parent": "spine", "role": "knee", "limb": 2 },
+    { "name": "handL", "x": 0.245, "y": 0.415, "parent": "shoulderL", "role": "limb", "limb": 2, "paw": true, "phase": 0.5 },
+    { "name": "shoulderR", "x": 0.66, "y": 0.36, "parent": "spine", "role": "knee", "limb": 3 },
+    { "name": "handR", "x": 0.755, "y": 0.415, "parent": "shoulderR", "role": "limb", "limb": 3, "paw": true, "phase": 0 },
+    { "name": "hemL", "x": 0.36, "y": 0.85, "parent": "root", "role": "limb", "limb": 0, "paw": true, "phase": 0 },
+    { "name": "hemM", "x": 0.5, "y": 0.87, "parent": "root", "role": "limb", "limb": 4, "paw": true, "phase": 0.33 },
+    { "name": "hemR", "x": 0.64, "y": 0.85, "parent": "root", "role": "limb", "limb": 1, "paw": true, "phase": 0.66 }
+  ],
+  "parts": [
+    { "label": "head", "x": 0.5, "y": 0.2, "r": 0.16 },
+    { "label": "limb2", "x": 0.26, "y": 0.41, "r": 0.115 },
+    { "label": "limb3", "x": 0.74, "y": 0.41, "r": 0.115 },
+    { "label": "limb0", "x": 0.37, "y": 0.83, "r": 0.13 },
+    { "label": "limb1", "x": 0.63, "y": 0.83, "r": 0.13 },
+    { "label": "limb4", "x": 0.5, "y": 0.86, "r": 0.13 }
+  ]
+}
