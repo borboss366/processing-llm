@@ -58,6 +58,7 @@
       <canvas id="preview" width="64" height="64"></canvas>
     </div>
     <div id="colors"></div>
+    <div class="bar" id="presets" style="margin-top:8px;"></div>
     <div class="bar"><button id="submit">send it to the stage</button></div>
     <div id="msg"></div>
   </div>
@@ -136,7 +137,14 @@ el('b-undo').onclick = () => { const s = undoStack.pop(); if (s) g.putImageData(
 el('b-clear').onclick = () => { undoStack.push(g.getImageData(0, 0, S, S)); g.clearRect(0, 0, S, S); };
 
 // ── palette ──────────────────────────────────────────────────────────────
-const SET = ['#4dd9e8','#5ee89a','#ffd24d','#ff8b4d','#ff5d7e','#e84dd9','#8b5dff','#5d8bff','#ffffff','#9aa2b0'];
+const SET = ['#4dd9e8','#5ee89a','#ffd24d','#ff8b4d','#ff5d7e','#e84dd9','#8b5dff','#5d8bff','#ffffff','#9aa2b0',
+             '#39ff8a','#a45dff','#d40028'];
+// halloween palette presets (brief 12): one tap sets all three roles
+const PRESETS = [
+  { name: 'ecto',  primary: '#39ff8a', secondary: '#d8ffe8', accent: '#ff8b3d' },
+  { name: 'witch', primary: '#a45dff', secondary: '#ff8b3d', accent: '#39ff8a' },
+  { name: 'blood', primary: '#d40028', secondary: '#33000a', accent: '#f5f0e8' },
+];
 const pal = { primary: '#4dd9e8', secondary: '#5ee89a', accent: '#ff5d7e' };
 let picking = null;
 const colorsDiv = el('colors');
@@ -164,6 +172,15 @@ function refreshPal() {
   p.fillStyle = pal.secondary; p.globalAlpha = 0.55; p.beginPath(); p.arc(32, 38, 11, 0, 7); p.fill();
   p.globalAlpha = 1; p.fillStyle = pal.accent; p.beginPath(); p.arc(32, 14, 9, 0, 7); p.fill();
 }
+const presetsDiv = el('presets');
+PRESETS.forEach(ps => {
+  const b = document.createElement('button');
+  b.textContent = ps.name;
+  b.style.background = `linear-gradient(90deg, ${ps.primary} 0 40%, ${ps.secondary} 40% 70%, ${ps.accent} 70%)`;
+  b.style.color = '#000';
+  b.onclick = () => { pal.primary = ps.primary; pal.secondary = ps.secondary; pal.accent = ps.accent; refreshPal(); };
+  presetsDiv.appendChild(b);
+});
 refreshPal();
 
 // ── submit ───────────────────────────────────────────────────────────────

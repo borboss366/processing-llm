@@ -75,9 +75,24 @@
       </section>
 
       <section class="controller-section">
+        <div class="section-title">Move Workbench</div>
+        <div class="row">
+          <select id="mv-name"><option value="">(auto by state)</option></select>
+          <button id="mv-manual">Manual</button>
+          <input type="range" id="mv-scrub" min="0" max="1" step="0.005" value="0" style="flex:1; max-width:260px;" disabled>
+          <span id="mv-phase" class="status" style="min-width:48px;">—</span>
+          <button id="mv-play" disabled>Play from here</button>
+        </div>
+        <div class="row">
+          <span class="status">edit <code>web/app/moves/*.json</code> and save — tables hot-apply through the blend layer (parse errors land in the director log)</span>
+        </div>
+      </section>
+
+      <section class="controller-section">
         <div class="section-title">Audience (draw-a-dancer)</div>
         <div class="row">
           <span id="aud-status" class="status">submission service offline — npm run submit</span>
+          <button id="aud-draw">Draw</button>
           <button id="aud-qr">Show QR on stage</button>
           <button id="aud-panic" style="background:#5a1020;">Panic: clear stage</button>
         </div>

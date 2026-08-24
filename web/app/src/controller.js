@@ -453,7 +453,11 @@ els.modulesList?.addEventListener('click', async (e) => {
 const ws = createWs({
   url: `ws://${location.host}/ws`,
   onMessage(msg) {
-    if (msg.type === 'module-load') {
+    if (msg.type === 'moves-changed') {
+      appendMoodLog('moves', msg.name, `hot-pushed v${msg.v}`, 'commit');
+    } else if (msg.type === 'moves-error') {
+      appendMoodLog('moves', msg.name, `JSON error, keeping last good: ${msg.error}`, 'same');
+    } else if (msg.type === 'module-load') {
       if (!mirroredModules.has(msg.id)) mirroredModules.set(msg.id, { enabled: true });
       engine.setEnabled(msg.id, true);
     } else if (msg.type === 'module-unload') {
@@ -969,6 +973,18 @@ els.btnForceChange?.addEventListener('click', async () => {
     statusEl.textContent = 'PANIC: stage cleared (bg off, default shape). Re-enable Background manually.';
   });
 
+  // desktop draw mode (brief 12): open the drawing page in a tab — the
+  // service tells us its token via the loopback-only info endpoint
+  $('aud-draw')?.addEventListener('click', async () => {
+    try {
+      const info = await (await fetch('/submit-api/api/info')).json();
+      if (info.ok) window.open(info.localUrl, '_blank');
+      else statusEl.textContent = 'service refused /api/info';
+    } catch {
+      statusEl.textContent = 'submission service offline — npm run submit';
+    }
+  });
+
   $('aud-qr')?.addEventListener('click', async () => {
     await fetch('/browser-modules/load', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1011,4 +1027,50 @@ els.btnForceChange?.addEventListener('click', async () => {
 
   setInterval(poll, 2000);
   poll();
+})();
+
+// ─── Move Workbench (brief 12) — force move, scrub, play-from-here ───────
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const nameSel = $('mv-name'), manualBtn = $('mv-manual'),
+        scrub = $('mv-scrub'), phaseEl = $('mv-phase'), playBtn = $('mv-play');
+  if (!nameSel) return;
+  let isManual = false;
+  const osc = (address, value) => engine.dispatchAction({ osc: { address, value } });
+
+  (async () => {
+    try {
+      const j = await (await fetch('/moves-list')).json();
+      for (const m of j.moves ?? []) {
+        const o = document.createElement('option');
+        o.value = o.textContent = m;
+        nameSel.appendChild(o);
+      }
+    } catch { /* server offline — selector stays empty */ }
+  })();
+
+  nameSel.addEventListener('change', () => osc('/creature/move', nameSel.value || 'none'));
+
+  function setManual(on) {
+    isManual = on;
+    manualBtn.classList.toggle('on', on);
+    manualBtn.textContent = on ? 'Manual (scrubbing)' : 'Manual';
+    scrub.disabled = playBtn.disabled = !on;
+    osc('/creature/clockMode', on ? 'manual' : 'live');
+    if (!on) phaseEl.textContent = '—';
+  }
+  manualBtn.addEventListener('click', () => setManual(!isManual));
+  playBtn.addEventListener('click', () => setManual(false));
+
+  let scrubQueued = null, scrubTimer = null;
+  scrub.addEventListener('input', () => {
+    phaseEl.textContent = Number(scrub.value).toFixed(3);
+    scrubQueued = Number(scrub.value);
+    // ~30 Hz throttle: the slider fires far faster than the WS needs
+    scrubTimer ??= setTimeout(() => {
+      scrubTimer = null;
+      if (scrubQueued !== null) osc('/creature/phaseScrub', scrubQueued);
+      scrubQueued = null;
+    }, 33);
+  });
 })();

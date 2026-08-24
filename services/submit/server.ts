@@ -197,6 +197,13 @@ app.get("/e/:token", (req, res) => {
 app.get("/api/template", (_req, res) => { res.json(template); });
 app.get("/api/qr.png", (_req, res) => { res.type("png").send(qrPng); });
 
+// operator info (loopback only): lets the controller open the draw page
+// without the operator copying tokens around
+app.get("/api/info", (req, res) => {
+  if (!loopback(req.ip)) { res.status(403).json({ ok: false }); return; }
+  res.json({ ok: true, token: TOKEN, port: PORT, baseUrl: BASE_URL, localUrl: `http://localhost:${PORT}/e/${TOKEN}` });
+});
+
 app.post("/api/submit", async (req, res) => {
   const ip = req.ip ?? "?";
   if (rateLimited(ip)) { res.status(429).json({ ok: false, reason: "too many submissions — wait a minute" }); return; }
@@ -284,5 +291,6 @@ app.get("/api/approved/:id.png", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`[submit] event token: ${TOKEN}`);
   console.log(`[submit] phone page:  ${BASE_URL}/e/${TOKEN}`);
+  console.log(`[submit] local draw:  http://localhost:${PORT}/e/${TOKEN}`);
   console.log(`[submit] spool:       ${SPOOL}`);
 });

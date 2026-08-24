@@ -123,6 +123,43 @@ try {
   const torso = await submit();
   check("joints-uncovered rejected", !torso.accepted && /ghost figure/.test(torso.reason), torso.reason || "accepted?!");
 
+  // desktop draw mode (brief 12): the same good figure drawn with REAL
+  // mouse drags through the pointer-event path, not canvas ops
+  await page.evaluate(() => document.getElementById("ink").getContext("2d").clearRect(0, 0, 512, 512));
+  {
+    const { rect, paths } = await page.evaluate(async () => {
+      const t = await (await fetch("/api/template")).json();
+      const r = document.getElementById("ink").getBoundingClientRect();
+      const J = {}; t.joints.forEach((j) => (J[j.name] = j));
+      const seg = (a, b) => [[J[a].x, J[a].y], [J[b].x, J[b].y]];
+      return {
+        rect: { x: r.x, y: r.y, w: r.width, h: r.height },
+        paths: [
+          seg("neck", "pelvis"), seg("pelvis", "kneeL"), seg("kneeL", "footL"),
+          seg("pelvis", "kneeR"), seg("kneeR", "footR"),
+          seg("chest", "elbowL"), seg("elbowL", "handL"),
+          seg("chest", "elbowR"), seg("elbowR", "handR"),
+          [[0.42, 0.14], [0.58, 0.14]], [[0.5, 0.06], [0.5, 0.22]],   // head blob
+        ],
+      };
+    });
+    const toClient = ([u, v]) => [rect.x + u * rect.w, rect.y + v * rect.h];
+    for (const [a, b] of paths) {
+      // several parallel passes so the big brush lays enough ink
+      for (const off of [-0.015, 0, 0.015]) {
+        const [ax, ay] = toClient([a[0] + off, a[1]]);
+        const [bx, by] = toClient([b[0] + off, b[1]]);
+        await page.mouse.move(ax, ay);
+        await page.mouse.down();
+        await page.mouse.move(bx, by, { steps: 8 });
+        await page.mouse.up();
+      }
+    }
+    const mouseGood = await submit();
+    check("mouse-drawn figure accepted", mouseGood.accepted, mouseGood.reason);
+    await resetDone();
+  }
+
   // second good drawing so the moderation section always has a reject target
   await drawFigure();
   const good2 = await submit();
