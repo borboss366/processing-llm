@@ -107,6 +107,13 @@ const CHECKS = [
     desc: "arm-across-torso sweep: union-by-max removes the additive weld-flash (≥10% A/B divergence in the flash band)",
   },
   {
+    name: "workbench",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/workbench-check.mjs"],
+    desc: "move workbench: scrub, hot edit applies, parse error kept safe, manual→live snap-free",
+  },
+  {
     name: "audience-e2e",
     tier: "full",
     cmd: ["node", "tools/audience-e2e.mjs"],

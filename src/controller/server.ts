@@ -19,7 +19,7 @@ import express from "express";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import {
@@ -90,6 +90,43 @@ export async function startControllerServer(): Promise<void> {
       if (ws.readyState === 1) ws.send(text);
     }
   }
+
+  // ── Move workbench (brief 12): watch moves/*.json, hot-push on save ────
+  // The watcher VALIDATES before broadcasting: a JSON parse error goes to
+  // the controller log and no version bump reaches the creature, so it
+  // keeps the last good table — never a dead creature.
+  const MOVES_DIR = path.resolve(process.cwd(), "web/app/moves");
+  let movesVersion = 0;
+  const movesDebounce = new Map<string, NodeJS.Timeout>();
+  try {
+    watch(MOVES_DIR, (_event, filename) => {
+      if (!filename || !filename.endsWith(".json")) return;
+      const name = filename.slice(0, -5);
+      clearTimeout(movesDebounce.get(name));
+      movesDebounce.set(name, setTimeout(async () => {
+        try {
+          const raw = await fs.readFile(path.join(MOVES_DIR, filename), "utf8");
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed.keys) || !parsed.keys.length) throw new Error("no keys[]");
+          movesVersion++;
+          wsBroadcast({ type: "moves-changed", name, v: movesVersion });
+          console.log(`[moves] ${name} hot-pushed (v${movesVersion})`);
+        } catch (e) {
+          wsBroadcast({ type: "moves-error", name, error: String((e as Error).message ?? e) });
+          console.warn(`[moves] ${name} NOT pushed:`, e);
+        }
+      }, 150));
+    });
+  } catch { /* moves dir absent — workbench simply inert */ }
+
+  app.get("/moves-list", async (_req, res) => {
+    try {
+      const files = await fs.readdir(MOVES_DIR);
+      res.json({ ok: true, moves: files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort() });
+    } catch {
+      res.json({ ok: true, moves: [] });
+    }
+  });
 
   // ── /osc — pure WS broadcast (browser registry consumes /<prefix>/<param>) ─
   app.post("/osc", (req, res) => {

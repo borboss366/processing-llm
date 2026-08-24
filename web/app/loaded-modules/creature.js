@@ -49,6 +49,16 @@ const GAITS = {
     rootMid:()      => ({ A: 0, freq: 1, off: 0 }),
     bellPulse: 0.20, bounce: 0.012, drift: 0.02,
   },
+  // floating sheet-ghost (brief 12): hem tips trail with sidecar phase
+  // offsets (the tentacle pattern), body sways on the beat, gentle pulse
+  ghost: {
+    limb:   (i, ph) => ({ A: 0.30, freq: 1, off: ph }),
+    knee:   (i, ph) => ({ A: 0.20, freq: 1, off: ph - 0.15 }),
+    head:   ()      => ({ A: 0.10, freq: 1, off: -0.2 }),
+    root:   ()      => ({ A: 0.05, freq: 1, off: 0 }),
+    rootMid:()      => ({ A: 0.06, freq: 1, off: 0.3 }),
+    bellPulse: 0.07, bounce: 0.02, drift: 0.03,
+  },
 };
 
 // Palette rule (brief 8.2): PRIMARY colours body + limbs, SECONDARY only
@@ -407,7 +417,9 @@ function buildFromShape(state, params, shape) {
     nodeR, drawNodes, labels, triByPart, medLen, spriteR, headNodes,
     bones, limbNodeIdx, partFloor, limbDensity: {}, densityFrame: 0,
     tips: joints.filter((J) => J.role === 'limb'),
-    hasFeet: joints.some((J) => J.ground),
+    // sidecar `grounded: false` (brief 12) forces the float/drift state set
+    // even if ground joints exist — the flag drives the FSM, not new code
+    hasFeet: json.grounded === false ? false : joints.some((J) => J.ground),
     gaitName: json.archetype ?? 'biped',
     palette: json.palette ?? {},
     eyes: json.eyes ?? [],
@@ -767,9 +779,11 @@ export default {
     ambientPickup: 0.25,       // dark-band tint toward the local background colour
     entryConf: 0.5,            // beatConfidence needed before the entry fade runs
     entrySec: 1,               // …sustained this long (latch; resets on lifecycle idle)
-    archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse'
+    archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse' | 'ghost'
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
     move: '',                  // force a moves/<name>.json table ('' = auto by state)
+    clockMode: 'live',         // 'live' | 'manual' — workbench phase scrub (brief 12)
+    phaseScrub: 0,             // 0..1 of the current move loop, in manual mode
     speed: 0.35,               // body-heights per second when walking
     beatsPerStride: 1,
     blendBeats: 0.75,          // pose blend duration on state/turn changes
@@ -804,7 +818,12 @@ export default {
     const a = ctx.audio.state;
     const t0 = performance.now();
     const dt = Math.min(0.08, p.deltaTime / 1000);
-    const tSec = t0 / 1000;
+    // frozen while the workbench scrubs (brief 12): every Perlin/breath/
+    // simmer consumer reads tSec, so pinning it freezes the overlays
+    const tSecLive = t0 / 1000;
+    const tSec = params.clockMode === 'manual'
+      ? (state.frozenT ??= tSecLive)
+      : ((state.frozenT = null), tSecLive);
 
     // shape hot-swap (brief 11): with a body on stage, fade it out through
     // swapEnv before rebuilding, then fade the new one in — the audience
@@ -832,8 +851,49 @@ export default {
       phase = state.freePhase;
     }
     const beatSec = stepMoveClock(state, phase, dt, 60 / bpmUsed);
+
+    // ── move workbench (brief 12): manual phase scrub ───────────────────
+    // manual mode pins the move-local clock to phaseScrub within the
+    // current loop; procedural overlays freeze via frozen tSec/level below,
+    // so the table pose is inspectable. Leaving manual re-enters live with
+    // phase continuity (no debt, blend layer smooths the pose).
+    const manual = params.clockMode === 'manual';
+    if (manual) {
+      const bpl = Math.max(0.25, state.activeMoveBpl ?? 1);
+      state.manualBase ??= Math.floor(state.moveAcc / bpl) * bpl;
+      state.moveAcc = state.manualBase +
+        Math.max(0, Math.min(1, Number(params.phaseScrub) || 0)) * bpl;
+      state.moveApplied = 0;
+      state.phaseDebt = 0;
+      state.mvLast = phase;
+    } else if (state.manualBase != null) {
+      state.manualBase = null;
+      state.mvLast = phase;          // the pause leaves no debt to drain
+      state.moveHotSwap = true;      // blend out of the frozen pose
+    }
+
+    // hot reload: the server watcher validated and version-bumped a table
+    const mc = window.__movesChanged;
+    if (mc && mc.v !== state.movesV) {
+      state.movesV = mc.v;
+      const entry = state.moveCache?.[mc.name];
+      if (entry?.data) {
+        fetch(`/moves/${mc.name}.json?v=${mc.v}`)
+          .then((r) => r.json())
+          .then((j) => {
+            if (!Array.isArray(j.keys) || !j.keys.length) throw new Error('no keys');
+            j.keys.sort((k1, k2) => k1.phase - k2.phase);
+            entry.data = j;
+            state.moveHotSwap = true;   // re-pose through the blend layer
+          })
+          .catch((e) => console.error(`[creature] move "${mc.name}" reload failed, keeping last good:`, e));
+      }
+    }
+
     const mPhase = state.moveAcc % 1;
-    const level = a.smoothedLevel ?? 0;
+    const level = manual
+      ? (state.frozenLevel ??= a.smoothedLevel ?? 0)
+      : ((state.frozenLevel = null), a.smoothedLevel ?? 0);
     const lvl = Math.min(1, 0.35 + level * 1.3);
 
     // ── behaviour state machine ─────────────────────────────────────────
@@ -847,7 +907,9 @@ export default {
     const wrapped = barPhase < beh.lastBar - 0.5;
     beh.lastBar = barPhase;
     let next = beh.state;
-    if (params.behavior !== 'auto') {
+    if (manual) {
+      /* workbench scrub: hold the FSM wherever it is */
+    } else if (params.behavior !== 'auto') {
       next = params.behavior;
     } else if (!confident) {
       next = 'idle';
@@ -874,6 +936,16 @@ export default {
       startBlend();
       try { window.__ws?.send({ type: 'creature-state', state: next, z: +z.toFixed(2) }); } catch {}
     }
+    // workbench (brief 12): manual→live re-entry and table hot-reloads
+    // re-pose through the same blend layer as FSM changes. NOT in manual:
+    // blend progress rides moveAcc, which the scrub pins — the blend would
+    // freeze at t=0 and mask the edit forever (measured); while scrubbing,
+    // edits apply instantly and the offset springs do the smoothing.
+    if (state.moveHotSwap) {
+      state.moveHotSwap = false;
+      if (!manual) startBlend();
+      else state.blend = null;
+    }
     const st = beh.state;
 
     // ── world locomotion (phase-locked odometry) ────────────────────────
@@ -898,11 +970,30 @@ export default {
         world.facingVis = world.facing;
       }
     } else if (!state.hasFeet) {
-      world.vx ??= speedU * 0.35;
-      const targetV = (world.x > p.width * 0.8 ? -1 : world.x < p.width * 0.2 ? 1 :
-        Math.sign(world.vx || 1)) * speedU * 0.35;
-      world.vx += (targetV - world.vx) * Math.min(1, dt * 0.8);
-      if (st !== 'idle') world.x += world.vx * S * dt;
+      // float drift (brief 12 ghost, any ungrounded shape): slow Perlin
+      // wander across the full stage, BOTH axes; in hop state bar accents
+      // fire a swoop — a fast drift impulse toward the wander target
+      world.yOff ??= 0;
+      const wanderX = p.width * (0.22 + 0.56 * p.noise(tSec * 0.021, 3.7));
+      const wanderY = -p.height * (0.02 + 0.30 * p.noise(tSec * 0.017, 9.1));
+      if (st === 'hop' && wrapped && confident) {
+        state.swoopV = {
+          x: Math.sign(wanderX - world.x) * p.width * 0.35,
+          y: (wanderY - world.yOff) * 1.6,
+        };
+      }
+      if (state.swoopV) {
+        world.x += state.swoopV.x * dt;
+        world.yOff += state.swoopV.y * dt;
+        state.swoopV.x *= Math.exp(-2.2 * dt);
+        state.swoopV.y *= Math.exp(-2.2 * dt);
+        if (Math.hypot(state.swoopV.x, state.swoopV.y) < 4) state.swoopV = null;
+      }
+      const k = Math.min(1, dt * (st === 'idle' ? 0.12 : 0.35));
+      world.x += (wanderX - world.x) * k;
+      world.yOff += (wanderY - world.yOff) * k;
+      world.x = Math.max(p.width * 0.12, Math.min(p.width * 0.88, world.x));
+      world.yOff = Math.max(-p.height * 0.38, Math.min(0, world.yOff));
       world.facingVis = 1;
     }
 
@@ -926,6 +1017,7 @@ export default {
       state.activeMove = move?.name ?? null;
       startBlend();
     }
+    state.activeMoveBpl = move ? Math.max(0.25, move.beatsPerLoop ?? 1) : 1;
     const mvPose = move ? sampleMove(move, state.moveAcc) : null;
     const ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
     state.moveOverlay = ov;   // render-side simmer reads this
@@ -1291,11 +1383,12 @@ export default {
     const sx = world.facingVis * (1 - (st === 'walk' ? 0 : sq));
     const sy = (1 + sq) * (1 + (state.hasFeet ? breath : 0));
     const rootX = joints[0].x;
+    const yOff = world.yOff ?? 0;   // vertical float offset (ungrounded shapes)
     const X = (i) => world.x + (pos[i * 2] - rootX) * S * sx;
-    const Y = (i) => groundPx - (state.bbox.maxY - pos[i * 2 + 1]) * S * sy;
+    const Y = (i) => groundPx + yOff - (state.bbox.maxY - pos[i * 2 + 1]) * S * sy;
     const kick = a.bands?.kick ?? 0, mid = a.bands?.mid ?? 0;
     const mapX = (x) => world.x + (x - rootX) * S * sx;
-    const mapY = (y) => groundPx - (state.bbox.maxY - y) * S * sy;
+    const mapY = (y) => groundPx + yOff - (state.bbox.maxY - y) * S * sy;
 
     // ── contact shadow: soft ellipse under the body, on its own layer ───
     {

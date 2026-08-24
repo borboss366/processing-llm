@@ -239,6 +239,10 @@ const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesse
       // included — so the figure shares the scene's grade; on bypass it
       // falls back to the Butterchurn canvas as before.
       compositor.setFilter(msg.filter ?? '');
+    } else if (msg.type === 'moves-changed') {
+      // move workbench (brief 12): the creature polls this seam and
+      // re-fetches the changed table in place (validated server-side)
+      window.__movesChanged = { name: msg.name, v: msg.v };
     } else if (msg.type === 'request-render-state') {
       broadcastState();
     }

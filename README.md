@@ -45,6 +45,20 @@ npm run modgen -- --id comet-trail "a comet with a fading particle trail that pu
 writes `web/app/loaded-modules/<id>.js` (contract: `web/app/MODULE_ABI.md`)
 and hot-loads it into a running server.
 
+### Authoring a move (workbench)
+
+1. Load + trigger the creature; open the controller's **Move Workbench**.
+2. Pick the move in the selector (forces it regardless of FSM state).
+3. Hit **Manual** — the move clock freezes, procedural sway/bounce hold.
+4. Drag the scrub slider to the key phase you care about.
+5. Edit `web/app/moves/<name>.json` in your editor and save.
+6. The table hot-applies in place (blend-smoothed); parse errors show in
+   the director log and the creature keeps the last good table.
+7. Re-scrub to check each key pose; repeat edit/save as needed.
+8. **Play from here** — live clock resumes at the scrubbed phase, no snap.
+9. Watch a few loops against music; go back to Manual any time.
+10. Done: clear the forced move (selector → "(auto by state)").
+
 ### Audience pipeline (draw-a-dancer)
 
 A third process owns everything phone-facing — nothing from a phone ever
