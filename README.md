@@ -45,6 +45,32 @@ npm run modgen -- --id comet-trail "a comet with a fading particle trail that pu
 writes `web/app/loaded-modules/<id>.js` (contract: `web/app/MODULE_ABI.md`)
 and hot-loads it into a running server.
 
+### Audience pipeline (draw-a-dancer)
+
+A third process owns everything phone-facing — nothing from a phone ever
+reaches the render path except a server-re-encoded mask that passed the
+approve queue:
+
+```sh
+npm run submit            # submission service on :3210, prints event URL + token
+```
+
+The boot log prints `http://<lan-ip>:3210/e/<token>` — the phone drawing
+page. The controller's **Audience** panel shows pending submissions to
+approve/reject; approved ones get a Perform button (the creature hot-swaps
+to the drawn shape) and "Show QR on stage" triggers the `qr-overlay`
+module. Phones on the same Wi-Fi can use the LAN URL directly. For
+audience on cellular, expose port 3210 with either:
+
+```sh
+cloudflared tunnel --url http://localhost:3210          # ad-hoc Cloudflare tunnel
+tailscale funnel 3210                                   # Tailscale funnel
+```
+
+then restart the service with `BASE_URL=https://<public-host> npm run
+submit` so the printed URL and the QR encode the public address. (No
+tunnel automation — start it yourself, copy the hostname.)
+
 ## Architecture
 
 ```mermaid
@@ -82,6 +108,16 @@ flowchart LR
   SESS[("sessions/*.jsonl")]
   SHAPES[("web/app/shapes/<br/>*.png + *.json")]
   MOVES[("web/app/moves/<br/>*.json move tables")]
+
+  subgraph SUBMIT["Submission service :3210 — services/submit/"]
+    PHONE["phone page /e/&lt;token&gt;<br/>(draw + palette)"]
+    VALID["validate + re-encode<br/>256×256 mask"]
+    SPOOLD[("spool/&lt;event&gt;/<br/>pending | approved")]
+    PHONE --> VALID --> SPOOLD
+  end
+  PHONES(["audience phones<br/>(QR → cellular/LAN)"]) --> PHONE
+  SPOOLD -- "queue / moderate" --> CTRL
+  SPOOLD -- "approved only:<br/>audience:&lt;id&gt; shapes + QR" --> REG
   PRESETS[("web/app/<br/>preset-descriptions/*.md")]
 
   AUDIO -- "render-state (WS, 10 Hz)" --> WSR --> DET
