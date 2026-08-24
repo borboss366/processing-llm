@@ -16,6 +16,7 @@ import p5 from 'p5';
 import './style.css';
 import { createAudio }       from './core/audio.js';
 import { createButterchurn } from './core/butterchurn.js';
+import { createCompositor }  from './core/compositor.js';
 import { createRegistry }    from './core/registry.js';
 import { createWs }          from './core/ws.js';
 
@@ -75,6 +76,11 @@ function startP5() {
   registry = createRegistry({ p: p5Instance, audio });
 }
 startP5();
+// Compositor (brief 10): single WebGL canvas replaces DOM layer stacking —
+// integration (bloom, tinted shadow), post, framing. /osc /post/* sets its
+// params; post 0 bypasses back to DOM compositing.
+const compositor = createCompositor({ audio });
+window.__post = compositor;   // dev/test seam, same as window.__audio
 requestAnimationFrame(renderLoop);
 
 // ─── Audio + Butterchurn boot (on the one and only Start click) ──────────
@@ -133,7 +139,7 @@ function commitPick(reason) {
     const name = visualizer.loadByName(p.name, p.blendSec ?? 1.5);
     if (!name) console.warn('[main] preset not found:', p.name);
   }
-  if (els.bg && p.filter !== undefined) els.bg.style.filter = p.filter || 'none';
+  if (p.filter !== undefined) compositor.setFilter(p.filter || '');
   ws.send({
     type: 'preset-committed',
     name: p.name,
@@ -167,6 +173,7 @@ function renderLoop() {
   audio.tick();
   advancePendingPick();
   if (bgOn && visualizer) visualizer.render();
+  compositor.tick({ bgOn });
 
   // broadcast render-state at ~10 Hz so the controller's level bar is smooth
   const now = performance.now();
@@ -180,7 +187,9 @@ function renderLoop() {
 const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesses)
   url: `ws://${location.host}/ws`,
   onMessage(msg) {
-    if (msg.type === 'osc' && registry) {
+    if (msg.type === 'osc' && msg.address?.startsWith('/post/')) {
+      compositor.setParam(msg.address.slice(6), msg.value);
+    } else if (msg.type === 'osc' && registry) {
       registry.dispatchOsc(msg.address, msg.value);
     } else if (msg.type === 'module-load' && registry) {
       registry.load(msg.id, { url: msg.url });
@@ -225,10 +234,11 @@ const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesse
         if (msg.blendMode) els.tintOverlay.style.mixBlendMode = msg.blendMode;
       }
     } else if (msg.type === 'set-filter') {
-      // CSS filter on the Butterchurn canvas — hue-rotate / saturate /
-      // brightness etc. remaps the rendered pixels in real time on the GPU.
-      // String form so callers can compose freely: "hue-rotate(60deg) saturate(1.3)"
-      if (els.bg) els.bg.style.filter = msg.filter ?? 'none';
+      // Director colour grade (hue-rotate / saturate / …). With the
+      // compositor active it applies to the whole composite — creature
+      // included — so the figure shares the scene's grade; on bypass it
+      // falls back to the Butterchurn canvas as before.
+      compositor.setFilter(msg.filter ?? '');
     } else if (msg.type === 'request-render-state') {
       broadcastState();
     }

@@ -63,6 +63,7 @@ await new Promise((r) => ws.on("open", r));
 try {
   const page = await openRenderWithFile(browser, MIX, { seekSec: 300 });
   ws.send(JSON.stringify({ type: "set-bg", on: false }));
+  await post("/osc", { address: "/post/post", value: 0 });   // measure raw shading, not the post grade
   await post("/browser-modules/load", { id: "creature" });
   await new Promise((r) => setTimeout(r, 1500));
   await post("/osc", { address: "/creature/shape", value: shape });

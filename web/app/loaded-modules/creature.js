@@ -446,6 +446,8 @@ uniform float uCore;
 uniform vec3 uAccent;
 uniform vec3 uSecondary;
 uniform float uAlpha;
+uniform sampler2D uBgAmb;
+uniform float uAmbient;
 in vec2 vUv;
 out vec4 outColor;
 // union-by-max across body groups (brief 9 Task 0a): R = torso+head+legs,
@@ -475,6 +477,10 @@ void main() {
   vec3 c = mix(edgeC, base, tMid);
   c = mix(c, coreC, tCore);
   c *= 0.45 + 0.65 * lam * uLightInt;
+  // ambient pickup (brief 10): the dark edge band leans toward the local
+  // background colour, strongest on the shadow side — fake radiosity
+  vec3 amb = texture(uBgAmb, vUv).rgb;
+  c = mix(c, amb, uAmbient * (1.0 - tMid) * (0.35 + 0.65 * (1.0 - lam)));
   float rim = smoothstep(uD0 - 0.05, uD0, d) * (1.0 - smoothstep(uD0, uD0 + 0.05, d));
   c += rim * mix(vec3(1.0), uAccent, 0.6) * 0.9;
   vec3 h = normalize(uLightDir + vec3(0.0, 0.0, 1.0));
@@ -533,16 +539,29 @@ function ensureShadeLayer(state) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const u = {};
-    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha']) {
+    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha', 'uBgAmb', 'uAmbient']) {
       u[name] = gl.getUniformLocation(prog, name);
     }
+    // ambient-pickup source: the background canvas downsampled to a few
+    // dozen texels — enough for "local scene colour", cheap to upload
+    const btex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, btex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 255]));   // complete until the first bg sample
+    const amb = document.createElement('canvas');
+    amb.width = 64; amb.height = 36;
     const accum = document.createElement('canvas');
     const dens = document.createElement('canvas');
     const timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
     state.shade = {
-      canvas, gl, prog, tex, dtex, u,
+      canvas, gl, prog, tex, dtex, btex, u,
       accum, g: accum.getContext('2d'),
       dens, dg: dens.getContext('2d'),
+      amb, ambG: amb.getContext('2d'),
       timerExt, gpuMs: 0, passMs: 0, query: null,
     };
   }
@@ -686,6 +705,21 @@ function sampleMove(move, moveAcc) {
 // FSM dance states cycle through these tables (Task 3: two bars each)
 const GROOVE_MOVES = ['groove', 'tstep-placeholder', 'armwave-placeholder'];
 
+// critically damped spring step, substepped so wn·h ≤ 0.5 — a single Euler
+// step at the 80 ms stall clamp has damping factor 2·wn·dt near/above 2,
+// where the integrator oscillates or diverges (brief 10: the compositor's
+// zoom spring measurably exploded this way)
+function springStep(s, target, wn, dt) {
+  const n = Math.max(1, Math.ceil(dt * wn / 0.5));
+  const h = dt / n;
+  for (let i = 0; i < n; i++) {
+    s.v += (wn * wn * (target - s.x) - 2 * wn * s.v) * h;
+    s.x += s.v * h;
+  }
+  if (!Number.isFinite(s.x) || !Number.isFinite(s.v)) { s.x = target; s.v = 0; }
+  return s.x;
+}
+
 // ── Move-local clock (brief 8.2, hardened brief 9 Task 0b) ────────────────
 // Everything pose-facing (moves, odometry, feet, blends) consumes this clock,
 // never raw beatPhase. PLL nudges, acquisition snaps and free-run↔locked
@@ -725,6 +759,7 @@ export default {
   defaults: {
     shape: 'biped-1',          // shapes/<name>.png + .json
     weldUnion: 1,              // 0 = legacy additive density (A/B diagnostics only)
+    ambientPickup: 0.25,       // dark-band tint toward the local background colour
     entryConf: 0.5,            // beatConfidence needed before the entry fade runs
     entrySec: 1,               // …sustained this long (latch; resets on lifecycle idle)
     archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse'
@@ -893,10 +928,7 @@ export default {
         const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0 });  // unkeyed → spring back to 0
         const sp = (mvS[nm] ??= { dx: { x: 0, v: 0 }, dy: { x: 0, v: 0 }, rot: { x: 0, v: 0 } });
         for (const ch of ['dx', 'dy', 'rot']) {
-          const s2 = sp[ch];
-          s2.v += (MV_WN * MV_WN * (tk[ch] - s2.x) - 2 * MV_WN * s2.v) * dt;
-          s2.x += s2.v * dt;
-          tk[ch] = s2.x;
+          tk[ch] = springStep(sp[ch], tk[ch], MV_WN, dt);
         }
       }
     }
@@ -1047,9 +1079,7 @@ export default {
         if (!T.ground) continue;
         const s2 = (cw[T.name] ??= { x: 0, v: 0 });
         const target = mvPose?.contacts.has(T.name) ? 1 : 0;
-        s2.v += (MV_WN * MV_WN * (target - s2.x) - 2 * MV_WN * s2.v) * dt;
-        s2.x += s2.v * dt;
-        const w = Math.max(0, Math.min(1, s2.x));
+        const w = Math.max(0, Math.min(1, springStep(s2, target, MV_WN, dt)));
         if (w <= 0.001) continue;
         T.ax += (T.x - T.ax) * w;
         T.ay += (T.y - T.ay) * w;
@@ -1462,10 +1492,23 @@ export default {
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sh.dens);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      // ambient pickup (brief 10): local background colour, 64×36. Skip the
+      // sample when the bg layer is toggled off (stale pixels would tint).
+      const bgEl = document.getElementById('bg');
+      const bgLive = bgEl && bgEl.width > 0 && !bgEl.classList.contains('layer-off');
+      const ambStrength = bgLive ? (Number.isFinite(+params.ambientPickup) ? +params.ambientPickup : 0.25) : 0;
+      if (ambStrength > 0) {
+        sh.ambG.drawImage(bgEl, 0, 0, sh.amb.width, sh.amb.height);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, sh.btex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sh.amb);
+      }
       gl.activeTexture(gl.TEXTURE0);
       gl.useProgram(sh.prog);
       gl.uniform1i(sh.u.uField, 0);
       gl.uniform1i(sh.u.uDens, 1);
+      gl.uniform1i(sh.u.uBgAmb, 2);
+      gl.uniform1f(sh.u.uAmbient, ambStrength);
       gl.uniform1f(sh.u.uUnion, Number(params.weldUnion ?? 1) === 0 ? 0 : 1);
       gl.uniform2f(sh.u.uTexel, 1 / sh.accum.width, 1 / sh.accum.height);
       gl.uniform1f(sh.u.uD0, Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.18)));

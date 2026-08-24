@@ -54,9 +54,14 @@ flowchart LR
     BC["Butterchurn canvas<br/>(background)"]
     SHADE["creature shade layer<br/>(WebGL2 metaball)"]
     REG["p5 + core/registry.js<br/>loaded-modules/*"]
+    COMP["core/compositor.js<br/>bloom + post + framing<br/>(single WebGL2 output)"]
     COMMIT["bar-quantized<br/>pick commit"]
     AUDIO -- "audio.state" --> REG
     AUDIO -- "audio.state" --> SHADE
+    AUDIO -- "beat/level" --> COMP
+    BC --> COMP
+    SHADE --> COMP
+    REG --> COMP
     COMMIT --> BC
   end
 
