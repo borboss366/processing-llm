@@ -134,6 +134,8 @@ createWs({
             .catch(() => { keyPhases = []; });
         }
       }
+    } else if (msg.type === 'clock-tier') {
+      logLine(`beat clock → <span class="kv">${msg.tier.toUpperCase()}</span> (${msg.file ?? ''})`);
     } else if (msg.type === 'creature-state') {
       logLine(`creature state → <span class="kv">${msg.state}</span> (z ${msg.z})`);
     } else if (msg.type === 'creature-move') {
@@ -181,6 +183,9 @@ function draw() {
   if (!B) return;
 
   $('bpm').textContent = B.bpm > 0 ? String(Math.round(B.bpm)) : '—';
+  const tierEl = $('tier');
+  tierEl.textContent = (B.tier ?? 'pll').toUpperCase();
+  tierEl.style.color = B.tier === 'grid' ? '#17b26a' : '#8fa7ff';
   spark($('bpmSpark'), bpmHist, { min: 60, max: 190 });
 
   { // confidence gauge

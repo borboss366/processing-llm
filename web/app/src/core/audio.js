@@ -33,6 +33,8 @@
  * All "smoothed*" fields are exponential moving averages with ~1 s time constant.
  */
 
+import { createPLLClock, createGridClock } from './clock.js';
+
 export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } = {}) {
   let audioCtx = null;
   let analyser = null;
@@ -85,6 +87,11 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     air:      [200, 340],   // 9.4 - 16 kHz
   };
 
+  // causal tracker's own fields (brief 13): the PLL always runs, but the
+  // ACTIVE CLOCK owns the public phase fields on `state`
+  const pll = { bpm: 0, beatPhase: 0, barPhase: 0, beatConfidence: 0, lastConfidentBpm: 0 };
+  let clock = createPLLClock(pll);
+
   const state = {
     // legacy aggregates (kept for the existing rule classifier)
     smoothedLevel:    0,
@@ -119,7 +126,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
   /** File-based input for reproducible validation: same analyser graph as
    *  start(), fed by an <audio> element instead of the mic, also routed to
    *  the speakers. Used via the render window's ?audio=file:<url> param. */
-  async function startFromFile(url, { seekSec = 0 } = {}) {
+  async function startFromFile(url, { seekSec = 0, forcePll = false } = {}) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     const el = new Audio();
     el.crossOrigin = 'anonymous';
@@ -134,7 +141,21 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     fileElement = el;
     await el.play();
     if (seekSec > 0) el.currentTime = seekSec;
-    return { audioCtx, mediaSource, element: el };
+    // beatgrid sidecar (brief 13): file playback with a precomputed grid
+    // runs on GridClock (confidence 1, exact lookahead); else PLL tier
+    let gridLoaded = false;
+    if (!forcePll) {
+      try {
+        const res = await fetch(`${url}.beatgrid.json`);
+        if (res.ok) {
+          const grid = await res.json();
+          clock = createGridClock(grid, () => (fileElement?.currentTime ?? 0) * 1000);
+          gridLoaded = true;
+          console.log(`[audio] beatgrid loaded (${grid.beats?.length ?? 'bpm-form'} beats) — GridClock tier`);
+        }
+      } catch { /* no sidecar — PLL tier */ }
+    }
+    return { audioCtx, mediaSource, element: el, gridLoaded };
   }
 
   async function start({ deviceId } = {}) {
@@ -355,14 +376,14 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
       // the current tempo, keep the current octave — syncopated patterns
       // (DnB kick/snare) make raw estimates flip between T and 2T, and an
       // EMA over flip-flopping octaves converges on garbage in between.
-      if (state.bpm > 0 && detected > 0) {
-        const r = detected / state.bpm;
+      if (pll.bpm > 0 && detected > 0) {
+        const r = detected / pll.bpm;
         if (r > 1.8 && r < 2.2 && detected / 2 >= MIN_BPM) detected /= 2;
         else if (r > 0.45 && r < 0.55 && detected * 2 <= MAX_BPM) detected *= 2;
       }
       // Heavy smoothing — BPM doesn't change fast. Seed directly on the first
       // estimate so the PLL doesn't chase an EMA climbing up from zero.
-      if (detected > 0) state.bpm = state.bpm ? state.bpm * 0.7 + detected * 0.3 : detected;
+      if (detected > 0) pll.bpm = pll.bpm ? pll.bpm * 0.7 + detected * 0.3 : detected;
     }
 
     // ── onset events (adaptive threshold over the weighted flux) ─────
@@ -384,36 +405,44 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     // Phase free-runs at the estimated BPM; onsets that land near a beat
     // boundary pull it toward 0. Off-beat onsets (snares, fills) are ignored
     // rather than dragging the phase around — they only lower confidence.
-    if (state.bpm > 0) {
-      state.beatPhase += dtMs / (60000 / state.bpm);
-      if (state.beatPhase >= 1) {
-        state.beatPhase %= 1;
+    if (pll.bpm > 0) {
+      pll.beatPhase += dtMs / (60000 / pll.bpm);
+      if (pll.beatPhase >= 1) {
+        pll.beatPhase %= 1;
         beatCounter = (beatCounter + 1) & 3;
       }
       if (isOnset) {
         // signed distance from the nearest beat boundary, in beats
-        const err = state.beatPhase < 0.5 ? state.beatPhase : state.beatPhase - 1;
+        const err = pll.beatPhase < 0.5 ? pll.beatPhase : pll.beatPhase - 1;
         // Acquisition vs tracking: while confidence is low we snap hard to any
         // onset (a fixed offset outside the window would otherwise never
         // converge — matched frequency means the error can't drift into it).
         // Once locked, only near-boundary onsets nudge, at the gentle gain.
-        const acquiring = state.beatConfidence < 0.4;
+        const acquiring = pll.beatConfidence < 0.4;
         const gain   = acquiring ? 1.0 : phaseNudgeGain;
         const window = acquiring ? 0.5 : phaseNudgeWindow;
-        state.beatConfidence =
-          state.beatConfidence * 0.9 + (1 - 2 * Math.abs(err)) * 0.1;
+        pll.beatConfidence =
+          pll.beatConfidence * 0.9 + (1 - 2 * Math.abs(err)) * 0.1;
         if (Math.abs(err) <= window) {
-          state.beatPhase -= gain * err;
-          if (state.beatPhase < 0)       { state.beatPhase += 1; beatCounter = (beatCounter + 3) & 3; }
-          else if (state.beatPhase >= 1) { state.beatPhase -= 1; beatCounter = (beatCounter + 1) & 3; }
+          pll.beatPhase -= gain * err;
+          if (pll.beatPhase < 0)       { pll.beatPhase += 1; beatCounter = (beatCounter + 3) & 3; }
+          else if (pll.beatPhase >= 1) { pll.beatPhase -= 1; beatCounter = (beatCounter + 1) & 3; }
         }
       }
-      state.barPhase = (beatCounter + state.beatPhase) / 4;
+      pll.barPhase = (beatCounter + pll.beatPhase) / 4;
       // Remember the tempo while the lock is trustworthy, so modules can
       // free-run an oscillator at this rate when confidence drops (during
       // acquisition beatPhase is being hard-snapped and is jumpy).
-      if (state.beatConfidence >= 0.4) state.lastConfidentBpm = state.bpm;
+      if (pll.beatConfidence >= 0.4) pll.lastConfidentBpm = pll.bpm;
     }
+
+    // ── clock layer (brief 13): the active clock publishes the phase
+    // fields; the PLL stays visible for diagnostics/fallback ──────────
+    state.clockNowMs = nowMs;
+    state.mediaMs = fileElement ? fileElement.currentTime * 1000 : 0;
+    state.mediaWallMs = Date.now();   // paired stamp for media↔wall mapping (harness + bench)
+    state.pll = { bpm: pll.bpm, beatPhase: pll.beatPhase, barPhase: pll.barPhase, beatConfidence: pll.beatConfidence };
+    clock.apply(state);
 
     // ── beat detector (kept for live UI + beatsPerSec) ───────────────
     state.bassAvg = state.bassAvg * 0.99 + state.smoothedBass * 0.01;
@@ -449,6 +478,8 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     freqBins,
     get fileElement() { return fileElement; },
     _injectAnalyser(a) { analyser = a; },   // test seam for tools/beat-test.mjs
+    get clock() { return clock; },
+    setClock(c) { clock = c ?? createPLLClock(pll); },
     get audioCtx()     { return audioCtx;     },
     get mediaSource()  { return mediaSource;  },
     get analyser()     { return analyser;     },

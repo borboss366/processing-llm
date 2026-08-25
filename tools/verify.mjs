@@ -114,6 +114,13 @@ const CHECKS = [
     desc: "move workbench: scrub, hot edit applies, parse error kept safe, manual→live snap-free",
   },
   {
+    name: "grid-check",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/grid-check.mjs", "--seconds", "40"],
+    desc: "GridClock tier auto-selected; bench click sits on the grid (median < 15 ms)",
+  },
+  {
     name: "bench-check",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

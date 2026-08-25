@@ -44,6 +44,8 @@ const AUDIO_SEEK = Number(QUERY.get('seek') ?? 0);
 // ?bg=off — boot with Butterchurn dark (clean judging/diagnostic runs):
 // deterministic from page load, no WS toggle race, survives per-page resets
 const BG_OFF = QUERY.get('bg') === 'off';
+// ?clock=pll — force the causal tracker even when a beatgrid sidecar exists
+const FORCE_PLL = QUERY.get('clock') === 'pll';
 
 let visualizer = null;
 let registry   = null;
@@ -93,7 +95,8 @@ async function startAudio() {
     els.btnStart.disabled = true;
     els.btnStart.textContent = 'starting…';
     if (AUDIO_FILE) {
-      await audio.startFromFile(AUDIO_FILE, { seekSec: AUDIO_SEEK });
+      const fileInfo = await audio.startFromFile(AUDIO_FILE, { seekSec: AUDIO_SEEK, forcePll: FORCE_PLL });
+      ws.send({ type: 'clock-tier', tier: fileInfo.gridLoaded ? 'grid' : 'pll', file: AUDIO_FILE });
     } else {
       await audio.start();
       await refreshDeviceList();
@@ -202,6 +205,7 @@ function renderLoop() {
       flux: s.flux ?? 0,
       centroid: s.smoothedCentroid ?? 0,
       bands: s.bands ?? null,
+      tier: s.clockTier ?? 'pll',
       onsets: (s.onsetLog ?? []).slice(-8),
       creature: window.__creatureBench ?? null,
     });
