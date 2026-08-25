@@ -34,6 +34,7 @@ export default defineConfig({
       input: {
         main:       resolve(__dirname, 'index.html'),
         controller: resolve(__dirname, 'controller.html'),
+        bench:      resolve(__dirname, 'bench.html'),
         ncaDemo:    resolve(__dirname, 'nca.html'),
       },
     },

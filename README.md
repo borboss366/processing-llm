@@ -45,6 +45,30 @@ npm run modgen -- --id comet-trail "a comet with a fading particle trail that pu
 writes `web/app/loaded-modules/<id>.js` (contract: `web/app/MODULE_ABI.md`)
 and hot-loads it into a running server.
 
+### Bench (observer surface)
+
+**http://localhost:5173/bench.html** — read-only instruments over the
+live render state, for judging by ear and eye. Nothing on it controls
+anything. From top:
+
+- **Beat instrument** — the centerpiece is the *click track* (toggle +
+  volume): WebAudio blips scheduled at predicted beats, downbeats pitched
+  higher; if the clicks sit on the music, the PLL is locked. BPM readout
+  with a 60 s sparkline, confidence gauge (green ≥ 0.4), bar dots
+  1-2-3-4, and the onset-vs-grid strip: every detected onset plotted at
+  its signed phase error (±0.5 beat) over the last 30 s — a tight cluster
+  on the zero line means locked, a cluster at ±0.5 means the lock is
+  off-beat or octave-wrong. Hold focus and tap SPACE on beats: your taps
+  land on the same strip in yellow with a running median offset.
+- **Audio strip** — 8 band bars, RMS, flux sparkline, centroid, and the
+  energy z-score with the FSM's −0.5 / 0.5 / 1.5 thresholds drawn.
+- **Creature strip** — FSM state, active move, move-local phase wheel
+  (spokes at the table's key phases), a 60 s state/move ribbon, blend
+  flag, and the joint-target-speed sparkline with red spike flags (same
+  metric the harnesses gate on).
+- **Decision log** — scrolling tail of session events: state and move
+  changes, director picks and commits, move-table hot-pushes and errors.
+
 ### Authoring a move (workbench)
 
 1. Load + trigger the creature; open the controller's **Move Workbench**.

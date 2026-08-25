@@ -111,6 +111,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     bassAvg:     0,
     beatsPerSec: 0,
     onBeat:      false,
+    onsetLog:    [],     // [wallMs, signedPhaseErr] ring, bench observer
     prevBass:    0,
   };
   const beatTimes = [];
@@ -425,6 +426,11 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
       beatTimes.push(nowMs);
       while (beatTimes.length && nowMs - beatTimes[0] > 3000) beatTimes.shift();
       state.beatsPerSec = beatTimes.length / 3;
+      // bench observer (brief 12.6): onset wall-time + signed phase error vs
+      // the predicted grid — already-computed values, just buffered
+      const err = state.beatPhase <= 0.5 ? state.beatPhase : state.beatPhase - 1;
+      state.onsetLog.push([Date.now(), +err.toFixed(3)]);
+      if (state.onsetLog.length > 64) state.onsetLog.shift();
     } else if (beatTimes.length) {
       while (beatTimes.length && nowMs - beatTimes[0] > 3000) beatTimes.shift();
       state.beatsPerSec = beatTimes.length / 3;

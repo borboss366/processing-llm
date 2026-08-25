@@ -41,11 +41,15 @@ const AUDIO_FILE = QUERY.get('audio')?.startsWith('file:')
   ? QUERY.get('audio').slice(5)
   : null;
 const AUDIO_SEEK = Number(QUERY.get('seek') ?? 0);
+// ?bg=off — boot with Butterchurn dark (clean judging/diagnostic runs):
+// deterministic from page load, no WS toggle race, survives per-page resets
+const BG_OFF = QUERY.get('bg') === 'off';
 
 let visualizer = null;
 let registry   = null;
 let p5Instance = null;
-let bgOn = true, fgOn = true;
+let bgOn = !BG_OFF, fgOn = true;
+if (BG_OFF) els.bg.classList.add('layer-off');
 let devices = [];
 let currentDeviceId = null;
 
@@ -168,6 +172,7 @@ function advancePendingPick() {
 
 // ─── Render loop (audio analysis + butterchurn) ──────────────────────────
 let lastBroadcastMs = 0;
+let lastBenchMs = 0;
 function renderLoop() {
   requestAnimationFrame(renderLoop);
   audio.tick();
@@ -180,6 +185,26 @@ function renderLoop() {
   if (now - lastBroadcastMs > 100) {
     lastBroadcastMs = now;
     broadcastState();
+  }
+  // bench observer feed (brief 12.6) at ~15 Hz — read-only exposure of
+  // already-computed audio + creature values, nothing new in the live path
+  if (now - lastBenchMs > 66 && ws.alive) {
+    lastBenchMs = now;
+    const s = audio.state ?? {};
+    ws.send({
+      type: 'bench-state',
+      t: Date.now(),
+      beatPhase: s.beatPhase ?? 0,
+      barPhase: s.barPhase ?? 0,
+      bpm: s.bpm ?? 0,
+      beatConfidence: s.beatConfidence ?? 0,
+      level: s.smoothedLevel ?? 0,
+      flux: s.flux ?? 0,
+      centroid: s.smoothedCentroid ?? 0,
+      bands: s.bands ?? null,
+      onsets: (s.onsetLog ?? []).slice(-8),
+      creature: window.__creatureBench ?? null,
+    });
   }
 }
 
