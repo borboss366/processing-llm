@@ -751,7 +751,7 @@ function springStep(s, target, wn, dt) {
 // re-estimates reach stride/cap only through a low-passed beat length.
 // Exported so tools/move-clock-test.mjs can verify it frame-by-frame
 // without a browser. Returns the smoothed beat length for move consumers.
-export function stepMoveClock(state, phase, dt, beatSecRaw) {
+export function stepMoveClock(state, phase, dt, beatSecRaw, catchup = 0.45) {
   // ~0.8 s low-pass: an acquisition BPM swing (e.g. 120→174) would otherwise
   // step strideU and the cap itself even though phase deltas are capped
   state.beatSecS = state.beatSecS == null
@@ -765,7 +765,7 @@ export function stepMoveClock(state, phase, dt, beatSecRaw) {
   state.phaseDebt = (state.phaseDebt ?? 0) + dRaw;
   // 0.45×nominal catch-up headroom: the observed 0.46-beat acquisition snap
   // spreads over ≥1 beat of wall time instead of stepping the pose
-  const applied = Math.min(state.phaseDebt, nominal * 1.45);
+  const applied = Math.min(state.phaseDebt, nominal * (1 + catchup));
   state.phaseDebt -= applied;
   state.moveAcc = (state.moveAcc ?? 0) + applied;
   state.moveApplied = applied;
@@ -850,15 +850,32 @@ export default {
     // ── phase: PLL when confident, else free-run ────────────────────────
     let phase;
     const confident = a.beatConfidence >= 0.4 && a.bpm > 0;
-    const bpmUsed = confident ? a.bpm : (a.lastConfidentBpm > 0 ? a.lastConfidentBpm : 120);
+    // bpm slew (brief 13 Task 3): on the PLL tier the move clock consumes a
+    // rate-limited bpm (≤1%/s toward the estimate) so tracker swings can't
+    // surge the dance; GridClock bpm passes through — its changes are real
+    const bpmTarget = confident ? a.bpm : (a.lastConfidentBpm > 0 ? a.lastConfidentBpm : 120);
+    let bpmUsed;
+    if (a.clockTier === 'grid') {
+      bpmUsed = bpmTarget;
+      state.bpmSlew = bpmTarget;
+    } else {
+      state.bpmSlew ??= bpmTarget;
+      const maxStep = state.bpmSlew * 0.01 * dt;
+      state.bpmSlew += Math.max(-maxStep, Math.min(maxStep, bpmTarget - state.bpmSlew));
+      bpmUsed = state.bpmSlew;
+    }
     if (confident) {
-      phase = a.beatPhase;
+      phase = a.visualBeatPhase ?? a.beatPhase;   // display-latency calibrated (brief 13)
       state.freePhase = phase;
     } else {
       state.freePhase = (state.freePhase + dt * (bpmUsed / 60)) % 1;
       phase = state.freePhase;
     }
-    const beatSec = stepMoveClock(state, phase, dt, 60 / bpmUsed);
+    // locomotion gets a LOW catch-up headroom (brief 13 Task 3): residual
+    // error drains over a couple of slightly longer steps instead of a
+    // visible mid-stance surge; dance/idle keep the 0.45 headroom
+    const locomotion = state.beh?.state === 'walk' || state.beh?.state === 'hop';
+    const beatSec = stepMoveClock(state, phase, dt, 60 / bpmUsed, locomotion ? 0.12 : 0.45);
 
     // ── move workbench (brief 12): manual phase scrub ───────────────────
     // manual mode pins the move-local clock to phaseScrub within the
@@ -902,7 +919,13 @@ export default {
     const level = manual
       ? (state.frozenLevel ??= a.smoothedLevel ?? 0)
       : ((state.frozenLevel = null), a.smoothedLevel ?? 0);
-    const lvl = Math.min(1, 0.35 + level * 1.3);
+    // asymmetric level envelope (brief 13 Task 3): fast attack, ~2 s release,
+    // floored at idle-breathing amplitude — a 1 s dropout SOFTENS the dance
+    // instead of freezing it. Raw `level` still feeds the FSM z-score.
+    state.lvlEnv ??= level;
+    state.lvlEnv += (level - state.lvlEnv) *
+      Math.min(1, dt / (level > state.lvlEnv ? 0.12 : 2.0));
+    const lvl = Math.max(0.28, Math.min(1, 0.35 + state.lvlEnv * 1.3));
 
     // ── behaviour state machine ─────────────────────────────────────────
     const beh = state.beh;
@@ -911,7 +934,7 @@ export default {
     const dev = level - beh.em;
     beh.ev = beh.ev * (1 - alphaE) + dev * dev * alphaE;
     const z = dev / Math.sqrt(beh.ev + 1e-6);
-    const barPhase = confident ? a.barPhase : state.freePhase / 4;
+    const barPhase = confident ? (a.visualBarPhase ?? a.barPhase) : state.freePhase / 4;
     const wrapped = barPhase < beh.lastBar - 0.5;
     beh.lastBar = barPhase;
     let next = beh.state;
@@ -919,8 +942,8 @@ export default {
       /* workbench scrub: hold the FSM wherever it is */
     } else if (params.behavior !== 'auto') {
       next = params.behavior;
-    } else if (!confident) {
-      next = 'idle';
+    } else if (!confident || !(state.entry?.ok ?? false)) {
+      next = 'idle';   // enter breathing immediately; catch the beat on lock
     } else if (wrapped) {
       if (z < -0.5) { beh.lowBars++; if (beh.lowBars >= 2) next = 'idle'; }
       else {
@@ -933,7 +956,7 @@ export default {
     // — moveAcc/freePhase/feet run on untouched).
     const startBlend = () => {
       state.blend = {
-        from: state.joints.map((J) => ({ ax: J.bax ?? J.ax ?? J.x, ay: J.bay ?? J.ay ?? J.y, th: J.btheta ?? J.theta ?? 0 })),
+        from: state.joints.map((J) => ({ ax: J.bax ?? J.ax ?? J.x, ay: J.bay ?? J.ay ?? J.y, th: J.btheta ?? J.theta ?? 0, acc: J.bacc ?? J.accRot ?? 0 })),
         start: state.moveAcc,
         durBeats: Math.max(0.1, Number(params.blendBeats) || 0.75),
       };
@@ -962,7 +985,16 @@ export default {
     state.world ??= { x: p.width * params.xFrac, facing: 1, facingVis: 1, turn: null };
     const world = state.world;
     const speedU = params.speed * state.bbox.h;
-    const strideU = speedU * beatSec * Math.max(0.25, params.beatsPerStride);
+    // walk enter/exit ease (brief 13 Task 4): stride ramps over ~1 bar so
+    // the body leans into the walk and decelerates out of it. Feet and
+    // odometry share the SAME eased stride — they must never disagree
+    // (that was the original slide bug family).
+    state.walkEase ??= 0;
+    const easeRate = dt / (4 * beatSec);
+    state.walkEase = st === 'walk'
+      ? Math.min(1, state.walkEase + easeRate)
+      : Math.max(0, state.walkEase - easeRate);
+    const strideU = speedU * beatSec * Math.max(0.25, params.beatsPerStride) * state.walkEase;
 
     const dPhase = state.moveApplied;   // same clock as the move phase
 
@@ -977,6 +1009,10 @@ export default {
         if (world.facing < 0 && world.x < p.width * 0.18) { world.turn = { t0, from: -1, to: 1 }; startBlend(); }
         world.facingVis = world.facing;
       }
+    } else if (state.hasFeet && state.walkEase > 0 && !world.turn) {
+      // decelerating out of walk (brief 13 Task 4): the stride is easing
+      // to zero — keep advancing on it so the body glides to a stop
+      world.x += dPhase * strideU * S * world.facing;
     } else if (!state.hasFeet) {
       // float drift (brief 12 ghost, any ungrounded shape): slow Perlin
       // wander across the full stage, BOTH axes; in hop state bar accents
@@ -1115,19 +1151,26 @@ export default {
       const g = (gait[J.role] ?? gait.root)(J.limb ?? 0, J.phase ?? 0);
       J.theta = st === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off));
       if (J.role === 'head') J.theta += headLook;
-      // table rot joins the FK chain (children inherit via P.theta), so
+      // table rot joins the FK chain (children inherit via accRot), so
       // authored rotations keep bone lengths by construction
       const tk = mvPose?.joints[J.name];
       if (tk?.rot) J.theta += tk.rot;
       if (J.parent < 0) {
         J.ax = J.x + swayU; J.ay = J.y + bounceY + (J.role === 'root' ? rearBob : 0);
+        J.accRot = J.theta;
       } else {
+        // TRUE hierarchical FK (brief 13 Task 5): a joint's rotation carries
+        // ALL descendants — offsets compose down the chain (a hip rot moves
+        // the ankle through space). Replaces the old 0.35-damped
+        // immediate-parent-only inheritance, which left elbows "pulling up"
+        // without rotating and kicks that never carried the foot.
         const P = joints[J.parent];
         const ox = J.x - P.x, oy = J.y - P.y;
-        const rot = J.theta + (P.theta ?? 0) * 0.35;
+        const rot = (P.accRot ?? 0) + J.theta;
         const c = Math.cos(rot), s = Math.sin(rot);
         J.ax = P.ax + ox * c - oy * s;
         J.ay = P.ay + ox * s + oy * c;
+        J.accRot = rot;
       }
       // dx/dy in shape units, applied after chaining (authoring guidance:
       // prefer rot on chained limbs — dx/dy there stretches the bone)
@@ -1148,6 +1191,7 @@ export default {
         J.ax = chest.ax + ox * c - oy * s2;
         J.ay = chest.ay + ox * s2 + oy * c;
         J.theta = ang;
+        J.accRot = ang;
       }
     }
 
@@ -1160,7 +1204,7 @@ export default {
         if (!T.ground) continue;
         const foot = (state.feet[T.name] ??= { plantWX: null });
         if (world.turn) {
-          T.ax = T.x; T.ay = T.y; T.theta = 0;
+          T.ax = T.x; T.ay = T.y; T.theta = 0; T.accRot = 0;
           foot.plantWX = null;
           continue;
         }
@@ -1185,6 +1229,7 @@ export default {
           }
         }
         T.theta = 0;
+        T.accRot = 0;
       }
       for (const J of joints) {
         if (J.role !== 'knee') continue;
@@ -1194,6 +1239,7 @@ export default {
         J.ax = (R.ax + T.ax) / 2 + 0.02;
         J.ay = (R.ay + T.ay) / 2;
         J.theta = 0;
+        J.accRot = 0;
       }
     } else {
       state.feet = null;
@@ -1215,12 +1261,14 @@ export default {
         T.ax += (T.x - T.ax) * w;
         T.ay += (T.y - T.ay) * w;
         T.theta *= 1 - w;
+        T.accRot = (T.accRot ?? 0) * (1 - w);
         const K = joints.find((q) => q.role === 'knee' && q.limb === T.limb);
         if (K) {
           const R = joints[K.parent];
           K.ax += ((R.ax + T.ax) / 2 + 0.02 - K.ax) * w;
           K.ay += ((R.ay + T.ay) / 2 - K.ay) * w;
           K.theta *= 1 - w;
+          K.accRot = (K.accRot ?? 0) * (1 - w);
         }
       }
     } else {
@@ -1242,10 +1290,11 @@ export default {
           J.ax = F.ax + (J.ax - F.ax) * sm;
           J.ay = F.ay + (J.ay - F.ay) * sm;
           J.theta = F.th + (J.theta - F.th) * sm;
+          J.accRot = F.acc + ((J.accRot ?? 0) - F.acc) * sm;
         }
       }
     }
-    for (const J of joints) { J.bax = J.ax; J.bay = J.ay; J.btheta = J.theta; }
+    for (const J of joints) { J.bax = J.ax; J.bay = J.ay; J.btheta = J.theta; J.bacc = J.accRot ?? 0; }
 
     // joint-target speed metric (brief 8.2 Task 3): max per-frame target
     // displacement across joints, vs a rolling median; spikes outside a
@@ -1317,7 +1366,7 @@ export default {
 
     for (const J of joints) {
       const scale = J.parent < 0 ? bellScale : 1;
-      const c = Math.cos(J.theta), s = Math.sin(J.theta);
+      const c = Math.cos(J.accRot ?? J.theta), s = Math.sin(J.accRot ?? J.theta);
       for (const pin of J.pins) {
         const ox = pin.offX * scale, oy = pin.offY * scale;
         pos[pin.i * 2] = prev[pin.i * 2] = J.ax + ox * c - oy * s;
@@ -1373,22 +1422,27 @@ export default {
     }
 
     // ── render ──────────────────────────────────────────────────────────
-    // entry gate (brief 9 Task 0b): hold the fade until the PLL is worth
-    // dancing to — beatConfidence ≥ entryConf sustained entrySec. The latch
-    // resets when the lifecycle returns to idle, so every (re)trigger waits
-    // for a settled beat estimate before the creature materialises.
+    // entry gate (brief 9 Task 0b, reshaped brief 13 Task 4): the latch no
+    // longer hides the creature — it holds the FSM in idle until the beat
+    // estimate is worth dancing to (beatConfidence ≥ entryConf sustained
+    // entrySec; instant on the grid tier). Resets on lifecycle idle.
     const lcState = ctx.lifecycle?.state ?? 'active';
     state.entry ??= { since: null, ok: false, env: 0 };
     if (lcState === 'idle') state.entry = { since: null, ok: false, env: 0 };
     if (!state.entry.ok) {
-      if (a.beatConfidence >= params.entryConf) {
+      if (a.clockTier === 'grid') state.entry.ok = true;
+      else if (a.beatConfidence >= params.entryConf) {
         state.entry.since ??= t0;
         if (t0 - state.entry.since >= params.entrySec * 1000) state.entry.ok = true;
       } else {
         state.entry.since = null;
       }
     }
-    state.entry.env = state.entry.ok ? Math.min(1, state.entry.env + dt / 0.9) : 0;
+    // brief 13 Task 4: the creature ENTERS immediately (idle breathing needs
+    // no beat) — the FSM below stays in idle until the lock latches, so it
+    // visibly catches the beat when confidence arrives. env now only ramps
+    // the entry fade once, not gate visibility.
+    state.entry.env = Math.min(1, state.entry.env + dt / 0.9);
     const alpha = (ctx.lifecycle?.alpha ?? 1) * state.entry.env * (state.swapEnv ?? 1);
     window.__creaturePhase = {
       maxRaw: +(state.mvMaxRaw ?? 0).toFixed(4),
@@ -1404,6 +1458,9 @@ export default {
       jointSpeed: +(state.jointSpeed ?? 0).toFixed(3),
       jointMedian: +(state.jointMedian ?? 0).toFixed(3),
       spikesFlagged: state.jm?.spikesFlagged ?? 0,
+      lvlEnv: +(state.lvlEnv ?? 0).toFixed(3),
+      bpmUsed: +(state.bpmSlew ?? 0).toFixed(1),
+      moveApplied: +(state.moveApplied ?? 0).toFixed(4),
     };
     if (alpha <= 0.001) {
       if (state.shade) {
@@ -1604,7 +1661,7 @@ export default {
       window.__creatureJoints = joints.map((J) => ({
         name: J.name, ax: +J.ax.toFixed(3), ay: +J.ay.toFixed(3),
         sx: Math.round(mapX(J.ax)), sy: Math.round(mapY(J.ay)),
-        theta: +(J.theta ?? 0).toFixed(3), pins: J.pins.length,
+        theta: +(J.theta ?? 0).toFixed(3), accRot: +(J.accRot ?? 0).toFixed(3), pins: J.pins.length,
       }));
 
       // density probe (brief 8.1 step 4): every 30th frame, min accumulated

@@ -11,6 +11,29 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Beat clocks (brief 13)**: `core/clock.js` — the active clock owns the
+  four public phase fields; PLL always runs as the fallback tier
+  (`state.pll`), GridClock takes over when file playback finds a
+  `music/<file>.beatgrid.json` sidecar (confidence 1, exact `phaseAt`,
+  currentTime-quantization-smoothed). `tools/gridder.mjs` grids tracks
+  offline (non-causal DP + least-squares smoothing; `--bpm`/`--tap` for
+  stubborn ones — Pendulum needed `--bpm 174`); all 5 tracks gridded.
+  Bench click vs grid: **median 0.9 ms** (`tools/grid-check.mjs`, verify
+  --full). Music-pause instrumentation permanent (element/ctx events,
+  long tasks, skip detector, visibility) — 30-min soak: ZERO gaps, live
+  mechanism still unreproduced (user session will name it). Dance
+  robustness: 1%/s bpm slew (PLL tier), 0.12× locomotion catch-up cap,
+  asymmetric level envelope with idle floor — torture runs (tempo step,
+  1 s gap, 4 s collapse) 0 spikes on BOTH tiers with plots. Walk eases
+  in/out over a bar on a shared eased stride; the creature now enters in
+  idle immediately and visibly catches the beat on lock (instant on
+  grid). TRUE hierarchical FK (accRot composes down the chain): tstep's
+  kick carries the ankle 34 px, armwave's peaks travel elbow→hand
+  (`tools/fk-check.mjs`); tables re-authored to rotations, still
+  placeholders. `visualBeatOffsetMs` display-latency calibration (bench
+  slider, persisted; click stays raw); phase-0 = squash impact verified
+  everywhere (`reports/2026-08-26-beat-clocks.md`).
+
 - **Bench + move rotation (brief 12.6)**: `bench.html` — read-only
   observer over a 15 Hz `bench-state` WS feed: click track (WebAudio,
   lookahead-scheduled, downbeat-pitched; 92 clicks at 56 ms median vs
@@ -229,8 +252,11 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-1. The user's by-ear bench session (click track on the music, tap-along)
-   and the move-rotation look — then the still-open judgment queue:
-   brief 12 ghost, brief 11 phone gate, brief 10 post verdict.
-2. Placeholder move timing via the workbench (user's play).
-3. PLL frame-rate family: dnb-174 bistable + idle-page 120 Hz.
+1. User's live GridClock session: click-on-beat by ear per track, the
+   visual-offset calibration on the real display, and — with the pause
+   instrumentation now permanent — reproducing the music pauses so the
+   mechanism can be named and fixed.
+2. Move sculpting on the workbench (tables are rotation-based now);
+   ghost/phone/post judgment queue unchanged.
+3. Brief 12.5 (never delivered) → rebase on the clock interface; spider
+   is brief 14.

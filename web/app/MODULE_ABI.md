@@ -191,8 +191,12 @@ Rules:
 - `contacts` lists ground-tip joint names planted from this key until the
   next: they stay locked to their neutral ground position (knees follow
   geometrically) while the body moves over them. Unlisted feet are free.
-- The FSM's dance states cycle through their move tables (two bars each);
-  the `move` param forces a specific table by name.
+- The FSM's dance states rotate through a weighted per-state repertoire
+  (gait-table default, sidecar `repertoire` override); the `move` param
+  forces a specific table by name.
+- **Beat-impact convention**: phase 0 is the IMPACT — the bounce's lowest
+  (squash) point, a kick's hit. All shipped tables follow it; keep it when
+  authoring, or the visual-offset calibration means nothing.
 
 ## Interfaces
 

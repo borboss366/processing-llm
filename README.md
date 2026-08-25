@@ -67,7 +67,13 @@ anything. From top:
   flag, and the joint-target-speed sparkline with red spike flags (same
   metric the harnesses gate on).
 - **Decision log** — scrolling tail of session events: state and move
-  changes, director picks and commits, move-table hot-pushes and errors.
+  changes, director picks and commits, move-table hot-pushes and errors,
+  audio-health incidents, clock-tier selections.
+- **Visual offset** (the bench's one control): rhythm-game-style
+  display/audio latency calibration. With the click track on, watch the
+  creature's bounce and nudge the slider until the squash impact sits ON
+  the click (positive = visuals earlier). Persisted per machine on the
+  render side; the click itself always stays raw.
 
 ### Authoring a move (workbench)
 

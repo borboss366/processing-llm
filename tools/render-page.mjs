@@ -47,11 +47,11 @@ export async function launchBrowser() {
 
 /** Open the render window playing `filePath` (a /music/... server path),
  *  click Start, wait until the file is actually playing. */
-export async function openRenderWithFile(browser, filePath, { seekSec = 0 } = {}) {
+export async function openRenderWithFile(browser, filePath, { seekSec = 0, extra = "" } = {}) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 720 });
   const url = `${BASE_URL}/?audio=${encodeURIComponent(`file:${filePath}`)}` +
-              (seekSec ? `&seek=${seekSec}` : "");
+              (seekSec ? `&seek=${seekSec}` : "") + (extra ? `&${extra}` : "");
   await page.goto(url, { waitUntil: "networkidle2", timeout: 30_000 });
   await page.click("#btn-start");
   await page.waitForFunction(

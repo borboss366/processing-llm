@@ -31,6 +31,9 @@ const els = {
 
 // ─── State ────────────────────────────────────────────────────────────────
 const audio   = createAudio();
+try {
+  audio.state.visualBeatOffsetMs = Number(localStorage.getItem('visualBeatOffsetMs')) || 0;
+} catch { /* storage unavailable */ }
 window.__audio = audio;   // dev/test seam: harnesses sample audio.state via puppeteer
 
 // Dev-only file input: ?audio=file:/music/track.mp3[&seek=120] plays the file
@@ -106,6 +109,23 @@ async function startAudio() {
       audioCtx:    audio.audioCtx,
       mediaSource: audio.mediaSource,
     });
+    // main-thread long tasks block everything driven from rAF — evidence
+    // for the music-pause hunt (brief 13 Task 2)
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          if (e.duration > 200 && audio.state?.audioHealth) {
+            audio.state.audioHealth.push({ t: Date.now(), kind: 'long-task', detail: `${Math.round(e.duration)}ms` });
+          }
+        }
+      }).observe({ entryTypes: ['longtask'] });
+    } catch { /* observer unsupported — fine */ }
+    // keep the display awake during a set: OS display sleep throttles tabs
+    try { navigator.wakeLock?.request('screen'); } catch { /* unsupported */ }
+    // tab visibility flips are the throttling prime suspect — record them
+    document.addEventListener('visibilitychange', () => {
+      audio.state?.audioHealth?.push({ t: Date.now(), kind: 'visibility', detail: document.visibilityState });
+    });
     // hide the overlay forever
     els.startOverlay.style.display = 'none';
     broadcastState();
@@ -176,6 +196,7 @@ function advancePendingPick() {
 // ─── Render loop (audio analysis + butterchurn) ──────────────────────────
 let lastBroadcastMs = 0;
 let lastBenchMs = 0;
+let lastHealthIdx = 0;
 function renderLoop() {
   requestAnimationFrame(renderLoop);
   audio.tick();
@@ -189,6 +210,14 @@ function renderLoop() {
     lastBroadcastMs = now;
     broadcastState();
   }
+  // audio-health forwarding (brief 13 Task 2): new ring entries → WS
+  const health = audio.state?.audioHealth ?? [];
+  while (health.length && lastHealthIdx < health.length) {
+    const h = health[lastHealthIdx++];
+    if (ws.alive) ws.send({ type: 'audio-health', ...h });
+  }
+  if (health.length < lastHealthIdx) lastHealthIdx = health.length;   // ring shifted
+
   // bench observer feed (brief 12.6) at ~15 Hz — read-only exposure of
   // already-computed audio + creature values, nothing new in the live path
   if (now - lastBenchMs > 66 && ws.alive) {
@@ -206,6 +235,7 @@ function renderLoop() {
       centroid: s.smoothedCentroid ?? 0,
       bands: s.bands ?? null,
       tier: s.clockTier ?? 'pll',
+      visualOffsetMs: s.visualBeatOffsetMs ?? 0,
       onsets: (s.onsetLog ?? []).slice(-8),
       creature: window.__creatureBench ?? null,
     });
@@ -268,6 +298,12 @@ const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesse
       // included — so the figure shares the scene's grade; on bypass it
       // falls back to the Butterchurn canvas as before.
       compositor.setFilter(msg.filter ?? '');
+    } else if (msg.type === 'set-visual-offset') {
+      // rhythm-game display-latency calibration (brief 13 Task 6): per
+      // machine, persisted on the render side, adjustable from the bench
+      const ms = Number(msg.ms) || 0;
+      audio.state.visualBeatOffsetMs = ms;
+      try { localStorage.setItem('visualBeatOffsetMs', String(ms)); } catch {}
     } else if (msg.type === 'moves-changed') {
       // move workbench (brief 12): the creature polls this seam and
       // re-fetches the changed table in place (validated server-side)

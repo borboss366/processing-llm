@@ -101,7 +101,7 @@ function logLine(text) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
-createWs({
+const wsOut = createWs({
   url: `ws://${location.host}/ws`,
   onMessage(msg) {
     if (msg.type === 'bench-state') {
@@ -134,6 +134,8 @@ createWs({
             .catch(() => { keyPhases = []; });
         }
       }
+    } else if (msg.type === 'audio-health') {
+      logLine(`audio-health: <span class="kv">${msg.kind}</span> ${msg.detail ?? ''}`);
     } else if (msg.type === 'clock-tier') {
       logLine(`beat clock → <span class="kv">${msg.tier.toUpperCase()}</span> (${msg.file ?? ''})`);
     } else if (msg.type === 'creature-state') {
@@ -151,6 +153,24 @@ createWs({
     }
   },
 });
+
+// ─── visual beat offset (brief 13 Task 6): the ONE control on the bench —
+// display-latency calibration, persisted render-side, click stays raw ─────
+{
+  const slider = $('vis-off'), val = $('vis-off-val');
+  let synced = false;
+  slider.addEventListener('input', () => {
+    val.textContent = slider.value;
+    wsOut.send({ type: 'set-visual-offset', ms: Number(slider.value) });
+  });
+  setInterval(() => {
+    if (!synced && B && typeof B.visualOffsetMs === 'number') {
+      slider.value = String(B.visualOffsetMs);
+      val.textContent = String(B.visualOffsetMs);
+      synced = true;
+    }
+  }, 500);
+}
 
 // ─── drawing ──────────────────────────────────────────────────────────────
 const STATE_COLORS = { idle: '#39415e', walk: '#2c7a4b', groove: '#7a2c6b', hop: '#7a6b2c' };

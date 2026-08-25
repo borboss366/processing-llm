@@ -270,9 +270,9 @@ export function createCompositor({ audio }) {
     // the phase wrap never steps the frame
     let target = 0;
     if (conf >= 0.4) {
-      const ph = a.beatPhase ?? 0;
+      const ph = a.visualBeatPhase ?? a.beatPhase ?? 0;
       target = params.zoomAmp * level * Math.exp(-3.5 * ph);
-      const bar = a.barPhase ?? 0;
+      const bar = a.visualBarPhase ?? a.barPhase ?? 0;
       if (bar < lastBarPhase - 0.5 && conf >= 0.6 && params.barZoom) barPulse = 0.005;
       lastBarPhase = bar;
     }

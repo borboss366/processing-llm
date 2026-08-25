@@ -90,6 +90,14 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
   // causal tracker's own fields (brief 13): the PLL always runs, but the
   // ACTIVE CLOCK owns the public phase fields on `state`
   const pll = { bpm: 0, beatPhase: 0, barPhase: 0, beatConfidence: 0, lastConfidentBpm: 0 };
+
+  // audio-health instrumentation (brief 13 Task 2): element/context events
+  // and playback skips, buffered for the session stream + bench. Permanent.
+  function healthEvent(kind, detail = '') {
+    state.audioHealth.push({ t: Date.now(), kind, detail: String(detail) });
+    if (state.audioHealth.length > 64) state.audioHealth.shift();
+    console.warn(`[audio-health] ${kind}${detail ? ` (${detail})` : ''}`);
+  }
   let clock = createPLLClock(pll);
 
   const state = {
@@ -119,6 +127,10 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     beatsPerSec: 0,
     onBeat:      false,
     onsetLog:    [],     // [wallMs, signedPhaseErr] ring, bench observer
+    audioHealth: [],     // [{t, kind, detail}] ring — element stalls, ctx state, skips
+    visualBeatOffsetMs: 0,  // display-latency calibration consumed by visuals
+    visualBeatPhase: 0,
+    visualBarPhase: 0,
     prevBass:    0,
   };
   const beatTimes = [];
@@ -139,6 +151,10 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     mediaSource.connect(analyser);
     mediaSource.connect(audioCtx.destination);   // audible
     fileElement = el;
+    for (const ev of ['stalled', 'waiting', 'suspend', 'pause', 'playing', 'ended', 'error']) {
+      el.addEventListener(ev, () => healthEvent(`element-${ev}`, `t=${el.currentTime.toFixed(1)}s`));
+    }
+    audioCtx.addEventListener('statechange', () => healthEvent('ctx-state', audioCtx.state));
     await el.play();
     if (seekSec > 0) el.currentTime = seekSec;
     // beatgrid sidecar (brief 13): file playback with a precomputed grid
@@ -441,8 +457,31 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     state.clockNowMs = nowMs;
     state.mediaMs = fileElement ? fileElement.currentTime * 1000 : 0;
     state.mediaWallMs = Date.now();   // paired stamp for media↔wall mapping (harness + bench)
+    if (fileElement && !fileElement.paused) {
+      // playback skip detector: media time must advance 1:1 with the wall
+      const dw = state.mediaWallMs - (state._skipWall ?? state.mediaWallMs);
+      const dm = state.mediaMs - (state._skipMedia ?? state.mediaMs);
+      if (dw > 0 && dw < 5000 && Math.abs(dm - dw) > 250) {
+        healthEvent('media-skip', `wall+${Math.round(dw)}ms media+${Math.round(dm)}ms`);
+      }
+      state._skipWall = state.mediaWallMs;
+      state._skipMedia = state.mediaMs;
+    }
     state.pll = { bpm: pll.bpm, beatPhase: pll.beatPhase, barPhase: pll.barPhase, beatConfidence: pll.beatConfidence };
     clock.apply(state);
+
+    // visual beat calibration (brief 13 Task 6): visuals consume a phase LED
+    // by visualBeatOffsetMs (display/audio latency, rhythm-game style); the
+    // click track and bench stay on the raw fields
+    const vOff = state.visualBeatOffsetMs ?? 0;
+    if (vOff && state.bpm > 0) {
+      const beatMs = 60000 / state.bpm;
+      state.visualBeatPhase = (((state.beatPhase + vOff / beatMs) % 1) + 1) % 1;
+      state.visualBarPhase = (((state.barPhase + vOff / (beatMs * 4)) % 1) + 1) % 1;
+    } else {
+      state.visualBeatPhase = state.beatPhase;
+      state.visualBarPhase = state.barPhase;
+    }
 
     // ── beat detector (kept for live UI + beatsPerSec) ───────────────
     state.bassAvg = state.bassAvg * 0.99 + state.smoothedBass * 0.01;

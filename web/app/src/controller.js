@@ -522,6 +522,10 @@ const ws = createWs({
       // creature module (render window) announces behaviour transitions over
       // the WS relay; the controller owns the session id, so it writes them.
       sessionLog({ type: 'creature-state', state: msg.state, z: msg.z });
+    } else if (msg.type === 'audio-health') {
+      // playback reliability evidence (brief 13 Task 2)
+      sessionLog({ type: 'audio-health', kind: msg.kind, detail: msg.detail, t: msg.t });
+      appendMoodLog('audio', msg.kind, msg.detail ?? '', 'same');
     } else if (msg.type === 'clock-tier') {
       // beat-clock tier selection (brief 13) — session evidence
       sessionLog({ type: 'clock-tier', tier: msg.tier, file: msg.file });

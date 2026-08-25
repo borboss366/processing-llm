@@ -61,7 +61,7 @@ try {
     // for the whole page session, which polluted the next shape's clean
     // budget phase (measured: biped-2 read 6.3 ms after biped-1's probes).
     // The server replays module-load on WS connect, so the module re-arms.
-    const page = await openRenderWithFile(browser, MIX, { seekSec: seek });
+    const page = await openRenderWithFile(browser, MIX, { seekSec: seek, extra: flags.pll ? "clock=pll" : "" });
     ws.send(JSON.stringify({ type: "load-preset-by-name", name: String(flags.preset ?? CLEAN_PRESET), blendSec: 0 }));
     if (bgOff) ws.send(JSON.stringify({ type: "set-bg", on: false }));
     await new Promise((r) => setTimeout(r, 1500));   // module import + setup

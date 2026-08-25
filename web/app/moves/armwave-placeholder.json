@@ -6,8 +6,9 @@
     {
       "phase": 0,
       "joints": {
-        "elbowL": { "rot": 0.85 }, "handL": { "rot": 0.2 },
-        "elbowR": { "rot": -0.55 }, "handR": { "rot": -0.1 }
+        "elbowL": { "rot": 1.3 }, "handL": { "rot": 0.5 },
+        "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.2 },
+        "chest": { "rot": 0 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -15,8 +16,9 @@
     {
       "phase": 0.125,
       "joints": {
-        "elbowL": { "rot": 0.55 }, "handL": { "rot": 0.55 },
-        "elbowR": { "rot": -0.55 }, "chest": { "rot": 0.06 }
+        "elbowL": { "rot": 0.9 }, "handL": { "rot": 1.0 },
+        "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.2 },
+        "chest": { "rot": 0.1 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -24,8 +26,9 @@
     {
       "phase": 0.25,
       "joints": {
-        "handL": { "rot": 0.15 }, "chest": { "rot": 0.12 },
-        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.75 }
+        "elbowL": { "rot": 0.7 }, "handL": { "rot": 0.4 },
+        "elbowR": { "rot": -1.1 }, "handR": { "rot": -0.3 },
+        "chest": { "rot": 0.16 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -33,8 +36,9 @@
     {
       "phase": 0.375,
       "joints": {
-        "chest": { "rot": 0.06 },
-        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.3 }
+        "elbowL": { "rot": 0.8 }, "handL": { "rot": 0.3 },
+        "elbowR": { "rot": -1.3 }, "handR": { "rot": -0.6 },
+        "chest": { "rot": 0.08 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -42,7 +46,9 @@
     {
       "phase": 0.5,
       "joints": {
-        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.85 }, "handR": { "rot": -0.6 }
+        "elbowL": { "rot": 0.9 }, "handL": { "rot": 0.3 },
+        "elbowR": { "rot": -1.3 }, "handR": { "rot": -1.0 },
+        "chest": { "rot": 0 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -50,8 +56,9 @@
     {
       "phase": 0.625,
       "joints": {
-        "elbowL": { "rot": 0.55 }, "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.3 },
-        "chest": { "rot": 0.06 }
+        "elbowL": { "rot": 0.9 }, "handL": { "rot": 0.3 },
+        "elbowR": { "rot": -1.3 }, "handR": { "rot": -0.5 },
+        "chest": { "rot": 0.08 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -59,8 +66,9 @@
     {
       "phase": 0.75,
       "joints": {
-        "chest": { "rot": 0.12 }, "elbowL": { "rot": 0.7 },
-        "elbowR": { "rot": -0.55 }, "handR": { "rot": -0.1 }
+        "elbowL": { "rot": 1.0 }, "handL": { "rot": 0.4 },
+        "elbowR": { "rot": -1.0 }, "handR": { "rot": -0.3 },
+        "chest": { "rot": 0.16 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
@@ -68,8 +76,9 @@
     {
       "phase": 0.875,
       "joints": {
-        "elbowL": { "rot": 0.85 }, "handL": { "rot": 0.4 },
-        "elbowR": { "rot": -0.55 }
+        "elbowL": { "rot": 1.3 }, "handL": { "rot": 0.9 },
+        "elbowR": { "rot": -0.9 }, "handR": { "rot": -0.2 },
+        "chest": { "rot": 0.08 }
       },
       "contacts": ["footL", "footR"],
       "ease": "smooth"
