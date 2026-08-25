@@ -114,6 +114,13 @@ const CHECKS = [
     desc: "move workbench: scrub, hot edit applies, parse error kept safe, manual→live snap-free",
   },
   {
+    name: "bench-check",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/bench-check.mjs", "--seconds", "45"],
+    desc: "bench live over WS; click track ≤60 ms median vs the live estimate; rotation visible",
+  },
+  {
     name: "audience-e2e",
     tier: "full",
     cmd: ["node", "tools/audience-e2e.mjs"],

@@ -172,6 +172,8 @@ try {
 
     const states = timeline.map((c) => c.state);
     const runs = states.filter((s, i) => i === 0 || s !== states[i - 1]);
+    const moves = timeline.map((c) => c.move ?? "·");
+    const moveRuns = moves.filter((m, i) => i === 0 || m !== moves[i - 1]);
     const maxSlide = timeline.length ? Math.max(...timeline.map((c) => c.slidePx ?? 0)) : 0;
     const maxMs = phase1Ms;   // pre-readback measurement (see phase note)
     const maxComps = timeline.length ? Math.max(...timeline.map((c) => c.components ?? 1)) : 0;
@@ -181,6 +183,7 @@ try {
     const spikesAll = timeline.at(-1)?.spikesAll ?? 0;
     const spikesFlagged = timeline.at(-1)?.spikesFlagged ?? 0;
     console.log(`[capture] ${shape}: states ${runs.join(" → ") || "n/a"} · max stance slide ${maxSlide.toFixed(2)} px · clean-path ${maxMs === Infinity ? "n/a" : maxMs.toFixed(2)} ms/frame`);
+    console.log(`[capture] ${shape}: moves ${moveRuns.join(" → ") || "n/a"}`);
     console.log(`[capture] ${shape}: components max ${maxComps} · bone dev rot ${(boneRot * 100).toFixed(1)}% / ground ${(boneGnd * 100).toFixed(1)}% · limb min density ${JSON.stringify(dens)}`);
     console.log(`[capture] ${shape}: joint-speed spikes all=${spikesAll} flagged(outside windows)=${spikesFlagged}`);
     // move-clock evidence (brief 9 Task 0b): the raw PLL delta the clock was

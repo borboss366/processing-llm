@@ -11,6 +11,21 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Bench + move rotation (brief 12.6)**: `bench.html` — read-only
+  observer over a 15 Hz `bench-state` WS feed: click track (WebAudio,
+  lookahead-scheduled, downbeat-pitched; 92 clicks at 56 ms median vs
+  the live PLL estimate in the headless acceptance, `tools/bench-check.mjs`
+  in verify --full), BPM/confidence/bar instruments, onset-vs-grid strip
+  with spacebar tap-along, audio strip with FSM z-thresholds, creature
+  state/move ribbon + phase wheel + spike sparkline, decision log.
+  Move rotation: per-state weighted repertoire at gait-table level
+  (sidecar-overridable), rotates every `moveHoldBars` (4) bar wraps, no
+  immediate repeats, blend-layer switches, `creature-move` events to
+  session + bench; 60 s FSM capture cycled all three moves with 0 spikes
+  (`reports/2026-08-25-bench-rotation.md`). Env findings logged: vite
+  auto-restart breaks the /ws proxy (restart vite manually), background
+  tabs freeze in headless (one browser per window).
+
 - **Desktop draw + move workbench + ghost (brief 12)**: the drawing page
   works with a mouse (pointer events, `Draw` button in the controller via
   loopback-only `/api/info`; mouse-drag E2E case green). Move workbench:
@@ -214,9 +229,8 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-1. Brief 12 gate: GPU judgment on the ghost (sheet-ghost read, float/
-   swoop feel) — then the user's workbench session to author real move
-   timing (replaces the `*-placeholder` tables).
-2. Still open: brief 11 phone gate (real phone drawing performed), brief
-   10 post/framing GPU verdict, dnb-174 bistable PLL + the idle-page
-   120 Hz PLL finding (same family).
+1. The user's by-ear bench session (click track on the music, tap-along)
+   and the move-rotation look — then the still-open judgment queue:
+   brief 12 ghost, brief 11 phone gate, brief 10 post verdict.
+2. Placeholder move timing via the workbench (user's play).
+3. PLL frame-rate family: dnb-174 bistable + idle-page 120 Hz.

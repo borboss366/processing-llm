@@ -522,6 +522,9 @@ const ws = createWs({
       // creature module (render window) announces behaviour transitions over
       // the WS relay; the controller owns the session id, so it writes them.
       sessionLog({ type: 'creature-state', state: msg.state, z: msg.z });
+    } else if (msg.type === 'creature-move') {
+      // repertoire rotation switches (brief 12.6) — feed the session stream
+      sessionLog({ type: 'creature-move', move: msg.move, state: msg.state });
     } else if (msg.type === 'preset-committed') {
       // Render window applied a bar-quantized pick — log arrival→commit
       // delay and the barPhase it landed on (acceptance: commit alignment).

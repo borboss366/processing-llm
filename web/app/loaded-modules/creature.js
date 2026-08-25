@@ -420,6 +420,7 @@ function buildFromShape(state, params, shape) {
     // sidecar `grounded: false` (brief 12) forces the float/drift state set
     // even if ground joints exist — the flag drives the FSM, not new code
     hasFeet: json.grounded === false ? false : joints.some((J) => J.ground),
+    repertoire: json.repertoire ?? null,   // per-state move weights override (12.6)
     gaitName: json.archetype ?? 'biped',
     palette: json.palette ?? {},
     eyes: json.eyes ?? [],
@@ -719,8 +720,14 @@ function sampleMove(move, moveAcc) {
   return { joints, contacts: new Set(a.contacts ?? []) };
 }
 
-// FSM dance states cycle through these tables (Task 3: two bars each)
-const GROOVE_MOVES = ['groove', 'tstep-placeholder', 'armwave-placeholder'];
+// Move repertoire per FSM state (brief 12.6): weighted tables the rotation
+// picks from. Declared at gait-table level (biped defaults; ghost has none —
+// its joints don't match the biped tables, it stays procedural). A sidecar
+// `repertoire` field overrides per shape.
+GAITS.biped.repertoire = {
+  groove: [['groove', 0.5], ['tstep-placeholder', 0.3], ['armwave-placeholder', 0.2]],
+};
+GAITS.trot.repertoire = GAITS.biped.repertoire;
 
 // critically damped spring step, substepped so wn·h ≤ 0.5 — a single Euler
 // step at the 80 ms stall clamp has damping factor 2·wn·dt near/above 2,
@@ -782,6 +789,7 @@ export default {
     archetype: 'auto',         // 'auto' | 'biped' | 'trot' | 'pulse' | 'ghost'
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
     move: '',                  // force a moves/<name>.json table ('' = auto by state)
+    moveHoldBars: 4,           // bars between repertoire rotations (brief 12.6)
     clockMode: 'live',         // 'live' | 'manual' — workbench phase scrub (brief 12)
     phaseScrub: 0,             // 0..1 of the current move loop, in manual mode
     speed: 0.35,               // body-heights per second when walking
@@ -997,20 +1005,39 @@ export default {
       world.facingVis = 1;
     }
 
-    // ── move table resolution (brief 9 Task 1) ──────────────────────────
-    // `move` param forces one; otherwise dance states cycle the GROOVE_MOVES
-    // tables every two bars. Switches blend through the existing layer.
+    // ── move table resolution (brief 9 Task 1, rotation brief 12.6) ─────
+    // `move` param forces one (workbench). Otherwise the state's repertoire
+    // rotates: weighted-random pick on state entry and every moveHoldBars
+    // bar wraps, never the same move twice in a row when ≥2 entries;
+    // switches blend through the existing layer. Switches are announced on
+    // the WS relay (session stream + bench ribbon).
+    const gaitName = params.archetype === 'auto' ? state.gaitName : params.archetype;
+    const gait = GAITS[gaitName] ?? GAITS.biped;
     let moveName = null;
     if (params.move) {
       moveName = String(params.move) === 'none' ? null : String(params.move);
-    } else if (st === 'groove') {
-      state.grooveIdx ??= 0;
-      state.grooveBars ??= 0;
-      if (wrapped && ++state.grooveBars >= 2) {
-        state.grooveBars = 0;
-        state.grooveIdx = (state.grooveIdx + 1) % GROOVE_MOVES.length;
+    } else {
+      const rep = (state.repertoire ?? gait.repertoire ?? {})[st];
+      if (rep?.length) {
+        const rot = (state.rot ??= { st: null, bars: 0, name: null });
+        const due = rot.st !== st ||
+          (wrapped && ++rot.bars >= Math.max(1, Math.round(Number(params.moveHoldBars) || 4)));
+        if (due) {
+          rot.st = st;
+          rot.bars = 0;
+          const pool = rep.length >= 2 ? rep.filter(([n]) => n !== rot.name) : rep;
+          let r = Math.random() * pool.reduce((acc, [, w]) => acc + w, 0);
+          let pick = pool[0][0];
+          for (const [n, w] of pool) { r -= w; if (r <= 0) { pick = n; break; } }
+          if (pick !== rot.name) {
+            rot.name = pick;
+            try { window.__ws?.send({ type: 'creature-move', move: pick, state: st }); } catch {}
+          }
+        }
+        moveName = rot.name;
+      } else if (state.rot) {
+        state.rot.name = null;   // out of repertoire states: forget the pick
       }
-      moveName = GROOVE_MOVES[state.grooveIdx];
     }
     const move = moveName ? ensureMove(state, moveName) : null;
     if ((state.activeMove ?? null) !== (move?.name ?? null)) {
@@ -1039,9 +1066,7 @@ export default {
       }
     }
 
-    // ── skeleton targets per state ──────────────────────────────────────
-    const gaitName = params.archetype === 'auto' ? state.gaitName : params.archetype;
-    const gait = GAITS[gaitName] ?? GAITS.biped;
+    // ── skeleton targets per state (gait resolved above, with the rotation) ─
     const amp = params.amplitude * lvl * (st === 'idle' ? 0 : 1) * ov;
     const bellScale = !state.hasFeet && st !== 'idle'
       ? 1 + (gait.bellPulse ?? 0) * Math.sin(2 * Math.PI * mPhase) * amp
@@ -1370,6 +1395,16 @@ export default {
       maxApplied: +(state.mvMaxApplied ?? 0).toFixed(4),
       entryOk: state.entry.ok,
     };
+    // bench observer (brief 12.6): creature strip values, all pre-computed
+    window.__creatureBench = {
+      st, move: state.activeMove ?? null,
+      moveBpl: state.activeMoveBpl ?? 1,
+      loopPhase: +((((state.moveAcc % (state.activeMoveBpl ?? 1)) + (state.activeMoveBpl ?? 1)) % (state.activeMoveBpl ?? 1)) / (state.activeMoveBpl ?? 1)).toFixed(3),
+      blend: !!state.blend,
+      jointSpeed: +(state.jointSpeed ?? 0).toFixed(3),
+      jointMedian: +(state.jointMedian ?? 0).toFixed(3),
+      spikesFlagged: state.jm?.spikesFlagged ?? 0,
+    };
     if (alpha <= 0.001) {
       if (state.shade) {
         const { gl } = state.shade;
@@ -1669,7 +1704,8 @@ export default {
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
       window.__creaturePerf = {
         ms: state.perfMs, nodes: n, edges: restLen.length,
-        state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
+        state: st, move: state.activeMove ?? null,
+        z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2),
         passMs: +sh.passMs.toFixed(2), gpuMs: +sh.gpuMs.toFixed(2),
         jointSpeed: +(state.jointSpeed ?? 0).toFixed(3),
         spikesAll: state.jm?.spikesAll ?? 0,
