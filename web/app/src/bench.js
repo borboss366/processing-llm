@@ -13,6 +13,7 @@
  */
 
 import { createWs } from './core/ws.js';
+import { spark, phaseWheel, ribbonStrip, tierColor } from './core/bench-widgets.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => Date.now();
@@ -180,27 +181,6 @@ const wsOut = createWs({
 const STATE_COLORS = { idle: '#39415e', walk: '#2c7a4b', groove: '#7a2c6b', hop: '#7a6b2c' };
 const MOVE_COLORS = { groove: '#ff5d7e', 'tstep-placeholder': '#4dd9e8', 'armwave-placeholder': '#ffd24d' };
 
-function spark(cv, pts, { min, max, color = '#8fa7ff', windowMs = 60_000, marks = null }) {
-  const g = cv.getContext('2d');
-  g.clearRect(0, 0, cv.width, cv.height);
-  const t1 = now(), t0 = t1 - windowMs;
-  if (marks) {
-    g.strokeStyle = '#26263d';
-    for (const m of marks) {
-      const y = cv.height - ((m - min) / (max - min)) * cv.height;
-      g.beginPath(); g.moveTo(0, y); g.lineTo(cv.width, y); g.stroke();
-    }
-  }
-  g.strokeStyle = color; g.beginPath();
-  let started = false;
-  for (const [t, v] of pts) {
-    const x = ((t - t0) / windowMs) * cv.width;
-    const y = cv.height - Math.max(0, Math.min(1, (v - min) / (max - min))) * cv.height;
-    started ? g.lineTo(x, y) : g.moveTo(x, y);
-    started = true;
-  }
-  g.stroke();
-}
 
 function draw() {
   requestAnimationFrame(draw);
@@ -209,7 +189,7 @@ function draw() {
   $('bpm').textContent = B.bpm > 0 ? String(Math.round(B.bpm)) : '—';
   const tierEl = $('tier');
   tierEl.textContent = (B.tier ?? 'pll').toUpperCase();
-  tierEl.style.color = B.tier === 'grid' ? '#17b26a' : '#8fa7ff';
+  tierEl.style.color = tierColor(B.tier);
   spark($('bpmSpark'), bpmHist, { min: 60, max: 190 });
 
   { // confidence gauge
@@ -274,37 +254,9 @@ function draw() {
     $('cBlend').textContent = c.blend ? 'ON' : '—';
     $('cSpikes').textContent = String(c.spikesFlagged);
 
-    { // move-local phase wheel with key-phase spokes
-      const cv = $('phaseWheel'), g = cv.getContext('2d');
-      const R = cv.width / 2 - 4, cx = cv.width / 2, cy = cv.height / 2;
-      g.clearRect(0, 0, cv.width, cv.height);
-      g.strokeStyle = '#2c3350'; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
-      g.strokeStyle = '#556';
-      for (const ph of keyPhases) {
-        const a = ph * Math.PI * 2 - Math.PI / 2;
-        g.beginPath(); g.moveTo(cx + Math.cos(a) * R * 0.6, cy + Math.sin(a) * R * 0.6);
-        g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke();
-      }
-      const a = c.loopPhase * Math.PI * 2 - Math.PI / 2;
-      g.fillStyle = '#ffd24d';
-      g.beginPath(); g.arc(cx + Math.cos(a) * R * 0.8, cy + Math.sin(a) * R * 0.8, 4, 0, 7); g.fill();
-    }
+        phaseWheel($('phaseWheel'), c.loopPhase, keyPhases);
 
-    { // 60 s state/move ribbon
-      const cv = $('ribbon'), g = cv.getContext('2d');
-      g.clearRect(0, 0, cv.width, cv.height);
-      const t1 = now(), t0 = t1 - 60_000;
-      for (let i = 0; i < ribbon.length; i++) {
-        const [t, st, mv] = ribbon[i];
-        const tEnd = i + 1 < ribbon.length ? ribbon[i + 1][0] : t1;
-        const x0 = Math.max(0, ((t - t0) / 60_000) * cv.width);
-        const x1 = ((tEnd - t0) / 60_000) * cv.width;
-        g.fillStyle = STATE_COLORS[st] ?? '#39415e';
-        g.fillRect(x0, 0, x1 - x0, cv.height * 0.55);
-        g.fillStyle = MOVE_COLORS[mv] ?? '#23233a';
-        g.fillRect(x0, cv.height * 0.6, x1 - x0, cv.height * 0.4);
-      }
-    }
+        ribbonStrip($('ribbon'), ribbon, { stateColors: STATE_COLORS, moveColors: MOVE_COLORS });
 
     spark($('speedSpark'), speedHist.map((s) => [s[0], s[1]]), { min: 0, max: Math.max(1, ...speedHist.map((s) => s[1])), color: '#5ee89a' });
     { // spike flags over the speed sparkline

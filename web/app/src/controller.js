@@ -530,6 +530,9 @@ const ws = createWs({
       // playback reliability evidence (brief 13 Task 2)
       sessionLog({ type: 'audio-health', kind: msg.kind, detail: msg.detail, t: msg.t });
       appendMoodLog('audio', msg.kind, msg.detail ?? '', 'same');
+    } else if (msg.type === 'puppet-snapshot') {
+      sessionLog({ type: 'puppet-snapshot', snapshot: msg.snapshot });
+      appendMoodLog('puppet', 'snapshot', msg.snapshot?.shape ?? '', 'commit');
     } else if (msg.type === 'clock-tier') {
       // beat-clock tier selection (brief 13) — session evidence
       sessionLog({ type: 'clock-tier', tier: msg.tier, file: msg.file });

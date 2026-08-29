@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VJ · Puppet</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { background: #0a0a12; color: #cfd3e8; font: 13px/1.4 ui-monospace, Menlo, monospace; }
+      main { max-width: 1100px; margin: 0 auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+      section { background: #11111f; border: 1px solid #1e1e33; border-radius: 8px; padding: 8px 10px; }
+      .title { color: #667; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      button { background: #23233a; color: #dde; border: 0; border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
+      button.on { background: #17b26a; color: #fff; }
+      button.warn { background: #5a1020; }
+      select, input[type=text] { background: #191927; color: #dde; border: 1px solid #2a2a44; border-radius: 6px; padding: 6px; font: inherit; }
+      input[type=range] { width: 130px; }
+      .lbl { color: #667; font-size: 11px; }
+      .kv { color: #8fa; }
+      #params { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 14px; }
+      .param { display: flex; align-items: center; gap: 6px; }
+      .param span.name { min-width: 110px; color: #99a; overflow: hidden; text-overflow: ellipsis; }
+      .param input[type=range] { flex: 1; }
+      .param .val { min-width: 46px; text-align: right; }
+      canvas { background: #0c0c16; border-radius: 4px; }
+      #snap-status { color: #5ee89a; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <div class="title">Cast &amp; state</div>
+        <div class="row">
+          <select id="shape-sel"></select>
+          <button id="btn-enter">Enter</button>
+          <button id="btn-exit" class="warn">Exit</button>
+          <span class="lbl">behavior</span>
+          <span id="beh-btns"></span>
+          <span class="lbl" style="margin-left:auto">clock <span id="tier" class="kv">—</span></span>
+          <label class="lbl">visual offset <input type="range" id="vis-off" min="-250" max="250" step="5" value="0"> <span class="kv" id="vis-off-val">0</span> ms</label>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <span class="lbl">state <span class="kv" id="cState">—</span> · move <span class="kv" id="cMove">—</span></span>
+          <canvas id="wheel" width="56" height="56"></canvas>
+          <canvas id="ribbon" width="420" height="40"></canvas>
+          <button id="btn-snap">Snapshot ⧉</button>
+          <span id="snap-status"></span>
+        </div>
+      </section>
+
+      <section>
+        <div class="title">Move rig</div>
+        <div class="row">
+          <select id="mv-name"><option value="">(auto by state)</option></select>
+          <button id="mv-manual">Manual</button>
+          <input type="range" id="mv-scrub" min="0" max="1" step="0.005" value="0" style="flex:1; max-width:280px;" disabled>
+          <span id="mv-phase" class="lbl" style="min-width:46px;">—</span>
+          <button id="mv-play" disabled>Play from here</button>
+        </div>
+      </section>
+
+      <section>
+        <div class="title">Creature params (auto-enumerated · live)</div>
+        <div id="params"><span class="lbl">waiting for the render window…</span></div>
+      </section>
+    </main>
+    <script type="module" src="/src/puppet.js"></script>
+  </body>
+</html>

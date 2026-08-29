@@ -18,6 +18,7 @@ export default defineConfig({
       '/session':         'http://localhost:3000',
       '/music':           'http://localhost:3000',
       '/moves-list':      'http://localhost:3000',
+      '/shapes-list':     'http://localhost:3000',
       // Audience submission service (brief 11) — approve queue + approved
       // shape files + event QR. The render/controller side reads ONLY
       // /submit-api/api/approved/* and the queue/thumb/moderate endpoints.
@@ -35,6 +36,7 @@ export default defineConfig({
         main:       resolve(__dirname, 'index.html'),
         controller: resolve(__dirname, 'controller.html'),
         bench:      resolve(__dirname, 'bench.html'),
+        puppet:     resolve(__dirname, 'puppet.html'),
         ncaDemo:    resolve(__dirname, 'nca.html'),
       },
     },
