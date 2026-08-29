@@ -51,9 +51,8 @@ mod-octave so regressions still surface.
 - **Gate evening #2**: visual-offset calibration value + GridClock
   click-by-ear verdicts, ghost judgment, phone gate (real drawing →
   perform), post/framing look.
-- **Inputs owed**: brief files 12.5 + 12.7 for `docs/briefs/`
-  (download-only deliveries — the agent cannot author them);
-  move-timing sculpting session (tables are rotation-ready).
+- **Inputs owed**: move-timing sculpting session (tables are
+  rotation-ready).
 - **Content briefs queued**: realism arc (14), spider (15), field
   scene (16).
 

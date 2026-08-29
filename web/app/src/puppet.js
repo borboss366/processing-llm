@@ -10,7 +10,7 @@
  */
 
 import { createWs } from './core/ws.js';
-import { phaseWheel, ribbonStrip, tierColor } from './core/bench-widgets.js';
+import { spark, phaseWheel, ribbonStrip, tierColor } from './core/bench-widgets.js';
 
 const $ = (id) => document.getElementById(id);
 const osc = (address, value) => fetch('/osc', {
@@ -28,6 +28,7 @@ const MOVE_COLORS = { groove: '#ff5d7e', 'tstep-placeholder': '#4dd9e8', 'armwav
 let B = null;                 // latest bench-state
 let creatureMod = null;       // creature row from render-state.modules
 const ribbon = [];
+const speedHist = [];
 let keyPhases = [], keyMove = null;
 let forcedBehavior = 'auto';
 
@@ -61,7 +62,7 @@ $('btn-enter').addEventListener('click', async () => {
   await post('/browser-modules/trigger', { id: 'creature' });
 });
 $('btn-exit').addEventListener('click', () =>
-  post('/browser-modules/enable', { id: 'creature', enabled: false }));
+  post('/browser-modules/exit', { id: 'creature' }));   // through the normal fade (12.7)
 
 for (const b of ['auto', 'idle', 'walk', 'groove', 'hop']) {
   const btn = document.createElement('button');
@@ -135,11 +136,14 @@ function buildParams(mod) {
       const row = document.createElement('div');
       row.className = 'param';
       if (typeof def === 'number') {
-        const max = def === 0 ? 1 : Math.abs(def) * 3;
-        const step = max / 100;
+        const isHue = /^hue/i.test(k);
+        const max = isHue ? 360 : def === 0 ? 1 : Math.abs(def) * 3;
+        const step = isHue ? 1 : max / 100;
+        const v0 = mod.params?.[k] ?? def;
         row.innerHTML = `<span class="name" title="${k}">${k}</span>
-          <input type="range" data-k="${k}" min="${def < 0 ? -max : 0}" max="${max}" step="${step}" value="${mod.params?.[k] ?? def}">
-          <span class="val" data-v="${k}">${mod.params?.[k] ?? def}</span>`;
+          <input type="range" data-k="${k}" min="${def < 0 && !isHue ? -max : 0}" max="${max}" step="${step}" value="${v0}">
+          ${isHue ? `<span class="swatch" data-s="${k}" style="width:16px;height:16px;border-radius:4px;background:hsl(${v0},85%,62%)"></span>` : ''}
+          <span class="val" data-v="${k}">${v0}</span>`;
       } else {
         row.innerHTML = `<span class="name" title="${k}">${k}</span>
           <input type="text" data-k="${k}" value="${mod.params?.[k] ?? def}">`;
@@ -152,6 +156,8 @@ function buildParams(mod) {
       const v = e.target.type === 'range' ? Number(e.target.value) : e.target.value;
       const vs = host.querySelector(`[data-v="${k}"]`);
       if (vs) vs.textContent = typeof v === 'number' ? String(+v.toFixed(3)) : v;
+      const sw = host.querySelector(`[data-s="${k}"]`);
+      if (sw) sw.style.background = `hsl(${v},85%,62%)`;
       osc(`/creature/${k}`, v);
     });
   } else {
@@ -214,6 +220,11 @@ const ws = createWs({
         }
         phaseWheel($('wheel'), c.loopPhase ?? 0, keyPhases);
         ribbonStrip($('ribbon'), ribbon, { stateColors: STATE_COLORS, moveColors: MOVE_COLORS });
+        speedHist.push([msg.t, c.jointSpeed ?? 0, c.spikesFlagged ?? 0]);
+        while (speedHist.length && speedHist[0][0] < Date.now() - 60_000) speedHist.shift();
+        spark($('speed'), speedHist.map((h) => [h[0], h[1]]),
+          { min: 0, max: Math.max(1, ...speedHist.map((h) => h[1])), color: '#5ee89a' });
+        $('spikes').textContent = String(c.spikesFlagged ?? 0);
       }
     } else if (msg.type === 'render-state') {
       const mod = (msg.modules ?? []).find((m) => m.id === 'creature');

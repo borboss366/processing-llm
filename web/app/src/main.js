@@ -273,6 +273,8 @@ const ws = createWs({   // (exposed below as window.__ws for the tools/ harnesse
       registry.unload(msg.id);
     } else if (msg.type === 'module-enable' && registry) {
       registry.setEnabled(msg.id, msg.enabled);
+    } else if (msg.type === 'module-exit' && registry) {
+      registry.exitModule(msg.id);
     } else if (msg.type === 'trigger' && registry) {
       registry.fireTrigger(msg.id, msg.args);
     } else if (msg.type === 'preset-next' && visualizer) {

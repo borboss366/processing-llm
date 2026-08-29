@@ -199,6 +199,13 @@ export async function startControllerServer(): Promise<void> {
     res.json([...loadedModuleIds]);
   });
 
+  app.post("/browser-modules/exit", (req, res) => {
+    const { id } = req.body as { id?: string };
+    if (!id) { res.status(400).json({ error: "id required" }); return; }
+    wsBroadcast({ type: "module-exit", id });
+    res.json({ ok: true, id });
+  });
+
   app.post("/browser-modules/trigger", (req, res) => {
     const { id, args } = req.body as { id?: string; args?: Record<string, unknown> };
     if (!id) { res.status(400).json({ error: "id required" }); return; }

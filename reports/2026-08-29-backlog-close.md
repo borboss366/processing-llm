@@ -145,3 +145,49 @@ The user supplied both tracks; the SKIP row is now a live check
   takes the upper octave. Same family as dnb-174: documented, prior NOT
   tuned; gated mod-octave (±3 of 81 or 162) so any drift to a third
   attractor still fails the check. The grid tier owns the track.
+
+
+## Update 2026-08-30 — briefs 12.5 + 12.7 landed; reconciliation
+
+The user supplied the two download-only brief files. Cross-check of the
+13.2 implementations against the actual specs:
+
+**12.5 (fixed-rate tick + measured tags) — matches.** The worklet-driven
+analysis tick is the brief's Task 1 as built; its idle acceptance
+("confidence ≥ 0.5 under rAF throttling") was met at 0.54–0.70. One
+named deviation: Task 1.4 lists "measured tick EMA in lag conversion"
+as dead code to delete — it is retained deliberately, because the
+explicit-timestamp `tick(t)` path still serves the test harnesses at
+arbitrary simulated rates and needs the measured interval. The
+metric→tag pairing is unspecified in 12.5 as well, so the pairing
+documented in the Task 1 section above stands as the definition.
+
+**12.7 (puppet page) — three gaps found, all closed today:**
+
+- *Exit through the normal fades*: Exit was `enable=false` (instant
+  hide). Now a real exit path: `POST /browser-modules/exit` → WS
+  `module-exit` → `registry.exitModule()` forces the lifecycle into
+  `exiting`, so the creature fades out over its 900 ms exitMs and
+  settles idle. Enter re-triggers through the entering fade as before.
+- *Palette swatch pickers*: hue params previously got the generic
+  range inference (huePrimary 190 → max 570 — wrong). `^hue` params now
+  render as 0–360 sliders with a live HSL swatch chip; the creature's
+  `huePrimary/hueSecondary/hueAccent` are exactly the brief's three
+  palette params.
+- *Live truth completeness*: the joint-speed sparkline + spike count
+  were on the bench but not the puppet; added via the shared
+  `bench-widgets.js` spark.
+
+Also reconciled: the brief's `GET /module-params/<id>` allows a "WS
+equivalent" — the render-state modules mirror (defaults + live params
+from `registry.list()`) is that equivalent; no new endpoint was added.
+The acceptance's "two param slider changes" is now literal:
+`puppet-check.mjs` changes bounce → 2.4 and huePrimary → 40 and asserts
+both from the RENDER window's render-state broadcast (not the puppet's
+own mirror), plus the exit fade (`exiting` observed, settles `idle`).
+Rerun on the live stack: `VERIFY:PASS puppet-check` (reports/puppet.webm
++ puppet.png refreshed). README gains the "Puppet (creature workshop)"
+section; the move-authoring walkthrough now points at puppet.html. The
+architecture diagram is unchanged: observer/hand-control pages sit below
+its component altitude (bench.html was never in it either); the puppet's
+flows ride the existing osc/browser-modules paths.

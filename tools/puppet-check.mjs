@@ -25,8 +25,20 @@ let browserB = null;
 const ws = new WebSocket("ws://localhost:3000/ws");
 await new Promise((r) => ws.on("open", r));
 let snapshotSeen = null;
+let creatureRS = null;          // creature row from the render window's render-state
+const lifecycleSeen = new Set();
 ws.on("message", (raw) => {
-  try { const m = JSON.parse(String(raw)); if (m.type === "puppet-snapshot") snapshotSeen = m.snapshot; } catch {}
+  try {
+    const m = JSON.parse(String(raw));
+    if (m.type === "puppet-snapshot") snapshotSeen = m.snapshot;
+    if (m.type === "render-state") {
+      const mod = (m.modules ?? []).find((x) => x.id === "creature");
+      if (mod) {
+        creatureRS = mod;
+        if (mod.lifecycle?.state) lifecycleSeen.add(mod.lifecycle.state);
+      }
+    }
+  } catch {}
 });
 
 try {
@@ -66,24 +78,24 @@ try {
   if (rig.move !== "tstep-placeholder") failures.push(`move not forced (${rig.move})`);
   if (Math.abs((rig.loop ?? 0) - 0.5) > 0.05) failures.push(`scrub not applied (loop ${rig.loop})`);
 
-  // param tweak: bounce slider
-  const tweaked = await puppet.evaluate(() => {
-    const inp = document.querySelector('#params [data-k="bounce"]');
+  // two param slider changes (12.7 acceptance), round-tripped against the
+  // RENDER window's render-state broadcast, not just the puppet's mirror
+  const setParam = (k, v) => puppet.evaluate((k2, v2) => {
+    const inp = document.querySelector(`#params [data-k="${k2}"]`);
     if (!inp) return false;
-    inp.value = String(Number(inp.max) * 0.8);
+    inp.value = String(v2);
     inp.dispatchEvent(new Event("input", { bubbles: true }));
     return true;
-  });
-  if (!tweaked) failures.push("bounce param control not enumerated");
-  await new Promise((r) => setTimeout(r, 1200));
-  const bounce = await render.evaluate(() =>
-    (window.__ws, window.__audio, window.__creaturePerf) ? null : null);
-  // param round-trip verified via the puppet's own live mirror instead:
-  const mirrored = await puppet.evaluate(() => {
-    const inp = document.querySelector('#params [data-k="bounce"]');
-    return inp ? Number(inp.value) : null;
-  });
-  if (mirrored === null) failures.push("param mirror lost");
+  }, k, v);
+  if (!await setParam("bounce", 2.4)) failures.push("bounce param control not enumerated");
+  if (!await setParam("huePrimary", 40)) failures.push("huePrimary param control not enumerated");
+  const hasSwatch = await puppet.evaluate(() => !!document.querySelector('#params [data-s="huePrimary"]'));
+  if (!hasSwatch) failures.push("huePrimary missing its palette swatch");
+  await new Promise((r) => setTimeout(r, 1500));
+  if (Math.abs((creatureRS?.params?.bounce ?? 0) - 2.4) > 0.01)
+    failures.push(`bounce did not reach the render window (${creatureRS?.params?.bounce})`);
+  if (Math.abs((creatureRS?.params?.huePrimary ?? 0) - 40) > 0.01)
+    failures.push(`huePrimary did not reach the render window (${creatureRS?.params?.huePrimary})`);
 
   // play from here + snapshot
   await puppet.click("#mv-play");
@@ -93,7 +105,13 @@ try {
   if (!snapshotSeen) failures.push("snapshot never reached the WS stream");
   else if (!snapshotSeen.clockTier) failures.push("snapshot missing clockTier");
 
-  await new Promise((r) => setTimeout(r, 3000));
+  // Exit goes THROUGH the fade (12.7): expect exiting → idle, not a vanish
+  lifecycleSeen.clear();
+  await puppet.click("#btn-exit");
+  await new Promise((r) => setTimeout(r, 4000));
+  if (!lifecycleSeen.has("exiting")) failures.push(`exit skipped the fade (saw: ${[...lifecycleSeen]})`);
+  if (creatureRS?.lifecycle?.state !== "idle") failures.push(`exit never settled idle (${creatureRS?.lifecycle?.state})`);
+
   await rec.stop();
   await puppet.screenshot({ path: path.join(ROOT, "reports/puppet.png") });
   console.log(`[puppet] shape=${shape} move=${rig.move} loop@${rig.loop} snapshot tier=${snapshotSeen?.clockTier} shape=${snapshotSeen?.shape}`);

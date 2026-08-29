@@ -236,6 +236,18 @@ export function createRegistry({ p, audio }) {
     }
   }
 
+  /** Force a triggerable module into its exit fade (brief 12.7: Exit
+   *  through the normal fades, not an instant disable). */
+  function exitModule(id) {
+    const entry = entries.get(id);
+    const lc = entry?.ctx?.lifecycle;
+    if (!lc || lc.state === 'idle') return false;
+    lc.state = 'exiting';
+    lc.phaseMs = 0;
+    lc.progress = 0;
+    return true;
+  }
+
   /** Fire a triggerable module by id with optional args.
    *  - Singleton:        onTrigger(args) -> lifecycle flips in place.
    *  - Multi-instance:   spawnTransient(args) -> fresh ctx, runs onTrigger,
@@ -280,6 +292,7 @@ export function createRegistry({ p, audio }) {
     setEnabled,
     dispatchOsc,
     drawAll,
+    exitModule,
     fireTrigger,
     list,
     get size() { return entries.size; },

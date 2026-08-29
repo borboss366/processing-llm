@@ -75,9 +75,26 @@ anything. From top:
   the click (positive = visuals earlier). Persisted per machine on the
   render side; the click itself always stays raw.
 
+### Puppet (creature workshop)
+
+**http://localhost:5173/puppet.html** — one surface to drive the dancing
+figure by hand (brief 12.7); the main controller keeps only the operator
+concerns. Cast & state: shape selector (shapes/ plus the approved
+audience spool), Enter and Exit through the normal lifecycle fades,
+behavior force. The move rig (selector, Manual, scrub, Play-from-here)
+lives here, relocated from the controller. Params are auto-enumerated
+from the creature module's defaults over the render-state mirror — no
+hand-built list; hue params render 0–360 with live palette swatches.
+Live truth (state/move readout, phase wheel, state ribbon, joint-speed
+sparkline + spike count) shares its widget code with the bench via
+`src/core/bench-widgets.js`. Snapshot copies the full
+{shape, behavior, move, clock, params} JSON to the clipboard and logs a
+`puppet-snapshot` event to the session stream. Acceptance:
+`tools/puppet-check.mjs` (part of `verify --full`).
+
 ### Authoring a move (workbench)
 
-1. Load + trigger the creature; open the controller's **Move Workbench**.
+1. Load + trigger the creature; open **puppet.html**'s move rig.
 2. Pick the move in the selector (forces it regardless of FSM state).
 3. Hit **Manual** — the move clock freezes, procedural sway/bounce hold.
 4. Drag the scrub slider to the key phase you care about.
