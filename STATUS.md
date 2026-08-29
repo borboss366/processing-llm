@@ -37,11 +37,14 @@ creature rig). Full guide in `README.md`.
 | Audience pipeline E2E | 8 validation verdicts + moderation green | audience-e2e |
 | Audience soak | 50/50 accepted, frame cost flat | audience-soak |
 | Director latency / prefix | ~4.5 s warm; prefix byte-stable | replay --check-prefix |
+| Low-tempo band (93 + 81 BPM) | Dre 93.49 (±2); Queen octave-documented | low-tempo-check |
 
-Known-item (documented, not tuned): dnb-174 stays bistable on the PLL
-tier at fixed rate (confident medians 167–172 across runs — a genuine
-prior issue, per brief 13.2 left untouched). The grid tier owns that
-track (173.4 exact).
+Known-items (documented, not tuned — the grid tier owns file playback):
+dnb-174 stays bistable on the PLL tier at fixed rate (confident medians
+167–172 across runs); Queen's 81 BPM stomp-clap confidently
+octave-doubles to ~161 (the 120-centred prior takes the upper octave —
+sidecar grid is exact at 81.3). Both are prior physics, gated
+mod-octave so regressions still surface.
 
 ## Open (user)
 
@@ -49,10 +52,8 @@ track (173.4 exact).
   click-by-ear verdicts, ghost judgment, phone gate (real drawing →
   perform), post/framing look.
 - **Inputs owed**: brief files 12.5 + 12.7 for `docs/briefs/`
-  (download-only deliveries — the agent cannot author them); two
-  low-tempo tracks (~93 + ~81 BPM) — verify reports that regression as
-  SKIP until they land; move-timing sculpting session (tables are
-  rotation-ready).
+  (download-only deliveries — the agent cannot author them);
+  move-timing sculpting session (tables are rotation-ready).
 - **Content briefs queued**: realism arc (14), spider (15), field
   scene (16).
 

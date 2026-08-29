@@ -116,9 +116,9 @@ const CHECKS = [
   {
     name: "low-tempo",
     tier: "full",
-    skip: () => "awaiting user tracks (~93 + ~81 BPM)",
-    cmd: ["true"],
-    desc: "low-tempo band regression (60–90 BPM) — needs the two user-supplied tracks",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/low-tempo-check.mjs"],
+    desc: "PLL at 93 (strict ±2) + 81 (octave-documented, mod-octave gate) — tracks landed 2026-08-30",
   },
   {
     name: "occlusion",

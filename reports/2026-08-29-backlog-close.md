@@ -127,3 +127,21 @@ Same session, same seed, measured-tag vectors (c,e,b,m) per pick:
 Memory takes slightly smaller steps through tag space but less evenly;
 neither dominates. Consistent with the brief-4 tie — no prompt changes
 made, `no-memory` stays the default.
+
+
+## Update 2026-08-30 — low-tempo tracks landed
+
+The user supplied both tracks; the SKIP row is now a live check
+(`tools/low-tempo-check.mjs`, verify --full):
+
+- **Dr. Dre – Still D.R.E. (truth 93)**: gridded at 93.5 (ibi-spread
+  0.47%); PLL locks 93.49 confident (Δ 0.49) — strict ±2 gate. Note the
+  sparse hip-hop kick keeps confidence below 0.4 for ~70% of the run —
+  lock is right, just intermittently confident.
+- **Queen – We Will Rock You (truth 81)**: the unconstrained gridder
+  octave-doubled to 162.2 (the ~125 prior), regridded exact at 81.3 with
+  `--bpm 81`. The LIVE PLL confidently locks 161.1 (conf 0.55) — the
+  stomp-stomp-clap presents ~162 events/min and the 120-centred prior
+  takes the upper octave. Same family as dnb-174: documented, prior NOT
+  tuned; gated mod-octave (±3 of 81 or 162) so any drift to a third
+  attractor still fails the check. The grid tier owns the track.
