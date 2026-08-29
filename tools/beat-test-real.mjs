@@ -39,7 +39,7 @@ const MATRIX = [
 ];
 
 async function runTrack(browser, { file, bpm = null, from = 0, dur = 90, tol = 2 }) {
-  const page = await openRenderWithFile(browser, file, { seekSec: from });
+  const page = await openRenderWithFile(browser, file, { seekSec: from, extra: "clock=pll" });   // grids exist for all tracks now — this matrix measures the PLL tier
   console.log(`[beat-real] ${file} from ${from}s for ${dur}s${bpm ? ` (truth ${bpm} BPM)` : ""}`);
 
   const SETTLE_S = 12;

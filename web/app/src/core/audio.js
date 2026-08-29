@@ -156,6 +156,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     }
     audioCtx.addEventListener('statechange', () => healthEvent('ctx-state', audioCtx.state));
     await el.play();
+    startAnalysisClock();
     if (seekSec > 0) el.currentTime = seekSec;
     // beatgrid sidecar (brief 13): file playback with a precomputed grid
     // runs on GridClock (confidence 1, exact lookahead); else PLL tier
@@ -192,6 +193,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     analyser.fftSize = fftSize;
     analyser.smoothingTimeConstant = 0.7;
     mediaSource.connect(analyser);
+    startAnalysisClock();
 
     return { audioCtx, mediaSource };
   }
@@ -295,7 +297,11 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
   }
 
   // `nowMs` is injectable so tools/beat-test.mjs can drive a synthetic clock.
-  function tick(nowMs = performance.now()) {
+  // Full analysis pass (brief 13.2 Task 2): FFT read, features, onsets,
+  // PLL, clock publish. Driven at a FIXED ~57 Hz by the audio-clock
+  // worklet below — independent of display rate, visibility and headless
+  // GL. Harnesses call it directly with synthetic timestamps via tick(t).
+  function analysisTick(nowMs = performance.now()) {
     if (!analyser) return state;
     analyser.getFloatFrequencyData(freqBins);
 
@@ -509,6 +515,62 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     }
 
     return state;
+  }
+
+  /** Per-frame entry. With an explicit timestamp (test harnesses) it runs
+   *  the full analysis synchronously — byte-identical behaviour to the old
+   *  rAF-driven tick. With no argument (production render loop) it only
+   *  refreshes the clock-published phase fields; analysis runs on the
+   *  fixed-rate worklet cadence. */
+  function tick(nowMs) {
+    if (nowMs !== undefined) return analysisTick(nowMs);
+    if (!analyser) return state;
+    state.clockNowMs = performance.now();
+    state.mediaMs = fileElement ? fileElement.currentTime * 1000 : 0;
+    state.mediaWallMs = Date.now();
+    clock.apply(state);
+    const vOff2 = state.visualBeatOffsetMs ?? 0;
+    if (vOff2 && state.bpm > 0) {
+      const beatMs = 60000 / state.bpm;
+      state.visualBeatPhase = (((state.beatPhase + vOff2 / beatMs) % 1) + 1) % 1;
+      state.visualBarPhase = (((state.barPhase + vOff2 / (beatMs * 4)) % 1) + 1) % 1;
+    } else {
+      state.visualBeatPhase = state.beatPhase;
+      state.visualBarPhase = state.barPhase;
+    }
+    return state;
+  }
+
+  // ── fixed-rate analysis clock (brief 13.2 Task 2) ─────────────────────
+  // A silent AudioWorklet posts every 6 render quanta (6×128/44100 ≈ 17 ms
+  // ≈ 57 Hz) on the AUDIO clock — display rate, visibility and headless GL
+  // cannot starve or flood the tracker. Falls back to a drift-corrected
+  // timer chain when worklets are unavailable.
+  let analysisTimer = null;
+  async function startAnalysisClock() {
+    try {
+      const src = `class TickClock extends AudioWorkletProcessor {
+        constructor() { super(); this.n = 0; }
+        process() { if (++this.n >= 6) { this.n = 0; this.port.postMessage(0); } return true; }
+      }
+      registerProcessor('tick-clock', TickClock);`;
+      await audioCtx.audioWorklet.addModule(
+        URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
+      const node = new AudioWorkletNode(audioCtx, 'tick-clock', { numberOfInputs: 0, numberOfOutputs: 1 });
+      node.port.onmessage = () => analysisTick(performance.now());
+      node.connect(audioCtx.destination);   // silent output; keeps the processor scheduled
+      console.log('[audio] analysis on audio-worklet cadence (~57 Hz)');
+      return;
+    } catch (e) {
+      console.warn('[audio] worklet clock unavailable, timer fallback:', e);
+    }
+    let next = performance.now();
+    const step = () => {
+      next += 17.5;
+      analysisTick(performance.now());
+      analysisTimer = setTimeout(step, Math.max(0, next - performance.now()));
+    };
+    analysisTimer = setTimeout(step, 17.5);
   }
 
   return {
