@@ -1,12 +1,13 @@
 ---
 name: "An AdamFX n Martin Infusion 2 flexi - Why The Sky Looks Diffrent Today - AdamFx n Martin Infusion - Tack Tile Disfunction B"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 5
 density: medium
-brightness: bright
+brightness: 5
 palette: warm
-energy: medium
+energy: 5
 complexity: 3
 colors: ["red", "blue", "yellow"]
 normalised: 2026-06-29

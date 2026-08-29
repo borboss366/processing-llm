@@ -1,11 +1,14 @@
 ---
+motion: 5
+energy: 1
 name: "Geiss + Flexi + Martin - disconnected"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 4
 palette: cool
-complexity: 1
+complexity: 5
 colors: ["dark", "white"]
 normalised: 2026-06-29
 ---

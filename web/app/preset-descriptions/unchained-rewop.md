@@ -1,12 +1,14 @@
 ---
+energy: 1
 name: "Unchained - Rewop"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 4
 density: sparse
-brightness: bright
+brightness: 5
 palette: warm
-complexity: 1
+complexity: 3
 colors: ["red", "black"]
 normalised: 2026-06-29
 ---

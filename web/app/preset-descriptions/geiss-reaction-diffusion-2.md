@@ -1,11 +1,13 @@
 ---
+motion: 5
 name: "Geiss - Reaction Diffusion 2"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 3
 palette: monochrome
-energy: intense
+energy: 2
 geometry: organic
 complexity: 4
 colors: ["gray"]

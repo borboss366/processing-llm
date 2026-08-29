@@ -1,12 +1,14 @@
 ---
+motion: 5
 name: "Goody - The Wild Vort"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 5
 palette: warm
-energy: calm
-complexity: 2
+energy: 4
+complexity: 4
 colors: ["red", "black"]
 normalised: 2026-06-29
 ---

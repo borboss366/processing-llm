@@ -1,12 +1,13 @@
 ---
 name: "martin - witchcraft reloaded"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 2
 density: dense
-brightness: bright
-energy: intense
-complexity: 5
+brightness: 1
+energy: 2
+complexity: 1
 colors: ["yellow", "purple", "blue", "green"]
 normalised: 2026-06-29
 ---

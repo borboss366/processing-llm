@@ -1,10 +1,12 @@
 ---
+motion: 2
 name: "Unchained - Unified Drag 2"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
-energy: calm
+brightness: 5
+energy: 1
 complexity: 1
 colors: ["blue", "red", "purple", "pink"]
 normalised: 2026-06-29

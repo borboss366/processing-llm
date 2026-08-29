@@ -1,11 +1,14 @@
 ---
+motion: 4
+energy: 3
 name: "suksma - vector exp 1 - couldn′t not"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 4
 palette: cool
-complexity: 1
+complexity: 5
 colors: ["pink", "purple", "blue"]
 normalised: 2026-06-29
 ---

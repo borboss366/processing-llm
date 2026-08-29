@@ -1,12 +1,13 @@
 ---
 name: "_Aderrasi - Wanderer in Curved Space - mash0000 - faclempt kibitzing meshuggana schmaltz (Geiss color mix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 4
 density: medium
-brightness: bright
+brightness: 2
 palette: cool
-energy: medium
+energy: 3
 geometry: abstract
 complexity: 3
 colors: ["blue"]

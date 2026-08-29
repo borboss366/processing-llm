@@ -1,13 +1,14 @@
 ---
 name: "ORB - Waaa"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 5
 density: sparse
-brightness: medium
+brightness: 4
 palette: cool
-energy: calm
-complexity: 2
+energy: 1
+complexity: 3
 colors: ["blue", "yellow", "white"]
 normalised: 2026-06-29
 ---

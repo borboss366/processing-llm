@@ -1,12 +1,13 @@
 ---
 name: "Flexi - truly soft piece of software - this is generic texturing (Jelly) "
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 1
 density: medium
-brightness: medium
-energy: medium
-complexity: 4
+brightness: 1
+energy: 3
+complexity: 3
 colors: ["blue", "red", "green"]
 normalised: 2026-06-29
 ---

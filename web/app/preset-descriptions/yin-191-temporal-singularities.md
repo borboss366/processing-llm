@@ -1,11 +1,13 @@
 ---
+motion: 5
 name: "yin - 191 - Temporal singularities"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 4
 palette: warm
-energy: intense
+energy: 3
 geometry: abstract
 complexity: 5
 colors: ["pink", "purple", "blue", "red"]

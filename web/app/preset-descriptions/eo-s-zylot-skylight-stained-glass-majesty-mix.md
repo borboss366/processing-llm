@@ -1,11 +1,13 @@
 ---
+energy: 2
 name: "Eo.S. + Zylot - skylight (Stained Glass Majesty mix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 3
 density: sparse
-brightness: medium
-complexity: 2
+brightness: 3
+complexity: 5
 colors: ["pink", "purple"]
 normalised: 2026-06-29
 ---

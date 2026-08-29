@@ -1,12 +1,14 @@
 ---
+motion: 4
 name: "cope + martin - mother-of-pearl"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
+brightness: 4
 palette: cool
-energy: medium
-complexity: 3
+energy: 2
+complexity: 5
 colors: ["purple", "blue", "pink"]
 normalised: 2026-06-29
 ---

@@ -1,10 +1,12 @@
 ---
+energy: 1
 name: "Zylot - Star Ornament"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 2
 density: medium
-brightness: medium
+brightness: 1
 palette: dark
 complexity: 2
 normalised: 2026-06-29

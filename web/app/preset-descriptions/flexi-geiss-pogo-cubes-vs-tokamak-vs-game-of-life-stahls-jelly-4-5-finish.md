@@ -1,12 +1,14 @@
 ---
+motion: 1
 name: "flexi + geiss - pogo cubes vs. tokamak vs. game of life [stahls jelly 4.5 finish]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
-energy: medium
+brightness: 1
+energy: 2
 geometry: abstract
-complexity: 3
+complexity: 1
 colors: ["purple"]
 normalised: 2026-06-29
 ---

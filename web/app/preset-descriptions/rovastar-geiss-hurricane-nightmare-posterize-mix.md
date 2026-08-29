@@ -1,12 +1,14 @@
 ---
+motion: 3
 name: "_Rovastar + Geiss - Hurricane Nightmare (Posterize Mix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 5
 palette: warm
-energy: intense
-complexity: 5
+energy: 4
+complexity: 3
 colors: ["green", "yellow"]
 normalised: 2026-06-29
 ---

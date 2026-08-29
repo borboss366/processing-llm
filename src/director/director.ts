@@ -112,9 +112,13 @@ export type StableCatalogue = {
 
 function formatCatalogueEntry(p: PresetDesc, i: number): string {
   const t = p.tags;
+  // measured tags (brief 13.2) are numeric 1–5 — label them so the prompt
+  // stays legible (e4 b2 m5); vision-era string values pass through as-is
+  const lbl = (v: string | undefined, prefix: string) =>
+    v == null ? null : /^[1-5]$/.test(v) ? `${prefix}${v}` : v;
   const tagStr = [
     t.complexity != null ? `c${t.complexity}` : null,
-    t.energy, t.density, t.brightness, t.motion,
+    lbl(t.energy, "e"), t.density, lbl(t.brightness, "b"), lbl(t.motion, "m"),
   ].filter(Boolean).join(" ");
   return `${i + 1}. [${tagStr}] ${p.name} — ${p.description}`;
 }

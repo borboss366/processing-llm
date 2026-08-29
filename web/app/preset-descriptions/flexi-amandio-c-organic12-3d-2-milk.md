@@ -1,11 +1,13 @@
 ---
+motion: 4
 name: "flexi + amandio c - organic12-3d-2.milk"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: bright
-energy: medium
-complexity: 3
+brightness: 2
+energy: 1
+complexity: 5
 colors: ["green", "blue", "pink"]
 normalised: 2026-06-29
 ---

@@ -1,14 +1,15 @@
 ---
 name: "Martin - QBikal - Surface Turbulence IIb"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 3
 density: dense
-brightness: medium
+brightness: 2
 palette: cool
-energy: intense
+energy: 2
 geometry: grid
-complexity: 5
+complexity: 1
 colors: ["purple", "pink"]
 normalised: 2026-06-29
 ---

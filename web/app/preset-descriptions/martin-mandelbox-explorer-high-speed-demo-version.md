@@ -1,9 +1,12 @@
 ---
+motion: 1
+energy: 1
 name: "martin - mandelbox explorer - high speed demo version"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: bright
+brightness: 3
 complexity: 1
 colors: ["dark", "bright"]
 normalised: 2026-06-29

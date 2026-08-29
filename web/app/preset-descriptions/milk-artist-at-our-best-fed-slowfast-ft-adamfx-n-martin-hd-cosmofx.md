@@ -1,12 +1,13 @@
 ---
 name: "Milk Artist At our Best - FED - SlowFast Ft AdamFX n Martin - HD CosmoFX"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 1
 density: medium
-brightness: bright
-energy: medium
-complexity: 2
+brightness: 5
+energy: 1
+complexity: 1
 colors: ["blues", "purples", "yellows", "reds"]
 normalised: 2026-06-29
 ---

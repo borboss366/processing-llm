@@ -1,12 +1,13 @@
 ---
 name: "Zylot - Paint Spill (Music Reactive Paint Mix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 3
 density: sparse
-brightness: bright
-energy: medium
-complexity: 2
+brightness: 2
+energy: 1
+complexity: 3
 colors: ["green", "blue"]
 normalised: 2026-06-29
 ---

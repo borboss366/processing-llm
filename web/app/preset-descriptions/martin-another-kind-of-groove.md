@@ -1,14 +1,15 @@
 ---
 name: "martin - another kind of groove"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 3
 density: sparse
-brightness: medium
+brightness: 1
 palette: cool
-energy: calm
+energy: 1
 geometry: organic
-complexity: 1
+complexity: 2
 colors: ["blue", "green", "purple"]
 normalised: 2026-06-29
 ---

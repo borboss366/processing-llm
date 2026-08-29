@@ -1,13 +1,14 @@
 ---
 name: "Idiot - Star Of Annon"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 4
 density: sparse
-brightness: dim
+brightness: 2
 palette: monochrome
-energy: calm
-complexity: 1
+energy: 4
+complexity: 4
 colors: ["black", "white"]
 normalised: 2026-06-29
 ---

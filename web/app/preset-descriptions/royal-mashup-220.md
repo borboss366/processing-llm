@@ -1,11 +1,13 @@
 ---
+motion: 4
 name: "$$$ Royal - Mashup (220)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
-energy: intense
-complexity: 5
+brightness: 3
+energy: 5
+complexity: 2
 colors: ["red", "purple", "blue"]
 normalised: 2026-06-29
 ---

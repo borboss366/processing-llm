@@ -1,12 +1,14 @@
 ---
+motion: 2
 name: "martin - chain breaker"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: bright
-energy: intense
+brightness: 2
+energy: 1
 geometry: fractal
-complexity: 4
+complexity: 2
 colors: ["pink", "green", "yellow", "blue"]
 normalised: 2026-06-29
 ---

@@ -1,10 +1,12 @@
 ---
+motion: 2
 name: "Eo.S. + Phat - cubetrace - v2"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
-energy: calm
+brightness: 1
+energy: 2
 complexity: 2
 colors: ["blue", "yellow"]
 normalised: 2026-06-29

@@ -1,11 +1,13 @@
 ---
+motion: 5
 name: "Aderrasi - Potion of Spirits"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
-energy: medium
-complexity: 2
+brightness: 4
+energy: 5
+complexity: 3
 colors: ["pink", "purple", "blue", "green"]
 normalised: 2026-06-29
 ---

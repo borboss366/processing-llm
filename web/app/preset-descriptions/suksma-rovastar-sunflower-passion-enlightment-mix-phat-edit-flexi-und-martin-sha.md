@@ -1,12 +1,14 @@
 ---
+motion: 5
 name: "suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: bright
+brightness: 2
 palette: warm
-energy: intense
-complexity: 5
+energy: 4
+complexity: 4
 colors: ["blue", "yellow", "red"]
 normalised: 2026-06-29
 ---

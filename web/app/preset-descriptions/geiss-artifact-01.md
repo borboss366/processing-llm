@@ -1,14 +1,15 @@
 ---
 name: "_Geiss - Artifact 01"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 2
 density: medium
-brightness: bright
+brightness: 5
 palette: warm
-energy: medium
+energy: 5
 geometry: organic
-complexity: 4
+complexity: 2
 colors: ["red", "green", "white"]
 normalised: 2026-06-29
 ---

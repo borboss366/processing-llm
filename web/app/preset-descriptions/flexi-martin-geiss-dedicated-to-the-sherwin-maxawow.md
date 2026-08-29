@@ -1,14 +1,15 @@
 ---
 name: "Flexi, martin + geiss - dedicated to the sherwin maxawow"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 4
 density: medium
-brightness: bright
+brightness: 5
 palette: warm
-energy: medium
+energy: 4
 geometry: organic
-complexity: 3
+complexity: 5
 colors: ["purple", "pink", "green"]
 normalised: 2026-06-29
 ---

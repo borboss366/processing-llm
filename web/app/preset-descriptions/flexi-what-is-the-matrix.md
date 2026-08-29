@@ -1,12 +1,14 @@
 ---
+motion: 5
 name: "flexi - what is the matrix"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
+brightness: 4
 palette: warm
-energy: medium
-complexity: 4
+energy: 4
+complexity: 5
 colors: ["red", "blue", "yellow"]
 normalised: 2026-06-29
 ---

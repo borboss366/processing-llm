@@ -1,9 +1,12 @@
 ---
+motion: 1
+energy: 2
 name: "shifter - dark tides bdrv mix 2"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: bright
+brightness: 1
 palette: warm
 complexity: 1
 colors: ["blue", "red"]

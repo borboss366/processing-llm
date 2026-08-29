@@ -1,12 +1,14 @@
 ---
+motion: 1
 name: "Flexi + amandio c - piercing 05 - Kopie (2) - Kopie"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: bright
+brightness: 4
 palette: warm
-energy: medium
-complexity: 3
+energy: 4
+complexity: 2
 colors: ["red", "pink", "green"]
 normalised: 2026-06-29
 ---

@@ -1,13 +1,15 @@
 ---
+motion: 4
 name: "flexi - bouncing balls [double mindblob neon mix]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
+brightness: 5
 palette: warm
-energy: medium
+energy: 4
 geometry: organic
-complexity: 3
+complexity: 4
 colors: ["blue", "yellow", "green"]
 normalised: 2026-06-29
 ---

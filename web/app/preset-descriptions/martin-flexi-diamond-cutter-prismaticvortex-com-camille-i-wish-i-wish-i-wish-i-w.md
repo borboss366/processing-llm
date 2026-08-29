@@ -1,11 +1,13 @@
 ---
+motion: 1
 name: "martin + flexi - diamond cutter [prismaticvortex.com] - camille - i wish i wish i wish i was constrained"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
-energy: intense
-complexity: 4
+brightness: 2
+energy: 4
+complexity: 3
 colors: ["blue", "purple"]
 normalised: 2026-06-29
 ---

@@ -1,14 +1,15 @@
 ---
 name: "Cope - The Neverending Explosion of Red Liquid Fire"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 1
 density: medium
-brightness: bright
+brightness: 2
 palette: warm
-energy: medium
+energy: 4
 geometry: organic
-complexity: 3
+complexity: 1
 colors: ["red", "pink", "purple"]
 normalised: 2026-06-29
 ---

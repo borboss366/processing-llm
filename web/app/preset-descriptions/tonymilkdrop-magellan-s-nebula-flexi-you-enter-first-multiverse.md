@@ -1,12 +1,14 @@
 ---
+motion: 3
 name: "TonyMilkdrop - Magellan's Nebula [Flexi - you enter first + multiverse]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 2
 palette: warm
-energy: intense
-complexity: 5
+energy: 4
+complexity: 4
 colors: ["red", "orange", "yellow", "blue"]
 normalised: 2026-06-29
 ---

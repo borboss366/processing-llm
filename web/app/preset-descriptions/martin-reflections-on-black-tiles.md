@@ -1,12 +1,13 @@
 ---
 name: "martin - reflections on black tiles"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 1
 density: sparse
-brightness: dim
+brightness: 1
 palette: monochrome
-energy: calm
+energy: 1
 complexity: 1
 colors: ["black", "white", "gray"]
 normalised: 2026-06-29

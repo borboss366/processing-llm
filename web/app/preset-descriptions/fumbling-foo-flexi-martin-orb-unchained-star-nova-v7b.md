@@ -1,12 +1,13 @@
 ---
 name: "Fumbling_Foo & Flexi, Martin, Orb, Unchained - Star Nova v7b"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 4
 density: medium
-brightness: medium
+brightness: 5
 palette: warm
-energy: medium
+energy: 5
 geometry: organic
 complexity: 4
 colors: ["green", "yellow", "red"]

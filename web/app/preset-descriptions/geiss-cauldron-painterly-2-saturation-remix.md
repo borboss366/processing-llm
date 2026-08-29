@@ -1,12 +1,13 @@
 ---
 name: "Geiss - Cauldron - painterly 2 (saturation remix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 2
 density: dense
-brightness: medium
-energy: intense
-complexity: 4
+brightness: 5
+energy: 5
+complexity: 1
 colors: ["red", "blue", "yellow", "green"]
 normalised: 2026-06-29
 ---

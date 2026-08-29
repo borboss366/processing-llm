@@ -1,13 +1,14 @@
 ---
 name: "Aderrasi + Geiss - Airhandler (Kali Mix) - Canvas Mix"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 4
 density: medium
-brightness: medium
-energy: medium
+brightness: 3
+energy: 3
 geometry: organic
-complexity: 2
+complexity: 3
 colors: ["pink", "green", "purple"]
 normalised: 2026-06-29
 ---

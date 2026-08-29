@@ -1,13 +1,14 @@
 ---
 name: "martin, flexi, fishbrain + sto - enterstate [random mashup]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 3
 density: dense
-brightness: medium
+brightness: 1
 palette: cool
-energy: intense
-complexity: 4
+energy: 2
+complexity: 3
 colors: ["green", "black"]
 normalised: 2026-06-29
 ---

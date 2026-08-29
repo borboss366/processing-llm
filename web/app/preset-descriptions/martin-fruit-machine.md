@@ -1,13 +1,14 @@
 ---
 name: "martin - fruit machine"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 5
 density: dense
-brightness: medium
+brightness: 3
 palette: cool
-energy: intense
-complexity: 4
+energy: 1
+complexity: 5
 colors: ["purple", "green"]
 normalised: 2026-06-29
 ---

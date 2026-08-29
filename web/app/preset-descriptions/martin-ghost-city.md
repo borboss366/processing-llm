@@ -1,13 +1,14 @@
 ---
 name: "martin - ghost city"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: static
+motion: 2
 density: sparse
-brightness: medium
+brightness: 3
 palette: cool
-energy: calm
-complexity: 1
+energy: 2
+complexity: 2
 colors: ["black", "white", "yellow", "orange"]
 normalised: 2026-06-29
 ---

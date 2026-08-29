@@ -1,13 +1,14 @@
 ---
 name: "Phat+fiShbRaiN+Eo.S_Mandala_Chasers_remix"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 1
 density: dense
-brightness: bright
+brightness: 4
 palette: warm
-energy: intense
-complexity: 5
+energy: 4
+complexity: 4
 colors: ["red", "blue", "yellow"]
 normalised: 2026-06-29
 ---

@@ -1,12 +1,14 @@
 ---
+energy: 3
 name: "Aderrasi - Songflower (Moss Posy)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 5
 density: sparse
-brightness: medium
+brightness: 4
 palette: cool
-complexity: 2
+complexity: 5
 colors: ["blue", "green"]
 normalised: 2026-06-29
 ---

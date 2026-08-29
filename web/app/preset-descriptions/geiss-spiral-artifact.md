@@ -1,14 +1,15 @@
 ---
 name: "Geiss - Spiral Artifact"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 5
 density: dense
-brightness: bright
+brightness: 2
 palette: cool
-energy: intense
+energy: 2
 geometry: spiral
-complexity: 4
+complexity: 3
 colors: ["purple", "green"]
 normalised: 2026-06-29
 ---

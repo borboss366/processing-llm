@@ -1,11 +1,13 @@
 ---
+motion: 3
 name: "Krash + Illusion - Spiral Movement"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: dim
+brightness: 1
 palette: cool
-energy: calm
+energy: 2
 complexity: 1
 colors: ["purple", "dark"]
 normalised: 2026-06-29

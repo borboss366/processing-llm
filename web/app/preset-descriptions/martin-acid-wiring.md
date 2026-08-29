@@ -1,12 +1,14 @@
 ---
+motion: 4
 name: "Martin - acid wiring"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 2
 palette: cool
-energy: intense
-complexity: 4
+energy: 2
+complexity: 3
 colors: ["green", "purple"]
 normalised: 2026-06-29
 ---

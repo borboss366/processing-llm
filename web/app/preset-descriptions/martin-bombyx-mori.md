@@ -1,13 +1,15 @@
 ---
+motion: 1
 name: "martin - bombyx mori"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
+brightness: 1
 palette: cool
-energy: calm
+energy: 1
 geometry: spiral
-complexity: 2
+complexity: 1
 colors: ["green", "purple"]
 normalised: 2026-06-29
 ---

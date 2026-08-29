@@ -1,11 +1,12 @@
 ---
 name: "Flexi - smashing fractals [acid etching mix]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 2
 density: medium
-brightness: bright
-energy: medium
+brightness: 3
+energy: 4
 geometry: organic
 complexity: 4
 colors: ["pink", "green", "blue", "yellow"]

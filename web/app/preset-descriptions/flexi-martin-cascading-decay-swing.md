@@ -1,12 +1,14 @@
 ---
+motion: 1
 name: "Flexi + Martin - cascading decay swing"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 5
 palette: warm
-energy: calm
-complexity: 1
+energy: 5
+complexity: 5
 colors: ["red", "purple"]
 normalised: 2026-06-29
 ---

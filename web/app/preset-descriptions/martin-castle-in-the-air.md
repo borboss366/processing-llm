@@ -1,13 +1,15 @@
 ---
+motion: 1
 name: "martin - castle in the air"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 5
 palette: cool
-energy: intense
+energy: 3
 geometry: abstract
-complexity: 4
+complexity: 1
 colors: ["blue", "purple"]
 normalised: 2026-06-29
 ---

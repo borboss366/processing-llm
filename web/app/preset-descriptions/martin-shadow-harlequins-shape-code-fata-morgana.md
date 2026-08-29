@@ -1,13 +1,15 @@
 ---
+motion: 3
 name: "martin [shadow harlequins shape code] - fata morgana"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: bright
+brightness: 2
 palette: warm
-energy: intense
+energy: 3
 geometry: abstract
-complexity: 5
+complexity: 3
 colors: ["red", "blue", "green"]
 normalised: 2026-06-29
 ---

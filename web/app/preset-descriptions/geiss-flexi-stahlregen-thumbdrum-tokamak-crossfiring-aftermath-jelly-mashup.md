@@ -1,12 +1,14 @@
 ---
+motion: 5
 name: "Geiss, Flexi + Stahlregen - Thumbdrum Tokamak [crossfiring aftermath jelly mashup]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 4
 palette: warm
-energy: calm
-complexity: 2
+energy: 5
+complexity: 5
 colors: ["green", "blue", "red"]
 normalised: 2026-06-29
 ---

@@ -1,12 +1,14 @@
 ---
+motion: 3
 name: "Eo.S. - glowsticks v2 05 and proton lights (+Krash′s beat code) _Phat_remix02b"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
+brightness: 1
 palette: cool
-energy: medium
-complexity: 3
+energy: 4
+complexity: 2
 colors: ["green", "blue"]
 normalised: 2026-06-29
 ---

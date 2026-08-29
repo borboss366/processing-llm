@@ -1,14 +1,15 @@
 ---
 name: "martin - extreme heat"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 1
 density: dense
-brightness: bright
+brightness: 1
 palette: warm
-energy: intense
+energy: 3
 geometry: abstract
-complexity: 4
+complexity: 3
 colors: ["red", "orange", "yellow"]
 normalised: 2026-06-29
 ---

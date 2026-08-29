@@ -1,12 +1,14 @@
 ---
+motion: 2
 name: "martin - infinity (2010 update)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: bright
+brightness: 2
 palette: warm
-energy: intense
-complexity: 5
+energy: 4
+complexity: 1
 colors: ["red", "blue", "white"]
 normalised: 2026-06-29
 ---

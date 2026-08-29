@@ -1,13 +1,14 @@
 ---
 name: "suksma - uninitialized variabowl (hydroponic chronic)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 2
 density: dense
-brightness: medium
+brightness: 1
 palette: warm
-energy: intense
-complexity: 5
+energy: 3
+complexity: 2
 colors: ["red", "blue", "green"]
 normalised: 2026-06-29
 ---

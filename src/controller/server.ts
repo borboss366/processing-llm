@@ -119,6 +119,21 @@ export async function startControllerServer(): Promise<void> {
     });
   } catch { /* moves dir absent — workbench simply inert */ }
 
+  // liveness probe (brief 13.2): tools that would evict the director's
+  // KV cache refuse to run while browsers are connected, unless --force
+  app.get("/status", (_req, res) => {
+    res.json({ ok: true, browsers: browsers.size });
+  });
+
+  app.get("/shapes-list", async (_req, res) => {
+    try {
+      const files = await fs.readdir(path.resolve(process.cwd(), "web/app/shapes"));
+      res.json({ ok: true, shapes: files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort() });
+    } catch {
+      res.json({ ok: true, shapes: [] });
+    }
+  });
+
   app.get("/moves-list", async (_req, res) => {
     try {
       const files = await fs.readdir(MOVES_DIR);

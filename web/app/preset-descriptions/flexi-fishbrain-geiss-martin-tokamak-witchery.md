@@ -1,10 +1,12 @@
 ---
+motion: 1
 name: "Flexi, fishbrain, Geiss + Martin - tokamak witchery"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
-energy: medium
+brightness: 3
+energy: 5
 complexity: 3
 colors: ["blue"]
 normalised: 2026-06-29

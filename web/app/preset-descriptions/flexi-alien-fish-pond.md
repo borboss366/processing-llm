@@ -1,12 +1,14 @@
 ---
+motion: 3
 name: "Flexi - alien fish pond"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 5
 palette: cool
-energy: calm
-complexity: 1
+energy: 5
+complexity: 4
 colors: ["purple", "red", "blue"]
 normalised: 2026-06-29
 ---

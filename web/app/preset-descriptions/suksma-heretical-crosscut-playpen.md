@@ -1,12 +1,14 @@
 ---
+motion: 1
 name: "suksma - heretical crosscut playpen"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
-energy: intense
+brightness: 2
+energy: 2
 geometry: abstract
-complexity: 5
+complexity: 2
 colors: ["blue", "green", "red"]
 normalised: 2026-06-29
 ---

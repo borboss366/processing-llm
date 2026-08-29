@@ -1,12 +1,14 @@
 ---
+motion: 4
 name: "Geiss - Thumb Drum"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 4
 palette: monochrome
-energy: intense
-complexity: 4
+energy: 1
+complexity: 5
 colors: ["black", "gray"]
 normalised: 2026-06-29
 ---

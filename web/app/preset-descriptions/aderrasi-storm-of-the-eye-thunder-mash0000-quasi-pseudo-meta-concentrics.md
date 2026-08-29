@@ -1,12 +1,14 @@
 ---
+motion: 5
 name: "Aderrasi - Storm of the Eye (Thunder) - mash0000 - quasi pseudo meta concentrics"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
-energy: medium
+brightness: 3
+energy: 5
 geometry: abstract
-complexity: 3
+complexity: 5
 colors: ["purple", "various"]
 normalised: 2026-06-29
 ---

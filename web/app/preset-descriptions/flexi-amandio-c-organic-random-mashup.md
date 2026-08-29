@@ -1,12 +1,14 @@
 ---
+motion: 2
 name: "flexi + amandio c - organic [random mashup]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: medium
+brightness: 3
 palette: cool
-energy: medium
-complexity: 3
+energy: 2
+complexity: 5
 colors: ["red", "blue", "purple"]
 normalised: 2026-06-29
 ---

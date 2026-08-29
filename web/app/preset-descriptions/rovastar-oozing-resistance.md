@@ -1,13 +1,15 @@
 ---
+motion: 4
 name: "Rovastar - Oozing Resistance"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: bright
+brightness: 4
 palette: warm
-energy: intense
+energy: 5
 geometry: spiral
-complexity: 5
+complexity: 1
 colors: ["blue", "red", "yellow"]
 normalised: 2026-06-29
 ---

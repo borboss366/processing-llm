@@ -1,13 +1,15 @@
 ---
+motion: 3
 name: "Zylot - True Visionary (Final Mix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: dense
-brightness: medium
+brightness: 4
 palette: warm
-energy: intense
+energy: 1
 geometry: abstract
-complexity: 5
+complexity: 2
 colors: ["purple", "yellow", "red"]
 normalised: 2026-06-29
 ---

@@ -1,12 +1,14 @@
 ---
+motion: 4
 name: "Flexi + Martin - astral projection"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: bright
+brightness: 4
 palette: warm
-energy: medium
-complexity: 3
+energy: 5
+complexity: 5
 colors: ["red", "green", "blue", "yellow"]
 normalised: 2026-06-29
 ---

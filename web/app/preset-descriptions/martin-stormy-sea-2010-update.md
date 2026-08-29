@@ -1,14 +1,15 @@
 ---
 name: "martin - stormy sea (2010 update)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: swirling
+motion: 1
 density: dense
-brightness: bright
+brightness: 2
 palette: cool
-energy: intense
+energy: 1
 geometry: abstract
-complexity: 5
+complexity: 1
 colors: ["blue", "gray", "yellow"]
 normalised: 2026-06-29
 ---

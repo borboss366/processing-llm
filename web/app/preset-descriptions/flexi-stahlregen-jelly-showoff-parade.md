@@ -1,10 +1,12 @@
 ---
+motion: 3
 name: "Flexi + stahlregen - jelly showoff parade"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: medium
-brightness: bright
-energy: medium
+brightness: 5
+energy: 5
 complexity: 4
 colors: ["red", "purple", "blue", "green"]
 normalised: 2026-06-29

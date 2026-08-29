@@ -1,12 +1,13 @@
 ---
 name: "martin - frosty caves 2"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 1
 density: sparse
-brightness: dim
+brightness: 1
 palette: cool
-energy: calm
+energy: 1
 complexity: 1
 colors: ["blue"]
 normalised: 2026-06-29

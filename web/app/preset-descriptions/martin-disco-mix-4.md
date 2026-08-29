@@ -1,11 +1,13 @@
 ---
+motion: 3
 name: "martin - disco mix 4"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: medium
+brightness: 2
 palette: cool
-energy: calm
+energy: 3
 complexity: 2
 colors: ["purple"]
 normalised: 2026-06-29

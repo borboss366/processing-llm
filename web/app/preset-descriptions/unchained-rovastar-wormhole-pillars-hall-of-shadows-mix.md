@@ -1,12 +1,14 @@
 ---
+motion: 3
 name: "Unchained & Rovastar - Wormhole Pillars (Hall of Shadows mix)"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
 density: sparse
-brightness: bright
+brightness: 3
 palette: warm
-energy: medium
-complexity: 2
+energy: 3
+complexity: 3
 colors: ["red"]
 normalised: 2026-06-29
 ---

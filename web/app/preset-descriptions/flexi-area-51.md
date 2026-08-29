@@ -1,13 +1,14 @@
 ---
 name: "Flexi - area 51"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 5
 density: medium
-brightness: medium
+brightness: 3
 palette: warm
-energy: medium
-complexity: 3
+energy: 2
+complexity: 4
 colors: ["green", "purple", "yellow"]
 normalised: 2026-06-29
 ---

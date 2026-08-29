@@ -1,13 +1,14 @@
 ---
 name: "TonyMilkdrop - Leonardo Da Vinci's Balloon [Flexi - merry-go-round + techstyle]"
-source: visual
+source: measured
+measured: 2026-08-29
 model: llava:7b
-motion: flowing
+motion: 3
 density: sparse
-brightness: medium
+brightness: 1
 palette: monochrome
-energy: calm
-complexity: 1
+energy: 2
+complexity: 3
 colors: ["gray", "black", "white"]
 normalised: 2026-06-29
 ---
