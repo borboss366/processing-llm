@@ -77,6 +77,7 @@ function startP5() {
       cnv.parent('fg-container');
     };
     p.draw = () => {
+      window.__lastP5Draw = performance.now();   // watchdog stamp (brief 13.1)
       p.clear();
       if (!fgOn) return;
       if (registry) registry.drawAll();
@@ -197,6 +198,7 @@ function advancePendingPick() {
 let lastBroadcastMs = 0;
 let lastBenchMs = 0;
 let lastHealthIdx = 0;
+let lastMainTick = 0;
 function renderLoop() {
   requestAnimationFrame(renderLoop);
   audio.tick();
@@ -210,6 +212,21 @@ function renderLoop() {
     lastBroadcastMs = now;
     broadcastState();
   }
+  // p5-loop watchdog (brief 13.1): p5 runs its OWN rAF — if it dies while
+  // this loop (a different rAF) is alive and the page is visible, restart
+  // it and shout. This is the "module events stop, audio-health keeps
+  // logging" death mode from the live session. Only fire when THIS loop
+  // ran continuously through the window — a shared gap (occlusion, long
+  // task) freezes both loops and is handled by the resume path, not here.
+  const mainGap = now - lastMainTick;
+  lastMainTick = now;
+  if (document.visibilityState === 'visible' && mainGap < 1000 &&
+      window.__lastP5Draw && now - window.__lastP5Draw > 2000) {
+    window.__lastP5Draw = now;   // one report per stall
+    audio.state?.audioHealth?.push({ t: Date.now(), kind: 'p5-loop-stalled', detail: 'restarting' });
+    try { p5Instance?.loop(); } catch { /* p5 gone — the health event is the evidence */ }
+  }
+
   // audio-health forwarding (brief 13 Task 2): new ring entries → WS
   const health = audio.state?.audioHealth ?? [];
   while (health.length && lastHealthIdx < health.length) {

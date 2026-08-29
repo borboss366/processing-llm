@@ -134,6 +134,10 @@ const wsOut = createWs({
             .catch(() => { keyPhases = []; });
         }
       }
+    } else if (msg.type === 'module-error' || msg.type === 'module-recovered') {
+      logLine(`${msg.type === 'module-error' ? '💥' : '♻'} <span class="kv">${msg.type}</span> ${msg.id}: ${msg.message}`);
+    } else if (msg.type === 'resume-after-gap' || msg.type === 'creature-resume') {
+      logLine(`resume after gap (${msg.ms ?? msg.gapMs} ms)`);
     } else if (msg.type === 'audio-health') {
       logLine(`audio-health: <span class="kv">${msg.kind}</span> ${msg.detail ?? ''}`);
     } else if (msg.type === 'clock-tier') {

@@ -156,20 +156,64 @@ export function createRegistry({ p, audio }) {
     }
   }
 
+  // module failure ledger (brief 13.1): exceptions are EVENTS, and modules
+  // self-heal — a failed module re-inits after a short backoff; two failures
+  // inside 60 s keep it down (no crash-loop), error stays visible.
+  const failed = new Map();   // id -> { at, count, message }
+  function reportModuleError(id, e, kind = 'module-error') {
+    const message = String(e?.message ?? e).slice(0, 300);
+    try {
+      window.__ws?.send({ type: kind, id, message, stack: String(e?.stack ?? '').slice(0, 1200) });
+    } catch { /* ws down — console below still fires */ }
+    console.error(`[registry] ${kind} ${id}:`, e);
+  }
+
   function drawAll() {
     const now = performance.now();
-    const deltaMs = Math.min(80, now - lastTickMs);   // cap big stalls (tab switch)
+    const rawDelta = now - lastTickMs;
+    const deltaMs = Math.min(80, rawDelta);   // cap big stalls (tab switch)
     lastTickMs = now;
+    // resume event (brief 13.1 Task 2): a >1 s gap is NOT a timestep —
+    // modules see it via ctx.resumeGapMs for exactly one frame and
+    // re-anchor instead of integrating the void
+    const resumeGapMs = rawDelta > 1000 ? Math.round(rawDelta) : 0;
+    if (resumeGapMs) {
+      try { window.__ws?.send({ type: 'resume-after-gap', ms: resumeGapMs }); } catch {}
+    }
 
     // 1) Singletons — multi-instance templates are skipped (their transients draw).
     for (const entry of entries.values()) {
       if (!entry.enabled) continue;
       if (isMultiInstance(entry)) continue;
+      const id = entry.module.id;
+      const f = failed.get(id);
+      if (f) {
+        if (f.count >= 2 && now - f.firstAt < 60_000) continue;   // stay down
+        if (now - f.at < 2000) continue;                           // backoff
+        // recovery: teardown, wipe state, re-enter through the normal fade
+        try { entry.module.teardown?.(entry.ctx); } catch { /* already broken */ }
+        entry.ctx.state = undefined;
+        if (entry.ctx.lifecycle && entry.ctx.lifecycle.state !== 'idle') {
+          entry.ctx.lifecycle.state = 'entering';
+          entry.ctx.lifecycle.phaseMs = 0;
+          entry.ctx.lifecycle.progress = 0;
+        }
+        failed.delete(id);
+        reportModuleError(id, new Error(f.message), 'module-recovered');
+      }
+      entry.ctx.resumeGapMs = resumeGapMs;
       try { advanceInterfaces(entry.ctx, deltaMs); } catch (e) { console.warn(e); }
       try {
         entry.module.draw(entry.ctx);
       } catch (e) {
-        console.error(`[registry] ${entry.module.id} draw() threw:`, e);
+        const prev = failed.get(id);
+        failed.set(id, {
+          at: now,
+          firstAt: prev && now - prev.firstAt < 60_000 ? prev.firstAt : now,
+          count: prev && now - prev.firstAt < 60_000 ? prev.count + 1 : 1,
+          message: String(e?.message ?? e),
+        });
+        reportModuleError(id, e);
       }
     }
 

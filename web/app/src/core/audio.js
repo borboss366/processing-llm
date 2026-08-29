@@ -422,7 +422,11 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     // boundary pull it toward 0. Off-beat onsets (snares, fills) are ignored
     // rather than dragging the phase around — they only lower confidence.
     if (pll.bpm > 0) {
-      pll.beatPhase += dtMs / (60000 / pll.bpm);
+      // dt discipline (brief 13.1): never integrate a throttling gap — cap
+      // the step and log the resume; GridClock is exact regardless
+      if (dtMs > 1000) healthEvent('resume-after-gap', `${Math.round(dtMs)}ms`);
+      const dtStep = Math.min(100, dtMs);
+      pll.beatPhase += dtStep / (60000 / pll.bpm);
       if (pll.beatPhase >= 1) {
         pll.beatPhase %= 1;
         beatCounter = (beatCounter + 1) & 3;

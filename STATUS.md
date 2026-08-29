@@ -11,6 +11,23 @@ min-hold control). Full guide in `README.md`.
 
 ## Verified
 
+- **Occlusion survival (brief 13.1)**: modules are un-killable and loud —
+  registry reports draw exceptions as `module-error` events (message +
+  stack → session + bench), auto-recovers after 2 s backoff through the
+  normal entry fade (`module-recovered`; two failures in 60 s stay
+  down), NaN tripwire on tissue/clock state rides the same path. Gaps
+  are resume EVENTS, not timesteps: >1 s wall gap → clock re-latch, zero
+  velocities, blend re-anchor, `creature-resume`; PLL never integrates
+  >100 ms; p5-loop watchdog restarts p5's own rAF if it dies alone.
+  Reproduction (`tools/occlusion-check.mjs`, verify --full): 20 real
+  2–8 s gaps → resumed 20/20, components 1, 0 spikes, **0 module
+  errors — the giant-dt-exception diagnosis was NOT confirmed** (dt
+  clamps already held; the p5-loop-died-alone mode is the standing
+  suspect, now watchdogged). 30-min soak with 19 injected gaps: zero
+  real gap-class events (`reports/2026-08-29-occlusion-survival.md`).
+  Finding: CDP page-freeze back-forward-caches the page and kills its
+  sockets — navigation semantics, not occlusion; rejected as emulation.
+
 - **Beat clocks (brief 13)**: `core/clock.js` — the active clock owns the
   four public phase fields; PLL always runs as the fallback tier
   (`state.pll`), GridClock takes over when file playback finds a
@@ -252,11 +269,8 @@ min-hold control). Full guide in `README.md`.
 
 ## Next
 
-1. User's live GridClock session: click-on-beat by ear per track, the
-   visual-offset calibration on the real display, and — with the pause
-   instrumentation now permanent — reproducing the music pauses so the
-   mechanism can be named and fixed.
-2. Move sculpting on the workbench (tables are rotation-based now);
-   ghost/phone/post judgment queue unchanged.
-3. Brief 12.5 (never delivered) → rebase on the clock interface; spider
-   is brief 14.
+1. User's live verdicts still open: GridClock click by ear + visual
+   offset value, move sculpting, ghost/phone/post gates. Occlusion is
+   now survivable — side-by-side windows are comfort, not correctness.
+2. Brief 12.5-slim (tags + fixed-rate PLL tick) whenever delivered;
+   spider is brief 14.

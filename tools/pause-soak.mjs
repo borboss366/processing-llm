@@ -8,7 +8,10 @@
  * Acceptance: zero gap-class events (media-skip / element-stalled /
  * element-waiting) over the soak. Other events are reported as context.
  *
- *   node tools/pause-soak.mjs [--minutes 30]
+ *   node tools/pause-soak.mjs [--minutes 30] [--gaps]
+ *
+ * --gaps: inject a 3–6 s main-thread busy-loop every ~90 s (occlusion-style
+ * rAF gaps, brief 13.1) — playback must still show zero gap-class events.
  */
 import { assertStackRunning, launchBrowser, openRenderWithFile } from "./render-page.mjs";
 import { parseArgs } from "./args.mjs";
@@ -25,8 +28,17 @@ try {
   const t0 = Date.now();
   const seen = new Map();
   let lastMedia = 0;
+  let lastGap = Date.now();
+  let gapsInjected = 0;
   while (Date.now() - t0 < minutes * 60_000) {
     await new Promise((r) => setTimeout(r, 5000));
+    if (flags.gaps && Date.now() - lastGap > 90_000) {
+      lastGap = Date.now();
+      gapsInjected++;
+      const ms = 3000 + Math.floor(Math.random() * 3000);
+      console.log(`[soak] injecting ${ms} ms occlusion gap (#${gapsInjected})`);
+      await page.evaluate((m) => { const t = performance.now(); while (performance.now() - t < m) {} }, ms);
+    }
     const st = await page.evaluate(() => ({
       health: window.__audio?.state?.audioHealth ?? [],
       media: window.__audio?.state?.mediaMs ?? 0,
@@ -46,7 +58,7 @@ try {
   }
   const kinds = {};
   for (const h of seen.values()) kinds[h.kind] = (kinds[h.kind] ?? 0) + 1;
-  console.log(`[soak] ${minutes} min complete · events: ${JSON.stringify(kinds)}`);
+  console.log(`[soak] ${minutes} min complete · gapsInjected=${gapsInjected} · events: ${JSON.stringify(kinds)}`);
   const gaps = [...seen.values()].filter((h) => !h.startup &&
     ["media-skip", "element-stalled", "element-waiting"].includes(h.kind)).length;
   if (gaps > 0) failures.push(`${gaps} gap-class events`);

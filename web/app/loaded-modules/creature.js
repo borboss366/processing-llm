@@ -826,6 +826,17 @@ export default {
     const a = ctx.audio.state;
     const t0 = performance.now();
     const dt = Math.min(0.08, p.deltaTime / 1000);
+    // resume-after-gap (brief 13.1 Task 2): a throttling gap is not a
+    // timestep — snap the clock (no debt), zero tissue velocities, and
+    // re-anchor the pose through the blend layer, same path as a clock
+    // switch. The registry stamps ctx.resumeGapMs for exactly one frame.
+    if ((ctx.resumeGapMs ?? 0) > 0 && state.n) {
+      state.mvLast = null;          // next clock step latches to current phase
+      state.phaseDebt = 0;
+      for (let i = 0; i < state.pos.length; i++) state.prev[i] = state.pos[i];
+      state.moveHotSwap = true;     // blend out of the stale pose
+      try { window.__ws?.send({ type: 'creature-resume', gapMs: ctx.resumeGapMs }); } catch {}
+    }
     // frozen while the workbench scrubs (brief 12): every Perlin/breath/
     // simmer consumer reads tSec, so pinning it freezes the overlays
     const tSecLive = t0 / 1000;
@@ -1418,6 +1429,19 @@ export default {
         const pi = state.pinned.has(i), pj = state.pinned.has(j);
         if (!pi) { pos[ix] += dx * (pj ? 2 : 1); pos[ix + 1] += dy * (pj ? 2 : 1); }
         if (!pj) { pos[jx] -= dx * (pi ? 2 : 1); pos[jx + 1] -= dy * (pi ? 2 : 1); }
+      }
+    }
+
+    // NaN tripwire (brief 13.1 Task 1): one poisoned coordinate spreads
+    // through the springs in a frame or two — cheaper to trip here and let
+    // the registry's recovery re-init than to render a ghost of nothing.
+    {
+      const step = Math.max(2, (pos.length >> 5) & ~1);   // ~32 even-index samples
+      for (let i = 0; i < pos.length; i += step) {
+        if (!Number.isFinite(pos[i])) throw new Error(`NaN tissue at node ${i >> 1}`);
+      }
+      if (!Number.isFinite(state.world?.x ?? 0) || !Number.isFinite(state.moveAcc ?? 0)) {
+        throw new Error('NaN in world/clock state');
       }
     }
 

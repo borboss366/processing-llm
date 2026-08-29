@@ -114,6 +114,13 @@ const CHECKS = [
     desc: "move workbench: scrub, hot edit applies, parse error kept safe, manual→live snap-free",
   },
   {
+    name: "occlusion",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/occlusion-check.mjs", "--gaps", "8"],
+    desc: "creature survives randomized rAF gaps: resumes every time, components 1, 0 spikes",
+  },
+  {
     name: "grid-check",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

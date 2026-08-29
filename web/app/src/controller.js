@@ -522,6 +522,10 @@ const ws = createWs({
       // creature module (render window) announces behaviour transitions over
       // the WS relay; the controller owns the session id, so it writes them.
       sessionLog({ type: 'creature-state', state: msg.state, z: msg.z });
+    } else if (msg.type === 'module-error' || msg.type === 'module-recovered' || msg.type === 'resume-after-gap' || msg.type === 'creature-resume') {
+      // module survival evidence (brief 13.1)
+      sessionLog({ type: msg.type, id: msg.id, message: msg.message, ms: msg.ms ?? msg.gapMs, stack: msg.stack });
+      appendMoodLog('module', msg.type, `${msg.id ?? ''} ${msg.message ?? msg.ms ?? ''}`, msg.type === 'module-error' ? 'same' : 'commit');
     } else if (msg.type === 'audio-health') {
       // playback reliability evidence (brief 13 Task 2)
       sessionLog({ type: 'audio-health', kind: msg.kind, detail: msg.detail, t: msg.t });
