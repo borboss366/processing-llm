@@ -70,8 +70,13 @@ if (!file && flags["latest"]) {
   const entries = (await fs.readdir(dir).catch(() => []))
     .filter((f) => f.endsWith(".jsonl") && !f.endsWith("-beat.json"));
   const stats = await Promise.all(entries.map(async (f) => ({ f, m: (await fs.stat(path.join(dir, f))).mtimeMs })));
-  file = stats.sort((x, y) => y.m - x.m)[0]?.f;
-  if (file) file = path.join(dir, file);
+  // newest session that actually CONTAINS director events — move-judging
+  // and bench sessions record only creature/audio events and can't replay
+  for (const s of stats.sort((x, y) => y.m - x.m)) {
+    const p = path.join(dir, s.f);
+    const raw = await fs.readFile(p, "utf8").catch(() => "");
+    if (raw.includes('"type":"director"') || raw.includes('"type":"decision"')) { file = p; break; }
+  }
 }
 const variant = flags["prompt-variant"] ?? DEFAULT_PROMPT_VARIANT;
 const historyN = Number(flags["history-n"] ?? DEFAULT_HISTORY_N);

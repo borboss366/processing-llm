@@ -114,6 +114,13 @@ const CHECKS = [
     desc: "move workbench: scrub, hot edit applies, parse error kept safe, manual→live snap-free",
   },
   {
+    name: "low-tempo",
+    tier: "full",
+    skip: () => "awaiting user tracks (~93 + ~81 BPM)",
+    cmd: ["true"],
+    desc: "low-tempo band regression (60–90 BPM) — needs the two user-supplied tracks",
+  },
+  {
     name: "occlusion",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
