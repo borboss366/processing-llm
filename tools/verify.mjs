@@ -100,6 +100,13 @@ const CHECKS = [
     desc: "creature runs headless; ≤6 ms/frame, stance slide ≤5 px",
   },
   {
+    name: "transition",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/transition-check.mjs"],
+    desc: "brief 14: turns carry motion (plateau ≤250ms), no walk→idle glide (≤4px), rhythm crossfade ramps (≤0.5), spikes 0",
+  },
+  {
     name: "weld-sweep",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

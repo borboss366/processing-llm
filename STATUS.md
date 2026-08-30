@@ -29,6 +29,7 @@ creature rig). Full guide in `README.md`.
 | True FK propagation (enriched rig) | kick 31 px; heel pivot toe 0.0/ankle 7.3 px; wave lag 0.025+0.025 | fk-check |
 | Move workbench loop | hot edit = exact delta; manual→live 0 spikes | workbench-check |
 | Move rotation | all 3 tables cycle, no repeats, 0 spikes | capture-creature 60 s |
+| Transition quality (brief 14) | turn plateau 413→81 ms; glide 111→0.0 px; rhythm ramp 0.63→0.14 | transition-check |
 | Weld fix (union-by-max) | 26–39% flash removed vs additive | weld-sweep |
 | Creature health envelope | ≤6 ms/frame, slide ≤0.72 px, components 1 | capture-creature |
 | Compositor A/B + budget probe | active, A/B differs, 0 page errors | post-ab |
@@ -69,7 +70,7 @@ z-ordered scene composition. Do not start that refactor before then.
 
 ## Next
 
-Brief 14 Task 2 (transition quality: rhythm crossfade, bounce ducking,
-walk→idle decel, turn motion). Task 1 (rig enrichment) landed —
-shoulders + ankles in spec/engine/tables, heel-pivot mechanism,
-C7 re-checks queued for the user.
+Brief 14 Task 3 (bgDim reimplementation, compositor-native). Tasks 1–2
+landed: enriched rig (shoulders/ankles, heel pivot) and transition
+quality (rhythm crossfade, bounce ducking, decel keeps stepping, turns
+carry motion) — C7/C8 re-checks queued for the user.

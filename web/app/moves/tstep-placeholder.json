@@ -2,6 +2,7 @@
   "name": "tstep-placeholder",
   "beatsPerLoop": 2,
   "overlay": 0.3,
+  "verticalContent": 0.7,
   "keys": [
     {
       "phase": 0,

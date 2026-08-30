@@ -989,7 +989,10 @@ export default {
     };
     if (next !== beh.state) {
       beh.state = next;
-      startBlend();
+      // no startBlend here (brief 14 Task 2.3): the pose blend fires on
+      // stEff change below — a walk exit keeps the whole gait machinery
+      // alive through the decel, and blending at the FSM edge would snap
+      // to the new state's pose while the feet are still stepping
       try { window.__ws?.send({ type: 'creature-state', state: next, z: +z.toFixed(2) }); } catch {}
     }
     // workbench (brief 12): manual→live re-entry and table hot-reloads
@@ -1021,25 +1024,36 @@ export default {
       : Math.max(0, state.walkEase - easeRate);
     const strideU = speedU * beatSec * Math.max(0.25, params.beatsPerStride) * state.walkEase;
 
+    // effective pose state (brief 14 Task 2.3): while the walk stride is
+    // still easing out, the WHOLE pose machinery (gait swing, feet cycle,
+    // move tables, procedural layers) stays in walk — the feet keep
+    // stepping at the shrinking stride until root velocity ≈ 0, and only
+    // THEN does the state blend fire. Kills the walk→idle sideways glide
+    // (feet stopped while odometry still moved — gate C8 finding). Hop is
+    // exempt: its airborne pose must take over immediately.
+    const stEff = state.hasFeet && st !== 'walk' && st !== 'hop' && state.walkEase > 0.02 ? 'walk' : st;
+    if ((state.lastStEff ??= stEff) !== stEff) startBlend();
+    state.lastStEff = stEff;
+
     const dPhase = state.moveApplied;   // same clock as the move phase
 
     if (state.hasFeet && world.turn) {
-      // an in-flight turn always completes, whatever the FSM does — if it
-      // only advanced while st === 'walk', a walk→idle/groove transition
-      // inside the 400 ms window froze facingVis mid-mirror and the figure
-      // stood edge-on ("thin") until the next walk (user gate F, 2026-08-30)
+      // an in-flight turn always completes, whatever the FSM does (user
+      // gate F, 2026-08-30). Task 2.4: motion CARRIES through the mirror —
+      // velocity follows facingVis, sweeping smoothly to the new direction
+      // instead of halting; no pose blends at the turn edges (the gait
+      // never stops, so there is no discontinuity to blend).
       const u = Math.min(1, (t0 - world.turn.t0) / 400);
       world.facingVis = world.turn.from + (world.turn.to - world.turn.from) * u;
-      if (u >= 1) { world.facing = world.turn.to; world.turn = null; startBlend(); }
-    } else if (state.hasFeet && st === 'walk') {
+      world.x += dPhase * strideU * S * world.facingVis;
+      if (u >= 1) { world.facing = world.turn.to; world.turn = null; }
+    } else if (state.hasFeet && stEff === 'walk') {
+      // covers the decel tail too (stEff): stride is already ∝ walkEase,
+      // so the body glides to a stop with the feet still cycling
       world.x += dPhase * strideU * S * world.facing;
-      if (world.facing > 0 && world.x > p.width * 0.82) { world.turn = { t0, from: 1, to: -1 }; startBlend(); }
-      if (world.facing < 0 && world.x < p.width * 0.18) { world.turn = { t0, from: -1, to: 1 }; startBlend(); }
+      if (world.facing > 0 && world.x > p.width * 0.82) world.turn = { t0, from: 1, to: -1 };
+      if (world.facing < 0 && world.x < p.width * 0.18) world.turn = { t0, from: -1, to: 1 };
       world.facingVis = world.facing;
-    } else if (state.hasFeet && state.walkEase > 0) {
-      // decelerating out of walk (brief 13 Task 4): the stride is easing
-      // to zero — keep advancing on it so the body glides to a stop
-      world.x += dPhase * strideU * S * world.facing;
     } else if (!state.hasFeet) {
       // float drift (brief 12 ghost, any ungrounded shape): slow Perlin
       // wander across the full stage, BOTH axes; in hop state bar accents
@@ -1080,13 +1094,13 @@ export default {
     if (params.move) {
       moveName = String(params.move) === 'none' ? null : String(params.move);
     } else {
-      const rep = (state.repertoire ?? gait.repertoire ?? {})[st];
+      const rep = (state.repertoire ?? gait.repertoire ?? {})[stEff];
       if (rep?.length) {
         const rot = (state.rot ??= { st: null, bars: 0, name: null });
-        const due = rot.st !== st ||
+        const due = rot.st !== stEff ||
           (wrapped && ++rot.bars >= Math.max(1, Math.round(Number(params.moveHoldBars) || 4)));
         if (due) {
-          rot.st = st;
+          rot.st = stEff;
           rot.bars = 0;
           const pool = rep.length >= 2 ? rep.filter(([n]) => n !== rot.name) : rep;
           let r = Math.random() * pool.reduce((acc, [, w]) => acc + w, 0);
@@ -1094,7 +1108,7 @@ export default {
           for (const [n, w] of pool) { r -= w; if (r <= 0) { pick = n; break; } }
           if (pick !== rot.name) {
             rot.name = pick;
-            try { window.__ws?.send({ type: 'creature-move', move: pick, state: st }); } catch {}
+            try { window.__ws?.send({ type: 'creature-move', move: pick, state: stEff }); } catch {}
           }
         }
         moveName = rot.name;
@@ -1104,12 +1118,58 @@ export default {
     }
     const move = moveName ? ensureMove(state, moveName) : null;
     if ((state.activeMove ?? null) !== (move?.name ?? null)) {
+      state.prevMove = state.activeMoveObj ?? null;   // outgoing table (2.1)
+      state.xfadeStart = state.moveAcc;
       state.activeMove = move?.name ?? null;
       startBlend();
     }
+    state.activeMoveObj = move;
     state.activeMoveBpl = move ? Math.max(0.25, move.beatsPerLoop ?? 1) : 1;
-    const mvPose = move ? sampleMove(move, state.moveAcc) : null;
-    const ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
+    let mvPose = move ? sampleMove(move, state.moveAcc) : null;
+    let ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
+    let vc = move ? Math.max(0, Math.min(1, move.verticalContent ?? 0)) : 0;
+    // rhythm crossfade (brief 14 Task 2.1): the pose blend keeps POSITIONS
+    // continuous but snapshots a frozen pose — rhythm still switched
+    // instantly. Here the incoming table's amplitude ramps over ~1 bar
+    // (phase-aligned: rotation fires on bar wraps) while the OUTGOING
+    // table keeps being sampled and ramps down — a true rhythmic
+    // crossfade. overlay + verticalContent blend on the same envelope.
+    const XFADE_BEATS = 4;
+    // manual scrub pins (and can rewind) moveAcc — a frozen or negative
+    // envelope would scale the scrubbed pose; complete the fade instantly
+    if (state.xfadeStart !== undefined && manual) {
+      state.prevMove = null;
+      state.xfadeStart = undefined;
+    }
+    if (state.xfadeStart !== undefined) {
+      const xf = Math.min(1, Math.max(0, (state.moveAcc - state.xfadeStart) / XFADE_BEATS));
+      if (xf >= 1) {
+        state.prevMove = null;
+        state.xfadeStart = undefined;
+      } else {
+        const wIn = xf * xf * (3 - 2 * xf);
+        if (mvPose) {
+          for (const nm of Object.keys(mvPose.joints)) {
+            const tk = mvPose.joints[nm];
+            for (const ch of ['dx', 'dy', 'rot']) if (tk[ch]) tk[ch] *= wIn;
+          }
+        }
+        const prev = state.prevMove;
+        const prevPose = prev ? sampleMove(prev, state.moveAcc) : null;
+        if (prevPose) {
+          mvPose ??= { joints: {}, contacts: prevPose.contacts };
+          for (const nm of Object.keys(prevPose.joints)) {
+            const pk = prevPose.joints[nm];
+            const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0 });
+            for (const ch of ['dx', 'dy', 'rot']) {
+              if (pk[ch]) tk[ch] = (tk[ch] || 0) + pk[ch] * (1 - wIn);
+            }
+          }
+          ov = Math.max(0, Math.min(1, prev.overlay ?? 1)) * (1 - wIn) + ov * wIn;
+          vc = Math.max(0, Math.min(1, prev.verticalContent ?? 0)) * (1 - wIn) + vc * wIn;
+        }
+      }
+    }
     state.moveOverlay = ov;   // render-side simmer reads this
 
     // critically damped spring on every table offset: key easing (snap
@@ -1130,18 +1190,18 @@ export default {
     }
 
     // ── skeleton targets per state (gait resolved above, with the rotation) ─
-    const amp = params.amplitude * lvl * (st === 'idle' ? 0 : 1) * ov;
-    const bellScale = !state.hasFeet && st !== 'idle'
+    const amp = params.amplitude * lvl * (stEff === 'idle' ? 0 : 1) * ov;
+    const bellScale = !state.hasFeet && stEff !== 'idle'
       ? 1 + (gait.bellPulse ?? 0) * Math.sin(2 * Math.PI * mPhase) * amp
       : 1 + 0.02 * Math.sin(2 * Math.PI * 0.2 * tSec);
 
     let sq = 0, bounceY = 0;
     const H = state.bbox.h;
-    if (st === 'walk') {
+    if (stEff === 'walk') {
       const s = Math.cos(4 * Math.PI * mPhase);
       sq = 0.05 * s * lvl;
       bounceY = -(gait.bounce ?? 0.05) * H * ((s + 1) / 2) * lvl * params.bounce;
-    } else if (st === 'groove') {
+    } else if (stEff === 'groove') {
       const s = Math.sin(4 * Math.PI * mPhase);
       sq = 0.05 * s * lvl;
       // sin² bounce: max(0,sin) has a velocity KINK at each zero crossing
@@ -1150,18 +1210,22 @@ export default {
       // twice-per-beat bounce with zero-velocity touchdowns.
       const b2 = Math.sin(2 * Math.PI * mPhase);
       bounceY = -0.08 * H * b2 * b2 * lvl * params.bounce;
-    } else if (st === 'hop') {
+    } else if (stEff === 'hop') {
       const air = Math.max(0, Math.sin(2 * Math.PI * mPhase));
       sq = (air > 0 ? 0.07 * air : -0.06) * lvl;
       bounceY = -0.13 * H * air * lvl * params.bounce;
     }
     if (!state.hasFeet) {
-      bounceY += (st === 'idle' ? 0 : (gait.drift ?? 0) * -H * Math.sin(2 * Math.PI * (mPhase - 0.25)) * params.bounce);
+      bounceY += (stEff === 'idle' ? 0 : (gait.drift ?? 0) * -H * Math.sin(2 * Math.PI * (mPhase - 0.25)) * params.bounce);
     }
     // procedural layers ride ON TOP of a table move, scaled by its overlay
     sq *= ov; bounceY *= ov;
+    // bounce ducking (brief 14 Task 2.2): a move that carries its own
+    // vertical content declares it, and the global beat bounce yields —
+    // kills the tiring constant bounce under every move (gate C8)
+    bounceY *= 1 - vc;
 
-    const idleK = (st === 'idle' ? 1 : 0.3) * ov;
+    const idleK = (stEff === 'idle' ? 1 : 0.3) * ov;
     const swayU = ((p.noise(tSec * 0.13, 7) - 0.5) * 2) * 0.02 * state.bbox.w * idleK;
     const rearBob = ((p.noise(tSec * 0.4, 23) - 0.5) * 2) * 0.006 * idleK;
     // head look: the quick reorient is a TARGET that the actual look chases
@@ -1176,7 +1240,7 @@ export default {
     const { joints, pos, prev, rest, edges, restLen, boundary, n } = state;
     for (const J of joints) {
       const g = (gait[J.role] ?? gait.root)(J.limb ?? 0, J.phase ?? 0);
-      J.theta = st === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off));
+      J.theta = stEff === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off));
       if (J.role === 'head') J.theta += headLook;
       // table rot joins the FK chain (children inherit via accRot), so
       // authored rotations keep bone lengths by construction
@@ -1225,17 +1289,12 @@ export default {
     // walking feet override the rotation chain (ground-contact tips only —
     // arms/hands keep their swing from the joint chain above)
     let slidePx = 0;
-    if (state.hasFeet && (st === 'walk' || st === 'hop')) {
+    if (state.hasFeet && (stEff === 'walk' || stEff === 'hop')) {
       state.feet ??= {};
       for (const T of state.tips) {
         if (!T.ground) continue;
         const foot = (state.feet[T.name] ??= { plantWX: null });
-        if (world.turn) {
-          T.ax = T.x; T.ay = T.y; T.theta = 0; T.accRot = 0;
-          foot.plantWX = null;
-          continue;
-        }
-        if (st === 'hop') {
+        if (stEff === 'hop') {
           const air = Math.max(0, Math.sin(2 * Math.PI * mPhase));
           T.ax = T.x; T.ay = T.y - 0.10 * H * air * lvl;
           foot.plantWX = null;
@@ -1245,9 +1304,16 @@ export default {
           if (c < 0.6) {
             T.ax = T.x + strideU * (0.3 - c);
             T.ay = T.y;
-            const wx = world.x + (T.ax - joints[0].x) * S * world.facingVis;
-            if (foot.plantWX === null || state.blend) foot.plantWX = wx;   // re-anchor while blending
-            else slidePx = Math.max(slidePx, Math.abs(wx - foot.plantWX));
+            // Task 2.4: the feet keep CYCLING through a turn (no neutral
+            // snap) — but the mirror is sweeping, so world-anchored slide
+            // measurement is meaningless mid-turn; suspend it
+            if (world.turn) {
+              foot.plantWX = null;
+            } else {
+              const wx = world.x + (T.ax - joints[0].x) * S * world.facingVis;
+              if (foot.plantWX === null || state.blend) foot.plantWX = wx;   // re-anchor while blending
+              else slidePx = Math.max(slidePx, Math.abs(wx - foot.plantWX));
+            }
           } else {
             const u = (c - 0.6) / 0.4;
             T.ax = T.x + strideU * (-0.3 + 0.6 * u);
@@ -1287,7 +1353,7 @@ export default {
     // The lock weight rides its own critically damped spring: a hard toggle
     // at a key boundary would step the foot from plant to its table offset
     // in one frame (measured: v≈1–2 u/s spikes at every contact change).
-    if (state.hasFeet && st !== 'walk' && st !== 'hop') {
+    if (state.hasFeet && stEff !== 'walk' && stEff !== 'hop') {
       const cw = (state.contactW ??= {});
       for (const T of state.tips) {
         if (!T.ground) continue;
@@ -1526,6 +1592,10 @@ export default {
       lvlEnv: +(state.lvlEnv ?? 0).toFixed(3),
       bpmUsed: +(state.bpmSlew ?? 0).toFixed(1),
       moveApplied: +(state.moveApplied ?? 0).toFixed(4),
+      // Task 2 acceptance observables (read-only): turn sweep + odometry
+      worldX: +(state.world?.x ?? 0).toFixed(1),
+      facingVis: +(state.world?.facingVis ?? 1).toFixed(3),
+      walkEase: +(state.walkEase ?? 0).toFixed(3),
     };
     if (alpha <= 0.001) {
       if (state.shade) {

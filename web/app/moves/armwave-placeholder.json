@@ -2,6 +2,7 @@
   "name": "armwave-placeholder",
   "beatsPerLoop": 8,
   "overlay": 0.25,
+  "verticalContent": 0.15,
   "keys": [
     {
       "phase": 0.0,

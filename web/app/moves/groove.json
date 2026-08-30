@@ -2,6 +2,7 @@
   "name": "groove",
   "beatsPerLoop": 2,
   "overlay": 0.35,
+  "verticalContent": 0.5,
   "keys": [
     {
       "phase": 0,

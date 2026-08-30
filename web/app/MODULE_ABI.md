@@ -166,6 +166,9 @@ extractor): one JSON per move in `web/app/moves/` —
   "name": "tstep",
   "beatsPerLoop": 2,        // loop length in beats (move-local clock)
   "overlay": 0.3,           // 0..1 scale on the procedural layers underneath
+  "verticalContent": 0.7,   // 0..1: how much vertical motion the move itself
+                            // carries — the global beat bounce ducks by it
+                            // (brief 14; omit = 0, bounce unchanged)
   "keys": [
     {
       "phase": 0,           // 0..1 position within the loop
