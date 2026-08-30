@@ -107,6 +107,13 @@ const CHECKS = [
     desc: "brief 14: turns carry motion (plateau ≤250ms), no walk→idle glide (≤4px), rhythm crossfade ramps (≤0.5), spikes 0",
   },
   {
+    name: "bgdim",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/bgdim-check.mjs"],
+    desc: "brief 14: background steps down under the creature (comp/bg ratio ≤0.75) and restores on exit (≥0.8)",
+  },
+  {
     name: "weld-sweep",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

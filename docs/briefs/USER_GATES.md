@@ -33,6 +33,10 @@ verdict moves to the report and gets a ✓ + date here.
   live.)
 - **C7b-recheck (brief 14)** — armwave: does the wave TRAVEL
   shoulder→elbow→wrist? Lag is authored at 0.2 beat/link — tunable.
+- **B5-recheck (brief 14)** — bgDim is back, compositor-native: bright
+  preset, trigger the creature — background steps down (×0.45
+  brightness, ×0.7 saturation, eased by the creature's fade) and
+  restores on exit. Taste check the depth; `/post/bgDim 0` disables.
 
 - **B3 post tuning** — post stays ON at defaults; re-judge
   grain/vignette/chroma when custom puppet appearances exist

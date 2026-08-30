@@ -1575,6 +1575,10 @@ export default {
     // the entry fade once, not gate visibility.
     state.entry.env = Math.min(1, state.entry.env + dt / 0.9);
     const alpha = (ctx.lifecycle?.alpha ?? 1) * state.entry.env * (state.swapEnv ?? 1);
+    // bgDim seam (brief 14 Task 3): the compositor dims the background by
+    // this exact fade envelope. Timestamped so a stale value (module
+    // unloaded/disabled — draw stops) reads as 0 after 250 ms.
+    window.__creatureAlpha = { v: alpha, t: performance.now() };
     window.__creaturePhase = {
       maxRaw: +(state.mvMaxRaw ?? 0).toFixed(4),
       maxApplied: +(state.mvMaxApplied ?? 0).toFixed(4),
@@ -1979,6 +1983,7 @@ export default {
   },
 
   teardown(ctx) {
+    window.__creatureAlpha = { v: 0, t: performance.now() };   // bgDim restores
     const sh = ctx.state?.shade;
     if (sh) {
       sh.gl.getExtension('WEBGL_lose_context')?.loseContext();

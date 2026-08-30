@@ -61,12 +61,17 @@ uniform sampler2D uShade;
 uniform sampler2D uFg;
 uniform sampler2D uBloom;
 uniform float uBgOn;
+uniform float uBgDim;               // 0..1: background yields to the creature
 uniform float uShadowTint;          // how much local bg colour the shadow keeps
 uniform float uBloomStrength;
 in vec2 vUv;
 out vec4 o;
 void main() {
   vec3 col = texture(uBg, vUv).rgb * uBgOn;
+  // bgDim (brief 14): brightness ×0.45, saturation ×0.7 at full weight,
+  // eased by the creature's own fade envelope — restores on exit
+  float bgLuma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(col, mix(vec3(bgLuma), col, 0.7) * 0.45, uBgDim);
   // contact shadow: multiply toward a dimmed copy of the local background
   // colour — a hint of the scene, not pure black
   float shA = texture(uShadow, vUv).a;
@@ -148,6 +153,7 @@ export function createCompositor({ audio }) {
     vignette: 0.22,
     chroma: 0.12,        // very low: sub-pixel at centre, ~2 px at corners
     knee: 1,             // highlight rolloff on by default
+    bgDim: 1,            // background yields to the creature (brief 14; 0 = off)
     driftAmp: 0.01,      // Perlin camera drift, fraction of frame
     zoomAmp: 0.015,      // beat zoom pulse
     barZoom: 1,          // extra 0.5% accent on bar wraps (0 = off)
@@ -362,6 +368,14 @@ export function createCompositor({ audio }) {
     gl.uniform1i(progs.comp.u.uFg, 3);
     gl.uniform1i(progs.comp.u.uBloom, 4);
     gl.uniform1f(progs.comp.u.uBgOn, bgOn ? 1 : 0);
+    // creature fade envelope drives the dim; stale seam (draw stopped —
+    // unload/disable/panic) reads 0 so the background always restores.
+    // 1.2 s staleness: headless/software rendering draws as slow as ~3 fps
+    // (measured 260–410 ms gaps), and teardown zeroes the seam explicitly
+    const ca = window.__creatureAlpha;
+    const dimW = Number(params.bgDim) !== 0 && ca && t0 - ca.t < 1200
+      ? Math.max(0, Math.min(1, ca.v)) : 0;
+    gl.uniform1f(progs.comp.u.uBgDim, dimW);
     gl.uniform1f(progs.comp.u.uShadowTint, Number(params.shadowTint) || 0);
     gl.uniform1f(progs.comp.u.uBloomStrength, Number(params.bloomStrength) || 0);
     draw();

@@ -30,6 +30,7 @@ creature rig). Full guide in `README.md`.
 | Move workbench loop | hot edit = exact delta; manual→live 0 spikes | workbench-check |
 | Move rotation | all 3 tables cycle, no repeats, 0 spikes | capture-creature 60 s |
 | Transition quality (brief 14) | turn plateau 413→81 ms; glide 111→0.0 px; rhythm ramp 0.63→0.14 | transition-check |
+| bgDim (brief 14) | step-down 0.48 of undimmed (design 0.45); restores 1.02 on exit | bgdim-check |
 | Weld fix (union-by-max) | 26–39% flash removed vs additive | weld-sweep |
 | Creature health envelope | ≤6 ms/frame, slide ≤0.72 px, components 1 | capture-creature |
 | Compositor A/B + budget probe | active, A/B differs, 0 page errors | post-ab |
@@ -70,7 +71,7 @@ z-ordered scene composition. Do not start that refactor before then.
 
 ## Next
 
-Brief 14 Task 3 (bgDim reimplementation, compositor-native). Tasks 1–2
-landed: enriched rig (shoulders/ankles, heel pivot) and transition
-quality (rhythm crossfade, bounce ducking, decel keeps stepping, turns
-carry motion) — C7/C8 re-checks queued for the user.
+Brief 14 COMPLETE (rig enrichment, transition quality, bgDim). User
+re-checks queued in USER_GATES (C7a/C7b/B5 + phone gate E11). Next
+agent brief on the board: 15 (micro-variation/swing + the user's
+sculpting session), then spider, field scene.
