@@ -24,39 +24,53 @@
 
 // ── Gait tables (rotation gaits; walking feet are handled geometrically) ──
 // Joint `phase` comes from the shape sidecar (e.g. left/right alternation).
+// Roles (brief 14): arm chain rootMid→shoulder→knee(=elbow)→limb(=wrist),
+// leg chain root→knee→ankle→limb(=toe). shoulder/ankle amplitudes are the
+// NEW links; hand (limb) swing drops vs pre-14 because the FK chain now
+// accumulates three rotations per arm instead of two.
 const GAITS = {
   biped: {
-    limb:   (i, ph) => ({ A: 0.40, freq: 1, off: ph }),          // arm swing
-    knee:   (i, ph) => ({ A: 0.28, freq: 1, off: ph - 0.1 }),
-    head:   ()      => ({ A: 0.20, freq: 2, off: -0.25 }),
-    root:   ()      => ({ A: 0.03, freq: 1, off: 0 }),           // stride lean
-    rootMid:()      => ({ A: 0.03, freq: 1, off: 0.5 }),
+    limb:    (i, ph) => ({ A: 0.28, freq: 1, off: ph }),         // wrist swing
+    knee:    (i, ph) => ({ A: 0.24, freq: 1, off: ph - 0.1 }),
+    shoulder:(i, ph) => ({ A: 0.16, freq: 1, off: ph + 0.04 }),  // swing origin
+    ankle:   (i, ph) => ({ A: 0.12, freq: 1, off: ph - 0.2 }),   // stride flex
+    head:    ()      => ({ A: 0.20, freq: 2, off: -0.25 }),
+    root:    ()      => ({ A: 0.03, freq: 1, off: 0 }),          // stride lean
+    rootMid: ()      => ({ A: 0.03, freq: 1, off: 0.5 }),
     bellPulse: 0, bounce: 0.05, drift: 0,
   },
   trot: {
-    limb:   (i, ph) => ({ A: 0.50, freq: 1, off: ph }),
-    knee:   (i, ph) => ({ A: 0.35, freq: 1, off: ph - 0.1 }),
-    head:   ()      => ({ A: 0.28, freq: 2, off: -0.25 }),
-    root:   ()      => ({ A: 0.04, freq: 1, off: 0 }),
-    rootMid:()      => ({ A: 0.04, freq: 1, off: 0.5 }),
+    limb:    (i, ph) => ({ A: 0.36, freq: 1, off: ph }),
+    knee:    (i, ph) => ({ A: 0.30, freq: 1, off: ph - 0.1 }),
+    shoulder:(i, ph) => ({ A: 0.20, freq: 1, off: ph + 0.04 }),
+    ankle:   (i, ph) => ({ A: 0.15, freq: 1, off: ph - 0.2 }),
+    head:    ()      => ({ A: 0.28, freq: 2, off: -0.25 }),
+    root:    ()      => ({ A: 0.04, freq: 1, off: 0 }),
+    rootMid: ()      => ({ A: 0.04, freq: 1, off: 0.5 }),
     bellPulse: 0, bounce: 0.05, drift: 0,
   },
   pulse: {
-    limb:   ()      => ({ A: 0.40, freq: 1, off: 0 }),
-    knee:   ()      => ({ A: 0.25, freq: 1, off: -0.1 }),
-    head:   ()      => ({ A: 0.10, freq: 1, off: 0 }),
-    root:   ()      => ({ A: 0, freq: 1, off: 0 }),
-    rootMid:()      => ({ A: 0, freq: 1, off: 0 }),
+    limb:    ()      => ({ A: 0.30, freq: 1, off: 0 }),
+    knee:    ()      => ({ A: 0.20, freq: 1, off: -0.1 }),
+    shoulder:()      => ({ A: 0.12, freq: 1, off: 0.05 }),
+    ankle:   ()      => ({ A: 0.08, freq: 1, off: -0.15 }),
+    head:    ()      => ({ A: 0.10, freq: 1, off: 0 }),
+    root:    ()      => ({ A: 0, freq: 1, off: 0 }),
+    rootMid: ()      => ({ A: 0, freq: 1, off: 0 }),
     bellPulse: 0.20, bounce: 0.012, drift: 0.02,
   },
   // floating sheet-ghost (brief 12): hem tips trail with sidecar phase
-  // offsets (the tentacle pattern), body sways on the beat, gentle pulse
+  // offsets (the tentacle pattern), body sways on the beat, gentle pulse.
+  // (The ghost's arm mid-joints are NAMED shoulderL/R but carry role
+  // 'knee' in its sidecar — the shoulder/ankle entries are schema-safety.)
   ghost: {
-    limb:   (i, ph) => ({ A: 0.30, freq: 1, off: ph }),
-    knee:   (i, ph) => ({ A: 0.20, freq: 1, off: ph - 0.15 }),
-    head:   ()      => ({ A: 0.10, freq: 1, off: -0.2 }),
-    root:   ()      => ({ A: 0.05, freq: 1, off: 0 }),
-    rootMid:()      => ({ A: 0.06, freq: 1, off: 0.3 }),
+    limb:    (i, ph) => ({ A: 0.30, freq: 1, off: ph }),
+    knee:    (i, ph) => ({ A: 0.20, freq: 1, off: ph - 0.15 }),
+    shoulder:(i, ph) => ({ A: 0.14, freq: 1, off: ph - 0.1 }),
+    ankle:   (i, ph) => ({ A: 0.10, freq: 1, off: ph - 0.2 }),
+    head:    ()      => ({ A: 0.10, freq: 1, off: -0.2 }),
+    root:    ()      => ({ A: 0.05, freq: 1, off: 0 }),
+    rootMid: ()      => ({ A: 0.06, freq: 1, off: 0.3 }),
     bellPulse: 0.07, bounce: 0.02, drift: 0.03,
   },
 };
@@ -1244,15 +1258,25 @@ export default {
         T.theta = 0;
         T.accRot = 0;
       }
-      for (const J of joints) {
-        if (J.role !== 'knee') continue;
-        const T = joints.find((q) => q.role === 'limb' && q.limb === J.limb);
-        if (!T || !T.ground) continue;
-        const R = joints[J.parent];
-        J.ax = (R.ax + T.ax) / 2 + 0.02;
-        J.ay = (R.ay + T.ay) / 2;
-        J.theta = 0;
-        J.accRot = 0;
+      // intermediate leg joints follow the hip→foot segment: knee at 50%
+      // (with the forward bias), ankle at 80% — the walk overrides the FK
+      // chain for the WHOLE grounded leg, so it can't half-disagree
+      for (const T of state.tips) {
+        if (!T.ground) continue;
+        const K = joints.find((q) => q.role === 'knee' && q.limb === T.limb);
+        if (!K) continue;
+        const R = joints[K.parent];
+        K.ax = R.ax + (T.ax - R.ax) * 0.5 + 0.02;
+        K.ay = R.ay + (T.ay - R.ay) * 0.5;
+        K.theta = 0;
+        K.accRot = 0;
+        const A = joints.find((q) => q.role === 'ankle' && q.limb === T.limb);
+        if (A) {
+          A.ax = R.ax + (T.ax - R.ax) * 0.8;
+          A.ay = R.ay + (T.ay - R.ay) * 0.8;
+          A.theta = 0;
+          A.accRot = 0;
+        }
       }
     } else {
       state.feet = null;
@@ -1275,11 +1299,26 @@ export default {
         T.ay += (T.y - T.ay) * w;
         T.theta *= 1 - w;
         T.accRot = (T.accRot ?? 0) * (1 - w);
+        // heel-pivot (brief 14): with the toe planted, an authored ankle
+        // rot swings the ankle ABOUT the toe — FK's toe-about-ankle is
+        // inverted on contact. This is the tstep mechanism: heel lifts and
+        // pivots while the contact point never slides.
+        const A = joints.find((q) => q.role === 'ankle' && q.limb === T.limb);
+        if (A) {
+          const phi = mvPose?.joints[A.name]?.rot ?? 0;
+          const ox = A.x - T.x, oy = A.y - T.y;
+          const cp = Math.cos(phi), sp = Math.sin(phi);
+          A.ax += (T.ax + ox * cp - oy * sp - A.ax) * w;
+          A.ay += (T.ay + ox * sp + oy * cp - A.ay) * w;
+          A.theta *= 1 - w;
+          A.accRot = (A.accRot ?? 0) * (1 - w) + phi * w;
+        }
         const K = joints.find((q) => q.role === 'knee' && q.limb === T.limb);
         if (K) {
           const R = joints[K.parent];
-          K.ax += ((R.ax + T.ax) / 2 + 0.02 - K.ax) * w;
-          K.ay += ((R.ay + T.ay) / 2 - K.ay) * w;
+          const M = A ?? T;   // knee midpoints toward the ankle when present
+          K.ax += ((R.ax + M.ax) / 2 + 0.02 - K.ax) * w;
+          K.ay += ((R.ay + M.ay) / 2 - K.ay) * w;
           K.theta *= 1 - w;
           K.accRot = (K.accRot ?? 0) * (1 - w);
         }

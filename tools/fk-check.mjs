@@ -5,9 +5,11 @@
  * space, and armwave's rotations must peak sequentially down the chain
  * (shoulder before wrist — a travelling wave, not a flap).
  *
- * Produces scrub stills (kick vs return) + a 16 s armwave webm, and
- * asserts: ankle travel ≥ 25 px between kick and return keys; handL's
- * peak rotation phase lags elbowL's; joint-speed spikes 0.
+ * Produces scrub stills (kick, return, heel pivot) + a live webm cycling
+ * all three re-authored moves, and asserts: kick-foot travel ≥ 25 px
+ * between keys; heel pivot = planted toe drifts ≤ 6 px while its ankle
+ * swings ≥ 4 px (brief 14); rotation peaks migrate shoulder→elbow→wrist;
+ * joint-speed spikes 0.
  *
  *   node tools/fk-check.mjs
  */
@@ -51,32 +53,66 @@ try {
   const ret = await joint("footL");
   await page.screenshot({ path: path.join(ROOT, "reports/fk-tstep-return.png") });
   const travel = kick && ret ? Math.hypot(kick.sx - ret.sx, kick.sy - ret.sy) : 0;
-  console.log(`[fk] tstep ankle travel kick→return: ${travel.toFixed(0)} px (kick accRot=${kick?.accRot})`);
-  if (travel < 25) failures.push(`ankle travel ${travel.toFixed(0)} px < 25`);
+  console.log(`[fk] tstep kick-foot travel kick→return: ${travel.toFixed(0)} px (kick accRot=${kick?.accRot})`);
+  if (travel < 25) failures.push(`kick-foot travel ${travel.toFixed(0)} px < 25`);
+
+  // ── heel pivot (brief 14): weight-side toe stays PLANTED while its ankle
+  //    swings about it (ankleR rot 0.35 → 0.08 between the two keys)
+  await osc("/creature/phaseScrub", 0);
+  await new Promise((r) => setTimeout(r, 1200));
+  const [toe0, ank0] = [await joint("footR"), await joint("ankleR")];
+  await osc("/creature/phaseScrub", 0.25);
+  await new Promise((r) => setTimeout(r, 1200));
+  const [toe1, ank1] = [await joint("footR"), await joint("ankleR")];
+  const toeDrift = toe0 && toe1 ? Math.hypot(toe0.sx - toe1.sx, toe0.sy - toe1.sy) : 999;
+  const ankSwing = ank0 && ank1 ? Math.hypot(ank0.sx - ank1.sx, ank0.sy - ank1.sy) : 0;
+  console.log(`[fk] heel pivot: toe drift ${toeDrift.toFixed(1)} px, ankle swing ${ankSwing.toFixed(1)} px`);
+  if (toeDrift > 6) failures.push(`planted toe drifted ${toeDrift.toFixed(1)} px > 6`);
+  if (ankSwing < 4) failures.push(`ankle swing ${ankSwing.toFixed(1)} px < 4 — no pivot`);
+  await page.screenshot({ path: path.join(ROOT, "reports/fk-heel-pivot.png") });
 
   // ── armwave: rotation peaks must travel down the chain ─────────────────
   await osc("/creature/move", "armwave-placeholder");
   await new Promise((r) => setTimeout(r, 1500));
-  const phases = [], elbow = [], hand = [];
+  const phases = [], shoulder = [], elbow = [], hand = [];
   for (let s = 0; s < 1; s += 0.0625) {
     await osc("/creature/phaseScrub", s);
     await new Promise((r) => setTimeout(r, 500));
-    const e = await joint("elbowL"), h = await joint("handL");
-    phases.push(s); elbow.push(e?.theta ?? 0); hand.push(h?.theta ?? 0);
+    const sh = await joint("shoulderL"), e = await joint("elbowL"), h = await joint("handL");
+    phases.push(s); shoulder.push(sh?.theta ?? 0); elbow.push(e?.theta ?? 0); hand.push(h?.theta ?? 0);
   }
-  const argmax = (a) => a.indexOf(Math.max(...a));
-  const eMax = phases[argmax(elbow)], hMax = phases[argmax(hand)];
-  const lag = ((hMax - eMax) + 1) % 1;
-  console.log(`[fk] armwave peaks: elbowL@${eMax.toFixed(2)} handL@${hMax.toFixed(2)} (lag ${lag.toFixed(2)} of loop)`);
-  if (lag <= 0 || lag > 0.5) failures.push(`wave does not travel outward (lag ${lag.toFixed(2)})`);
+  // first-harmonic phase (f = 2 oscillations/loop): argmax on a 1/16 scrub
+  // grid cannot resolve the 0.025-loop per-link lag — project onto the
+  // fundamental instead and read a continuous phase per joint
+  const F = 2;
+  const harmPhase = (vals) => {
+    let cs = 0, sn = 0;
+    for (let i = 0; i < vals.length; i++) {
+      cs += vals[i] * Math.cos(2 * Math.PI * F * phases[i]);
+      sn += vals[i] * Math.sin(2 * Math.PI * F * phases[i]);
+    }
+    return Math.atan2(cs, sn) / (2 * Math.PI * F);   // loop units, peak offset
+  };
+  const sPh = harmPhase(shoulder), ePh = harmPhase(elbow), hPh = harmPhase(hand);
+  const HALF = 1 / (2 * F);                          // half an oscillation period
+  // atan2(cs,sn) of sin(x−φ₀) returns −φ₀, so a joint lagging in TIME reads
+  // a SMALLER harmonic phase — outward travel is a→b DECREASING
+  const lagOf = (a, b) => ((a - b) % HALF + HALF) % HALF;
+  const lagSE = lagOf(sPh, ePh), lagEH = lagOf(ePh, hPh);
+  console.log(`[fk] armwave harmonic phases: shoulderL@${sPh.toFixed(3)} elbowL@${ePh.toFixed(3)} handL@${hPh.toFixed(3)} (lags ${lagSE.toFixed(3)}/${lagEH.toFixed(3)} of loop, authored 0.025)`);
+  if (lagSE < 0.008 || lagSE > 0.1) failures.push(`wave does not travel shoulder→elbow (lag ${lagSE.toFixed(3)})`);
+  if (lagEH < 0.008 || lagEH > 0.1) failures.push(`wave does not travel elbow→wrist (lag ${lagEH.toFixed(3)})`);
 
-  // ── live armwave webm + spike gate ─────────────────────────────────────
+  // ── live webm of all three re-authored moves + spike gate (brief 14) ───
   await osc("/creature/clockMode", "live");
-  const rec = await page.screencast({ path: path.join(ROOT, "reports/fk-armwave.webm") });
-  await new Promise((r) => setTimeout(r, 16_000));
+  const rec = await page.screencast({ path: path.join(ROOT, "reports/fk-moves.webm") });
+  for (const mv of ["armwave-placeholder", "tstep-placeholder", "groove"]) {
+    await osc("/creature/move", mv);
+    await new Promise((r) => setTimeout(r, 8000));
+  }
   await rec.stop();
   const spikes = await page.evaluate(() => window.__creatureBench?.spikesFlagged ?? -1);
-  console.log(`[fk] spikesFlagged=${spikes} · wrote fk-tstep-{kick,return}.png + fk-armwave.webm`);
+  console.log(`[fk] spikesFlagged=${spikes} · wrote fk-tstep-{kick,return}.png + fk-heel-pivot.png + fk-moves.webm`);
   if (spikes !== 0) failures.push(`spikes=${spikes}`);
 } catch (e) {
   failures.push(String(e));

@@ -27,6 +27,13 @@ verdict moves to the report and gets a ✓ + date here.
 
 ## Re-check triggers (answered, but conditionally)
 
+- **C7a-recheck (brief 14)** — tstep on the enriched rig: does the
+  weight-side heel visibly pivot while the toe stays planted — does it
+  read as a shuffle now? (`reports/fk-moves.webm` for a preview; judge
+  live.)
+- **C7b-recheck (brief 14)** — armwave: does the wave TRAVEL
+  shoulder→elbow→wrist? Lag is authored at 0.2 beat/link — tunable.
+
 - **B3 post tuning** — post stays ON at defaults; re-judge
   grain/vignette/chroma when custom puppet appearances exist
   (user's own trigger, 2026-08-30).

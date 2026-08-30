@@ -26,7 +26,7 @@ creature rig). Full guide in `README.md`.
 | Tags change director picks | 14/14 seeded picks differ | replay A/B |
 | Move-clock discipline | 0.46-beat snap → ≥1 beat spread, no rewind | move-clock-test |
 | Torture (tempo step, gap, collapse) | 0 spikes on both clock tiers | torture-check |
-| True FK propagation | kick carries ankle 34 px; wave lag 0.19 loop | fk-check |
+| True FK propagation (enriched rig) | kick 31 px; heel pivot toe 0.0/ankle 7.3 px; wave lag 0.025+0.025 | fk-check |
 | Move workbench loop | hot edit = exact delta; manual→live 0 spikes | workbench-check |
 | Move rotation | all 3 tables cycle, no repeats, 0 spikes | capture-creature 60 s |
 | Weld fix (union-by-max) | 26–39% flash removed vs additive | weld-sweep |
@@ -69,4 +69,7 @@ z-ordered scene composition. Do not start that refactor before then.
 
 ## Next
 
-Brief 14 (realism arc).
+Brief 14 Task 2 (transition quality: rhythm crossfade, bounce ducking,
+walk→idle decel, turn motion). Task 1 (rig enrichment) landed —
+shoulders + ankles in spec/engine/tables, heel-pivot mechanism,
+C7 re-checks queued for the user.

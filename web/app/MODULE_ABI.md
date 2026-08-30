@@ -110,7 +110,8 @@ designer will emit): a pair in `web/app/shapes/` —
   "joints": [
     { "name": "pelvis", "x": 0.50, "y": 0.53, "parent": null, "role": "root" },
     { "name": "kneeL",  "x": 0.435,"y": 0.70, "parent": "pelvis", "role": "knee", "limb": 0 },
-    { "name": "footL",  "x": 0.415,"y": 0.875,"parent": "kneeL", "role": "limb",
+    { "name": "ankleL", "x": 0.42, "y": 0.826,"parent": "kneeL", "role": "ankle", "limb": 0 },
+    { "name": "footL",  "x": 0.415,"y": 0.875,"parent": "ankleL","role": "limb",
       "limb": 0, "paw": true, "ground": true, "phase": 0 }
   ],
   "parts": [
@@ -123,10 +124,15 @@ designer will emit): a pair in `web/app/shapes/` —
 All coordinates are image fractions (0..1, y down). Rules:
 
 - `joints`: parents by name, and a parent must be listed before its
-  children. `role` ∈ root | rootMid | head | knee | limb. `limb` ties a
-  knee to its tip. `paw: true` pins a 9-node rigid cluster; `ground: true`
+  children. `role` ∈ root | rootMid | head | shoulder | knee | ankle |
+  limb. Full chains (brief 14): arm = rootMid→shoulder→knee(=elbow)→
+  limb(=wrist); leg = root→knee→ankle→limb(=toe). `limb` ties a chain's
+  joints to their tip. `paw: true` pins a rigid cluster; `ground: true`
   marks a walking foot (stance/swing cycle); `phase` is the gait offset
   (0 / 0.5 for left/right alternation — also used for arm counter-swing).
+  While a ground tip is contact-locked by a move table, an authored
+  `ankle` rot pivots the ankle ABOUT the planted toe (heel pivot) instead
+  of FK's toe-about-ankle.
 - `parts`: labelled circles. `limb*` regions are sampled as RING CHAINS
   along the region's principal axis (continuous ropes); everything else is
   grid-sampled as body/head flesh. Regions should cover their limb snugly —
