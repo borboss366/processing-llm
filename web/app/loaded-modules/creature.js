@@ -1009,18 +1009,20 @@ export default {
 
     const dPhase = state.moveApplied;   // same clock as the move phase
 
-    if (state.hasFeet && st === 'walk') {
-      if (world.turn) {
-        const u = Math.min(1, (t0 - world.turn.t0) / 400);
-        world.facingVis = world.turn.from + (world.turn.to - world.turn.from) * u;
-        if (u >= 1) { world.facing = world.turn.to; world.turn = null; startBlend(); }
-      } else {
-        world.x += dPhase * strideU * S * world.facing;
-        if (world.facing > 0 && world.x > p.width * 0.82) { world.turn = { t0, from: 1, to: -1 }; startBlend(); }
-        if (world.facing < 0 && world.x < p.width * 0.18) { world.turn = { t0, from: -1, to: 1 }; startBlend(); }
-        world.facingVis = world.facing;
-      }
-    } else if (state.hasFeet && state.walkEase > 0 && !world.turn) {
+    if (state.hasFeet && world.turn) {
+      // an in-flight turn always completes, whatever the FSM does — if it
+      // only advanced while st === 'walk', a walk→idle/groove transition
+      // inside the 400 ms window froze facingVis mid-mirror and the figure
+      // stood edge-on ("thin") until the next walk (user gate F, 2026-08-30)
+      const u = Math.min(1, (t0 - world.turn.t0) / 400);
+      world.facingVis = world.turn.from + (world.turn.to - world.turn.from) * u;
+      if (u >= 1) { world.facing = world.turn.to; world.turn = null; startBlend(); }
+    } else if (state.hasFeet && st === 'walk') {
+      world.x += dPhase * strideU * S * world.facing;
+      if (world.facing > 0 && world.x > p.width * 0.82) { world.turn = { t0, from: 1, to: -1 }; startBlend(); }
+      if (world.facing < 0 && world.x < p.width * 0.18) { world.turn = { t0, from: -1, to: 1 }; startBlend(); }
+      world.facingVis = world.facing;
+    } else if (state.hasFeet && state.walkEase > 0) {
       // decelerating out of walk (brief 13 Task 4): the stride is easing
       // to zero — keep advancing on it so the body glides to a stop
       world.x += dPhase * strideU * S * world.facing;
