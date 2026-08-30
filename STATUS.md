@@ -48,13 +48,18 @@ mod-octave so regressions still surface.
 
 ## Open (user)
 
-- **Gate evening #2**: visual-offset calibration value + GridClock
-  click-by-ear verdicts, ghost judgment, phone gate (real drawing →
-  perform), post/framing look.
+- **Phone gate E11** (only gate left from evening #2, deferred —
+  phone not at hand): touch draw → approve → perform + photo pair.
+  Protocol in `docs/briefs/USER_GATES.md`.
 - **Inputs owed**: move-timing sculpting session (tables are
-  rotation-ready).
+  rotation-ready) — note gate #2 found rig depth (no shoulder/ankle
+  joints) is the binding constraint, not table timing.
 - **Content briefs queued**: realism arc (14), spider (15), field
-  scene (16).
+  scene (16). Gate #2 produced work items for the reviewer
+  (reports/2026-08-30-user-gates.md): rig enrichment
+  (shoulder+ankle), transition quality (rhythm crossfade, bounce
+  ducking, walk→idle decel, turn motion), bgDim reimplementation,
+  audience shape fidelity.
 
 ## Architecture note
 

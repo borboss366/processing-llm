@@ -31,6 +31,8 @@ const ribbon = [];
 const speedHist = [];
 let keyPhases = [], keyMove = null;
 let forcedBehavior = 'auto';
+let moveForced = false;          // selector follows the live rotation until the user forces
+let syncLiveMove = () => {};
 
 // ── cast & state ──────────────────────────────────────────────────────────
 (async () => {
@@ -60,6 +62,9 @@ $('btn-enter').addEventListener('click', async () => {
   await post('/browser-modules/enable', { id: 'creature', enabled: true });
   if ($('shape-sel').value) await osc('/creature/shape', $('shape-sel').value);
   await post('/browser-modules/trigger', { id: 'creature' });
+  // a fresh load resets params to defaults — re-assert what the page forces
+  if (forcedBehavior !== 'auto') await osc('/creature/behavior', forcedBehavior);
+  if (moveForced && $('mv-name').value) await osc('/creature/move', $('mv-name').value);
 });
 $('btn-exit').addEventListener('click', () =>
   post('/browser-modules/exit', { id: 'creature' }));   // through the normal fade (12.7)
@@ -91,7 +96,17 @@ for (const b of ['auto', 'idle', 'walk', 'groove', 'hop']) {
       }
     } catch { /* offline */ }
   })();
-  nameSel.addEventListener('change', () => osc('/creature/move', nameSel.value || 'none'));
+  nameSel.addEventListener('change', () => {
+    moveForced = nameSel.value !== '';
+    osc('/creature/move', nameSel.value || 'none');
+  });
+  // in auto mode the selector FOLLOWS the live rotation (read-only mirror);
+  // picking an entry forces it, picking "(auto by state)" releases it
+  syncLiveMove = (m) => {
+    if (moveForced || isManual) return;
+    const v = m ?? '';
+    if (nameSel.value !== v && [...nameSel.options].some((o) => o.value === v)) nameSel.value = v;
+  };
   const setManual = (on) => {
     isManual = on;
     manualBtn.classList.toggle('on', on);
@@ -111,6 +126,15 @@ for (const b of ['auto', 'idle', 'walk', 'groove', 'hop']) {
       if (queued !== null) osc('/creature/phaseScrub', queued);
       queued = null;
     }, 33);
+  });
+}
+
+// ── framing (post pass): beat-zoom + drift amounts, live to /post/* ──────
+// Sliders start at the compositor defaults; they push, they don't mirror.
+for (const [id, addr] of [['fr-zoom', '/post/zoomAmp'], ['fr-drift', '/post/driftAmp']]) {
+  $(id).addEventListener('input', () => {
+    $(`${id}-val`).textContent = $(id).value;
+    osc(addr, Number($(id).value));
   });
 }
 
@@ -209,6 +233,7 @@ const ws = createWs({
       if (c) {
         $('cState').textContent = c.st;
         $('cMove').textContent = c.move ?? '(procedural)';
+        syncLiveMove(c.move);
         const last = ribbon.at(-1);
         if (!last || last[1] !== c.st || last[2] !== c.move) ribbon.push([msg.t, c.st, c.move]);
         while (ribbon.length && ribbon[0][0] < Date.now() - 61_000) ribbon.shift();

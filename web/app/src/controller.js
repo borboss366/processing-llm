@@ -972,6 +972,11 @@ els.btnForceChange?.addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: 'creature' }),
     }).catch(() => {});
+    // the module may have been toggled off — Perform must always be visible
+    await fetch('/browser-modules/enable', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'creature', enabled: true }),
+    }).catch(() => {});
     await engine.dispatchAction({ osc: { address: '/creature/shape', value: `audience:${id}` } });
     await engine.dispatchAction({ trigger: 'creature' });
     sessionLog({ kind: 'audience-shape', action: 'perform', id });

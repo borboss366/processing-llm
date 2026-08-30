@@ -10,68 +10,51 @@ verdict moves to the report and gets a ✓ + date here.
 ## Setup (once per session)
 
 - Real GPU, real speakers/headphones, render window fullscreen on its
-  own display (or side-by-side — never fully covered).
+  own display (or side-by-side — never fully covered; occlusion freezes
+  rendering, confirmed live 2026-08-30).
 - `npm run server`, vite dev, Ollama up; file audio with a gridded
   track (`?audio=file:` — tier badge on bench must say GRID).
 - Open `bench.html` (click + instruments) and `puppet.html` (rig).
 
-## A. Calibration (do first — everything after depends on it)
+## Open items
 
-1. Bench: click track ON over the gridded techno mix. Ears only:
-   does the click sit dead on the kick through the whole track,
-   including tempo shifts? (Expected: yes; this re-verifies grid tier
-   on your hardware.) → verdict: ____
-2. Trigger the biped, groove forced. Watch bounce vs click. Nudge
-   `visualBeatOffsetMs` (slider on bench/puppet) until the SQUASH
-   (lowest point) lands on the click to your eyes. Note the final
-   value — it is per-machine and persists. → offset: ____ ms
+1. **E11 — phone gate** (deferred 2026-08-30, phone not at hand;
+   cannot be skipped — touch UX + reachability are untestable
+   elsewhere): `npm run submit`, open `/e/<token>` on the actual phone
+   (boot log prints the LAN URL), draw with a finger (viewport fights?
+   brush ok?), submit, approve, perform. Photo-of-phone + stage
+   screenshot → reports/.
 
-## B. Post & compositing (Brief 10 gate, still open)
+## Re-check triggers (answered, but conditionally)
 
-3. Dark preset, creature up. Toggle `post 0` ↔ on. Better with post?
-   Grain/vignette/chroma defaults: taste verdict, adjust via
-   `/osc /post/*`, note any changed defaults. → verdict: ____
-4. Framing motion: does the drift/beat-zoom breathe with the track,
-   or wobble? (zoomAmp/driftAmp to taste.) → verdict: ____
-5. bgDim check: BRIGHT preset, trigger creature — does the background
-   visibly step down and restore on exit? (If not: report it — known
-   risk since the compositor.) → works: ____
-6. Highlight knee: white cores still clip flat anywhere? → ____
-
-## C. Creature & moves (Brief 9 + FK re-check)
-
-7. Groove, tstep, armwave via puppet (rotation now also cycles them):
-   with true FK + re-authored tables — does tstep read as a shuffle
-   step (ankle travels)? Does the wave TRAVEL through the arm (chicken
-   gone)? One line each. → ____
-8. From 3 m back: does the figure read as dancing WITH the music (post
-   calibration)? → ____
-
-## D. Ghost (Brief 12 gate, still open)
-
-9. Ghost shape, dark preset, halloween palette: reads as a sheet
-   ghost? Float/swoop behavior right? Butter-yellow head accent —
-   keep or change? Placeholder art good enough, or will you redraw?
-   → ____
-
-## E. Audience pipeline (Brief 11 gate, still open)
-
-10. Desktop: draw → validate (try one bad drawing too — message
-    sensible?) → approve → creature performs via puppet. → ____
-11. Phone (5 min, cannot be skipped — touch UX + reachability are
-    untestable elsewhere): open /e/<token> on the actual phone, draw
-    with a finger (viewport fights? brush ok?), submit, approve.
-    Take the photo-of-phone; screenshot the stage → save the pair to
-    reports/. → ____
-
-## F. Live-session watch items (passive, note if seen)
-
-12. Any audible music pause? (Instruments log it — note wall time.)
-13. Any dance speed-surge or freeze? (Should be gone post-13/13.1.)
-14. Figure ever disappears? (13.1 should self-heal + log
-    module-error/recovered — check bench log if it happens.)
+- **B3 post tuning** — post stays ON at defaults; re-judge
+  grain/vignette/chroma when custom puppet appearances exist
+  (user's own trigger, 2026-08-30).
+- **A1 grid sync by ear** — re-confirm after any audio-path change.
+- **F watch items** — every live session: audible pauses, speed
+  surges/freezes, silent disappearances (bench log has the evidence
+  if seen).
 
 ## Recorded verdicts
 
+Full detail in `reports/2026-08-30-user-gates.md`.
+
+- A1 ✓ 2026-08-30 — click on the kick, grid tier, real hardware.
+- A2 ✓ 2026-08-30 — visual offset 0 ms (no perceptible offset).
+- B3 ✓ 2026-08-30 — post ON, defaults; tuning deferred (trigger above).
+- B4 ✓ 2026-08-30 — framing breathes; sliders added to puppet, defaults kept.
+- B5 ✗ 2026-08-30 — bgDim MISSING from code (lost in compositor
+  rewrite) → work item.
+- B6 ✗ 2026-08-30 — white cores clip flat; source-LDR limitation, knee
+  works but can't recover; cosmetic, wontfix at MVP.
+- C7a ✗ 2026-08-30 — tstep reads as stepping: no ankle joints in rig.
+- C7b ✗ 2026-08-30 — armwave doesn't travel: no shoulder joints +
+  table never opens the elbow. C7 verdict class: RIG DEPTH → next
+  creature brief = rig enrichment.
+- C8 ✓ 2026-08-30 — dances, well synced; MVP-ok. Findings queued:
+  bounce fatigue, snap transitions, walk→idle slide, turn stutter.
+- D9 ✓ 2026-08-30 — ghost good for now; biped-first strategy.
+- E10 ✓ 2026-08-30 — desktop pipeline works; rejection message fine;
+  blob fidelity deferred until after animation work.
 - Grid sync by ear — ✓ 2026-08-2x ("synched to the beats", pre-13.1
-  session). Re-confirm via A1 after any audio-path change.
+  session); re-confirmed by A1 above.
