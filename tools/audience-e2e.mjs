@@ -213,8 +213,12 @@ try {
   const apPng = await fetch(`${BASE}/api/approved/${id}.png`);
   check("approved json+png served", apJson.ok && apPng.ok);
   const sidecar = apJson.ok ? await apJson.json() : {};
+  // joint count follows the template (brief 14 enriched it to 15) — compare
+  // against the service's own template, not a hardcoded number
+  const tmpl = await (await fetch(`${BASE}/api/template`)).json();
   check("sidecar carries template joints + hue palette",
-    Array.isArray(sidecar.joints) && sidecar.joints.length === 11 &&
+    Array.isArray(sidecar.joints) && sidecar.joints.length === (tmpl.joints?.length ?? -1) &&
+    sidecar.joints.length >= 15 &&
     typeof sidecar.palette?.primary === "number");
   const q2 = await (await fetch(`${BASE}/api/queue`)).json();
   if (q2.pending.length) {
