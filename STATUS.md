@@ -50,18 +50,16 @@ mod-octave so regressions still surface.
 
 ## Open (user)
 
-- **Phone gate E11** (only gate left from evening #2, deferred —
-  phone not at hand): touch draw → approve → perform + photo pair.
-  Protocol in `docs/briefs/USER_GATES.md`.
-- **Inputs owed**: move-timing sculpting session (tables are
-  rotation-ready) — note gate #2 found rig depth (no shoulder/ankle
-  joints) is the binding constraint, not table timing.
-- **Content briefs queued**: realism arc (14), spider (15), field
-  scene (16). Gate #2 produced work items for the reviewer
-  (reports/2026-08-30-user-gates.md): rig enrichment
-  (shoulder+ankle), transition quality (rhythm crossfade, bounce
-  ducking, walk→idle decel, turn motion), bgDim reimplementation,
-  audience shape fidelity.
+- **Phone gate E11** (deferred twice; web UI suffices for testing —
+  must run before a real event). Protocol in `docs/USER_GATES.md`.
+- **Inputs owed**: move-timing sculpting session (waits on brief 15's
+  sculptMode; gates R1–R4 pre-written in docs/USER_GATES.md).
+- **For the reviewer** (gate #3, reports/2026-08-31-user-gates.md):
+  the FEET workstream — dedicated foot part sampling (rings along the
+  foot's own axis, welded at the ankle), drawn heel/toe geometry in
+  built-in art, then re-judge tstep legibility; elbow concave/convex
+  flex in projection. Content briefs queued: 15 (micro-variation +
+  sculpting), spider, field scene.
 
 ## Architecture note
 

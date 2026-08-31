@@ -134,13 +134,19 @@ function validateMask(mask: Uint8Array): string | null {
     return "your drawing has disconnected pieces — connect them or they won't move";
   }
 
-  // every template joint inside ink, pin disc ≥60% covered
+  // every template joint inside ink; pin disc ≥60% covered — but only for
+  // the joints that pin rigid clusters (paws, root/chest/head). The brief-14
+  // mid-chain joints (shoulder, ankle) sit on naturally THIN limb sections:
+  // requiring a fat disc there rejected legitimate thin-limbed drawings
+  // (found live, gate G1 2026-08-31). Inside-ink still applies to all.
   const R = template.pinRadius * MASK;
   for (const J of template.joints) {
     const jx = J.x * MASK, jy = J.y * MASK;
     if (!mask[(jy | 0) * MASK + (jx | 0)]) {
-      return "keep your drawing over the ghost figure — the marked joints are outside";
+      console.log(`[submit] reject: joint ${J.name} not inside ink at ${jx | 0},${jy | 0}`);
+      return `keep your drawing over the ghost figure — the ${J.name} marker is outside your ink`;
     }
+    if (J.role === "shoulder" || J.role === "ankle") continue;
     let inDisc = 0, covered = 0;
     for (let y = Math.max(0, (jy - R) | 0); y <= Math.min(MASK - 1, (jy + R) | 0); y++) {
       for (let x = Math.max(0, (jx - R) | 0); x <= Math.min(MASK - 1, (jx + R) | 0); x++) {
@@ -150,7 +156,8 @@ function validateMask(mask: Uint8Array): string | null {
       }
     }
     if (covered < inDisc * 0.6) {
-      return "keep your drawing over the ghost figure — the marked joints are outside";
+      console.log(`[submit] reject: joint ${J.name} disc only ${(covered / inDisc).toFixed(2)} covered`);
+      return `keep your drawing over the ghost figure — draw thicker around the ${J.name} marker`;
     }
   }
   return null;

@@ -55,7 +55,13 @@ export function createRegistry({ p, audio }) {
       cullTransientsOf(id);
     }
 
-    const params = { ...(mod.defaults ?? {}), ...(paramsOverride ?? {}) };
+    // Hot-reload keeps the live instance's params (OSC mutations like the
+    // audience shape survive). Root cause of the Perform watch-item
+    // (2026-08-30/31): load is an unconditional re-import, so the
+    // controller's load→shape→trigger raced — the reload finished after
+    // the shape OSC landed and reset params to defaults, entering the
+    // default biped instead of the picked drawing.
+    const params = { ...(mod.defaults ?? {}), ...(prev?.ctx?.params ?? {}), ...(paramsOverride ?? {}) };
     const ctx = makeContext(id, params);
 
     // wire interface state (lifecycle, alpha, etc.) BEFORE setup() runs so
