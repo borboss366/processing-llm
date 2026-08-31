@@ -69,7 +69,6 @@ z-ordered scene composition. Do not start that refactor before then.
 
 ## Next
 
-Brief 14 COMPLETE (rig enrichment, transition quality, bgDim). User
-re-checks queued in USER_GATES (C7a/C7b/B5 + phone gate E11). Next
-agent brief on the board: 15 (micro-variation/swing + the user's
-sculpting session), then spider, field scene.
+Brief 15 (micro-variation/swing + sculptMode for the user's sculpting
+session). Brief 14 complete and gate-checked (session #3 all green;
+FEET workstream handed to the reviewer). Then spider, field scene.
