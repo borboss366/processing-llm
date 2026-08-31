@@ -159,8 +159,21 @@ const wsOut = createWs({
   },
 });
 
-// ─── visual beat offset (brief 13 Task 6): the ONE control on the bench —
-// display-latency calibration, persisted render-side, click stays raw ─────
+// ─── swing (brief 15 A4): the click stays STRAIGHT on purpose — drag this
+// against it and the late-half feel is audible/visible by contrast ────────
+{
+  const sl = $('swing'), sv = $('swing-val');
+  sl?.addEventListener('input', () => {
+    sv.textContent = sl.value;
+    fetch('/osc', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: '/creature/swingPct', value: Number(sl.value) }),
+    }).catch(() => {});
+  });
+}
+
+// ─── visual beat offset (brief 13 Task 6): display-latency calibration,
+// persisted render-side, click stays raw ─────────────────────────────────
 {
   const slider = $('vis-off'), val = $('vis-off-val');
   let synced = false;

@@ -435,6 +435,7 @@ function buildFromShape(state, params, shape) {
     // even if ground joints exist — the flag drives the FSM, not new code
     hasFeet: json.grounded === false ? false : joints.some((J) => J.ground),
     repertoire: json.repertoire ?? null,   // per-state move weights override (12.6)
+    dominantSide: json.dominantSide === 'L' ? 'L' : 'R',   // baked asymmetry (15 A2)
     gaitName: json.archetype ?? 'biped',
     palette: json.palette ?? {},
     eyes: json.eyes ?? [],
@@ -817,6 +818,14 @@ export default {
     ground: 0.82,
     xFrac: 0.5,
     huePrimary: 190, hueSecondary: 150, hueAccent: 315,  // override the shape palette when changed
+    liveness: 1,               // brief 15A master: variation/asymmetry/lag/swing/accent
+    varyAmp: 0.1,              // ±10% per-joint amplitude wander (slow Perlin)
+    varyPhase: 0.02,           // ±0.02 loop-phase wander per joint
+    swingPct: 0.08,            // beat's second half lands this fraction late (0–0.25)
+    spineLagMs: 30,            // chain lead–lag: spine trails the root
+    headLagMs: 60,             // …head trails further
+    accentAmt: 0.15,           // downbeat "one" amplitude accent (grid tier)
+    phraseBars: 8,             // every Nth bar gets lifted variation
     swatches: 0,               // diag: render the three palette swatches
     sweep: -1,                 // weld test: 0..1 drags the left arm across the torso
     renderMode: 'goo',         // 'goo' (shaded metaball) | 'wire' (diagnostic)
@@ -940,7 +949,19 @@ export default {
       }
     }
 
-    const mPhase = state.moveAcc % 1;
+    // ── swing (brief 15 A4): warp each beat's second half late. The warp
+    // is applied ONCE at the clock source — tables, procedural layers,
+    // feet cycle and odometry all read the warped clock, so they can
+    // never disagree. Identity in manual (scrub stays linear).
+    const swing = manual || !Number(params.liveness)
+      ? 0
+      : Math.max(0, Math.min(0.25, Number(state.activeMoveObj?.swingPct ?? params.swingPct) || 0));
+    const swingMid = 0.5 + swing * 0.5;
+    const warpBeat = (f) => (f < swingMid ? f * 0.5 / swingMid : 0.5 + (f - swingMid) * 0.5 / (1 - swingMid));
+    const accW = Math.floor(state.moveAcc) + warpBeat(state.moveAcc - Math.floor(state.moveAcc));
+    const dPhaseW = manual || state.prevAccW == null ? 0 : Math.max(0, accW - state.prevAccW);
+    state.prevAccW = accW;
+    const mPhase = accW % 1;
     const level = manual
       ? (state.frozenLevel ??= a.smoothedLevel ?? 0)
       : ((state.frozenLevel = null), a.smoothedLevel ?? 0);
@@ -962,6 +983,20 @@ export default {
     const barPhase = confident ? (a.visualBarPhase ?? a.barPhase) : state.freePhase / 4;
     const wrapped = barPhase < beh.lastBar - 0.5;
     beh.lastBar = barPhase;
+    // downbeat accent + phrase lift (brief 15 A5, grid tier only — the PLL
+    // barPhase is not anchored to the musical downbeat). accentT decays
+    // over half a beat; accentEnv chases it with ~80 ms attack so the
+    // amplitude step never lands in one frame.
+    const liveOn = Number(params.liveness) !== 0 && !manual;
+    const onGrid = a.clockTier === 'grid';
+    if (liveOn && onGrid && wrapped) {
+      state.accentT = Math.max(0, Number(params.accentAmt) || 0);
+      state.barN = (state.barN ?? 0) + 1;
+      state.phraseLift = state.barN % Math.max(2, Math.round(Number(params.phraseBars) || 8)) === 0;
+    }
+    state.accentT = (state.accentT ?? 0) * Math.exp(-dt / Math.max(0.05, 0.5 * beatSec));
+    state.accentEnv = (state.accentEnv ?? 0) + (state.accentT - (state.accentEnv ?? 0)) * Math.min(1, dt / 0.08);
+    if (!liveOn) { state.accentEnv = 0; state.phraseLift = false; }
     let next = beh.state;
     if (manual) {
       /* workbench scrub: hold the FSM wherever it is */
@@ -1035,7 +1070,7 @@ export default {
     if ((state.lastStEff ??= stEff) !== stEff) startBlend();
     state.lastStEff = stEff;
 
-    const dPhase = state.moveApplied;   // same clock as the move phase
+    const dPhase = dPhaseW;   // warped clock delta — feet and odometry share it
 
     if (state.hasFeet && world.turn) {
       // an in-flight turn always completes, whatever the FSM does (user
@@ -1125,7 +1160,7 @@ export default {
     }
     state.activeMoveObj = move;
     state.activeMoveBpl = move ? Math.max(0.25, move.beatsPerLoop ?? 1) : 1;
-    let mvPose = move ? sampleMove(move, state.moveAcc) : null;
+    let mvPose = move ? sampleMove(move, accW) : null;
     let ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
     let vc = move ? Math.max(0, Math.min(1, move.verticalContent ?? 0)) : 0;
     // rhythm crossfade (brief 14 Task 2.1): the pose blend keeps POSITIONS
@@ -1155,7 +1190,7 @@ export default {
           }
         }
         const prev = state.prevMove;
-        const prevPose = prev ? sampleMove(prev, state.moveAcc) : null;
+        const prevPose = prev ? sampleMove(prev, accW) : null;
         if (prevPose) {
           mvPose ??= { joints: {}, contacts: prevPose.contacts };
           for (const nm of Object.keys(prevPose.joints)) {
@@ -1224,6 +1259,8 @@ export default {
     // vertical content declares it, and the global beat bounce yields —
     // kills the tiring constant bounce under every move (gate C8)
     bounceY *= 1 - vc;
+    // downbeat accent (15 A5): the "one" hits ~15% harder, eased
+    bounceY *= 1 + (state.accentEnv ?? 0);
 
     const idleK = (stEff === 'idle' ? 1 : 0.3) * ov;
     const swayU = ((p.noise(tSec * 0.13, 7) - 0.5) * 2) * 0.02 * state.bbox.w * idleK;
@@ -1233,19 +1270,74 @@ export default {
     // that toggled frame-to-frame at the noise threshold — a literal head
     // twitch, and the top spike source in the hiccup trace (brief 8.2).
     const lookTarget = (((p.noise(tSec * 0.07, 13) - 0.5) * 2) * 0.45 +
-      (p.noise(tSec * 0.02, 41) > 0.72 ? 0.35 : 0)) * idleK;
+      (p.noise(tSec * 0.02, 41) > 0.72 ? 0.35 : 0)) * idleK +
+      (liveOn ? (state.dominantSide === 'L' ? -1 : 1) * 0.06 : 0);   // 15 A2 bias
     state.headLook = (state.headLook ?? 0) + (lookTarget - (state.headLook ?? 0)) * Math.min(1, dt * 7);
     const headLook = state.headLook;
 
     const { joints, pos, prev, rest, edges, restLen, boundary, n } = state;
+    // liveness layer (brief 15 A1–A3): per-joint amplitude/phase wander on
+    // slow Perlin (periods 20–60 s, doubled on phrase bars), baked
+    // dominant-side asymmetry, downbeat accent, and chain lead–lag on the
+    // pose stream. All UNDER the tables; master-gated by params.liveness.
+    const vAmpP = liveOn ? Math.max(0, Number(params.varyAmp) || 0) * (state.phraseLift ? 2 : 1) : 0;
+    const vPhP = liveOn ? Math.max(0, Number(params.varyPhase) || 0) * (state.phraseLift ? 2 : 1) : 0;
+    const domS = state.dominantSide === 'L' ? 'L' : 'R';
+    const accentK = 1 + (state.accentEnv ?? 0);
+    if (!liveOn) state.lagBuf = null;
+    let ji = -1;
     for (const J of joints) {
+      ji++;
       const g = (gait[J.role] ?? gait.root)(J.limb ?? 0, J.phase ?? 0);
-      J.theta = stEff === 'idle' ? 0 : g.A * amp * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off));
-      if (J.role === 'head') J.theta += headLook;
-      // table rot joins the FK chain (children inherit via accRot), so
-      // authored rotations keep bone lengths by construction
+      let vA = 1, vP = 0;
+      if (vAmpP || vPhP) {
+        const per = 20 + ((ji * 13) % 41);              // 20–60 s, per joint
+        // ×5: p5 noise clusters tightly around 0.5 (practical |n−0.5| ≲ 0.2),
+        // so the raw deviation must be renormalized to hit the declared ±range
+        vA = 1 + vAmpP * 5 * (p.noise(tSec / per, 31 + ji * 3.7) - 0.5);
+        vP = vPhP * 5 * (p.noise(tSec / per, 57 + ji * 3.1) - 0.5);
+      }
+      let sideMul = 1;
+      if (liveOn) {
+        const sfx = J.name[J.name.length - 1];
+        if (sfx === domS) sideMul = 1.08;
+        else if (sfx === 'L' || sfx === 'R') sideMul = 0.94;
+      }
+      // amplitude wander (vA) scales the WHOLE dance stream — gait AND
+      // table — or it is invisible under table-driven moves (the gait
+      // share there is ~0.04 rad). Phase wander rides the procedural
+      // sinusoid only; gaze (headLook) stays un-wandered.
       const tk = mvPose?.joints[J.name];
-      if (tk?.rot) J.theta += tk.rot;
+      const dance =
+        (stEff === 'idle' ? 0
+          : g.A * amp * accentK * sideMul * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off + vP))) +
+        (tk?.rot ? tk.rot * accentK : 0);
+      J.theta = dance * vA;
+      if (J.role === 'head') J.theta += headLook;
+      // chain lead–lag (A3): spine (rootMid) trails the root by
+      // spineLagMs, head by headLagMs — the pose STREAM is delayed via a
+      // small time-indexed buffer, so table content whips too. Walking is
+      // exempt (odometry and feet must agree with the trunk).
+      if (liveOn && stEff !== 'walk' && (J.role === 'rootMid' || J.role === 'head')) {
+        const lagMs = J.role === 'head' ? Number(params.headLagMs) || 0 : Number(params.spineLagMs) || 0;
+        if (lagMs > 0) {
+          const buf = ((state.lagBuf ??= {})[J.name] ??= []);
+          buf.push({ t: t0, v: J.theta });
+          while (buf.length > 2 && buf[1].t <= t0 - lagMs - 250) buf.shift();
+          const tt = t0 - lagMs;
+          let v = buf[0].v;
+          for (let bi = buf.length - 1; bi >= 0; bi--) {
+            if (buf[bi].t <= tt) {
+              const nx = buf[bi + 1];
+              v = nx
+                ? buf[bi].v + (nx.v - buf[bi].v) * ((tt - buf[bi].t) / Math.max(1, nx.t - buf[bi].t))
+                : buf[bi].v;
+              break;
+            }
+          }
+          J.theta = v;
+        }
+      }
       if (J.parent < 0) {
         J.ax = J.x + swayU; J.ay = J.y + bounceY + (J.role === 'root' ? rearBob : 0);
         J.accRot = J.theta;
@@ -1265,7 +1357,7 @@ export default {
       }
       // dx/dy in shape units, applied after chaining (authoring guidance:
       // prefer rot on chained limbs — dx/dy there stretches the bone)
-      if (tk) { J.ax += tk.dx || 0; J.ay += tk.dy || 0; }
+      if (tk) { J.ax += (tk.dx || 0) * accentK * vA; J.ay += (tk.dy || 0) * accentK * vA; }
     }
 
     // weld-test pose sweep (brief 9 Task 0a acceptance): drag the left arm

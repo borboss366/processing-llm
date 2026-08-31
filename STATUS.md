@@ -40,6 +40,7 @@ creature rig). Full guide in `README.md`.
 | Audience soak | 50/50 accepted, frame cost flat | audience-soak |
 | Director latency / prefix | ~4.5 s warm; prefix byte-stable | replay --check-prefix |
 | Low-tempo band (93 + 81 BPM) | Dre 93.49 (±2); Queen octave-documented | low-tempo-check |
+| Liveness layer (brief 15A) | amp-drift 6.5% vs 3.3% off (ratio 1.95); fk+transition green with it ON | liveness-check |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
 dnb-174 stays bistable on the PLL tier at fixed rate (confident medians
@@ -71,6 +72,6 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-Brief 15 (micro-variation/swing + sculptMode for the user's sculpting
-session). Brief 14 complete and gate-checked (session #3 all green;
-FEET workstream handed to the reviewer). Then spider, field scene.
+Brief 15 Section B (arm range + vocabulary: rotation-stress harness,
+signed rotLimits, armpump/sidepunch/elbowcircles). Section A (liveness
+layer) landed. Then C (feet), D (user sculpting session).

@@ -107,6 +107,13 @@ const CHECKS = [
     desc: "brief 14: turns carry motion (plateau ≤250ms), no walk→idle glide (≤4px), rhythm crossfade ramps (≤0.5), spikes 0",
   },
   {
+    name: "liveness",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/liveness-check.mjs"],
+    desc: "brief 15A: amp-drift V_on ≥ 1.8×V_off and ≤30%, spikes 0 both runs",
+  },
+  {
     name: "bgdim",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
