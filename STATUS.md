@@ -67,6 +67,8 @@ The layer-manager refactor trigger (docs/ARCHITECTURE.md) fires with
 the FIELD SCENE (brief 16): it is the second concrete customer for
 z-ordered scene composition. Do not start that refactor before then.
 
+creature.js math/render/telemetry split: trigger = spider brief
+
 ## Next
 
 Brief 15 (micro-variation/swing + sculptMode for the user's sculpting
