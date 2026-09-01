@@ -125,9 +125,17 @@ function buildFromShape(state, params, shape) {
   const { json, inside } = shape;
   const target = Math.max(150, Math.min(800, params.nodeCount | 0));
   const limbRegions = (json.parts ?? []).filter((p) => /^limb/.test(p.label));
+  // foot regions (brief 15 C1): ring chains along the FOOT's own axis
+  // (the region's principal axis IS horizontal once the foot has its own
+  // region — the old failure was feet living inside the leg region, whose
+  // axis is the shin's). Nodes carry the limb's label (pins/splats/probes
+  // unchanged); ring 0 welds to the LEG chain at the ankle — an L that
+  // can pivot.
+  const footRegions = (json.parts ?? []).filter((p) => /^foot/.test(p.label));
   const headRegion = (json.parts ?? []).find((p) => p.label === 'head');
   const inCircle = (r, x, y) => (x - r.x) ** 2 + (y - r.y) ** 2 <= r.r * r.r;
-  const inAnyLimb = (x, y) => limbRegions.some((r) => inCircle(r, x, y));
+  const inAnyLimb = (x, y) => limbRegions.some((r) => inCircle(r, x, y)) ||
+    footRegions.some((r) => inCircle(r, x, y));
 
   const xs = [], ys = [], labels = [];
   const addNode = (x, y, lab) => { xs.push(x); ys.push(y); labels.push(lab); return xs.length - 1; };
@@ -143,7 +151,7 @@ function buildFromShape(state, params, shape) {
     if (inside(x, y) && !inAnyLimb(x, y)) hits++;
   }
   const coreArea = hits / (PROBE * PROBE);
-  const limbBudget = limbRegions.length * 12 * 3;
+  const limbBudget = (limbRegions.length + footRegions.length) * 12 * 3;
   const coreTarget = Math.max(80, target - limbBudget);
   const step = Math.sqrt(Math.max(1e-6, coreArea) / coreTarget);
   for (let gx = step / 2; gx < 1; gx += step) {
@@ -164,9 +172,13 @@ function buildFromShape(state, params, shape) {
     for (let m = 0; m < 3 && m < d2.length; m++) addEdge(i, d2[m][1]);
   }
 
-  // limbs: ring chains fitted along each region's principal axis
+  // limbs (+feet, processed after so the weld targets exist): ring chains
+  // fitted along each region's principal axis
   const RINGS = 12;
-  for (const R of limbRegions) {
+  for (const R of [...limbRegions, ...footRegions]) {
+    const isFoot = /^foot/.test(R.label);
+    const lab = isFoot ? `limb${R.label.slice(4)}` : R.label;
+    const regionStart = xs.length;
     // collect silhouette pixels in the region → mean + covariance → axis
     const pts = [];
     const ps = R.r / 16;
@@ -212,16 +224,25 @@ function buildFromShape(state, params, shape) {
       const ring = [];
       for (let m = 0; m < ringN; m++) {
         const off = ringN === 1 ? 0 : (m / (ringN - 1) - 0.5) * 2 * hw * 0.7;
-        ring.push(addNode(cx + perpX * off, cy + perpY * off, R.label));
+        ring.push(addNode(cx + perpX * off, cy + perpY * off, lab));
       }
       for (let m = 0; m + 1 < ring.length; m++) addEdge(ring[m], ring[m + 1]);
       if (prevRing) {
         for (let m = 0; m < ring.length; m++) addEdge(ring[m], prevRing[Math.min(m, prevRing.length - 1)]);
         addEdge(ring[0], prevRing[prevRing.length - 1]);   // shear diagonal
       } else {
+        // ring 0 attaches to: body core (limbs) — or, for a FOOT, the leg
+        // chain's existing nodes of the same limb label (the ankle weld)
         for (const i of ring) {
           const d2 = [];
-          for (let j = 0; j < nCore; j++) d2.push([(xs[i] - xs[j]) ** 2 + (ys[i] - ys[j]) ** 2, j]);
+          if (isFoot) {
+            for (let j = 0; j < regionStart; j++) {
+              if (labels[j] !== lab) continue;
+              d2.push([(xs[i] - xs[j]) ** 2 + (ys[i] - ys[j]) ** 2, j]);
+            }
+          } else {
+            for (let j = 0; j < nCore; j++) d2.push([(xs[i] - xs[j]) ** 2 + (ys[i] - ys[j]) ** 2, j]);
+          }
           d2.sort((a, b) => a[0] - b[0]);
           if (d2[0]) addEdge(i, d2[0][1]);
           if (d2[1]) addEdge(i, d2[1][1]);

@@ -47,8 +47,8 @@ async function makeDrawing() {
   const J = {}; tpl.joints.forEach((j) => (J[j.name] = j));
   const segs = [
     ["pelvis", "chest", 0.085], ["chest", "neck", 0.07],
-    ["pelvis", "kneeL", 0.055], ["kneeL", "footL", 0.055],
-    ["pelvis", "kneeR", 0.055], ["kneeR", "footR", 0.055],
+    ["pelvis", "kneeL", 0.055], ["kneeL", "ankleL", 0.055], ["ankleL", "footL", 0.055],
+    ["pelvis", "kneeR", 0.055], ["kneeR", "ankleR", 0.055], ["ankleR", "footR", 0.055],
     ["chest", "elbowL", 0.055], ["elbowL", "handL", 0.055],
     ["chest", "elbowR", 0.055], ["elbowR", "handR", 0.055],
   ].map(([a, b, r]) => ({ ax: J[a].x, ay: J[a].y, bx: J[b].x, by: J[b].y, r }));

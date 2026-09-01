@@ -39,7 +39,7 @@
 <main>
   <div id="draw-ui">
     <h1>draw yourself into the show
-      <small>fill the ghost figure — your creature will dance on stage</small></h1>
+      <small>fill the ghost figure — draw feet sticking out so it can really step</small></h1>
     <div id="wrap">
       <canvas id="ghost"></canvas>
       <canvas id="ink"></canvas>
@@ -88,8 +88,11 @@ fetch('/api/template').then(r => r.json()).then(t => {
   const J = {}; t.joints.forEach(j => J[j.name] = j);
   const seg = (a, b) => { gg.beginPath(); gg.moveTo(J[a].x*S, J[a].y*S); gg.lineTo(J[b].x*S, J[b].y*S); gg.stroke(); };
   seg('pelvis','chest'); seg('chest','neck');
-  seg('pelvis','kneeL'); seg('kneeL','footL');
-  seg('pelvis','kneeR'); seg('kneeR','footR');
+  // legs show the foot L (brief 15 C3): knee → ankle → toe
+  const legSeg = (k, a, f) => { seg(k, J[a] ? a : f); if (J[a]) seg(a, f); };
+  legSeg('kneeL', 'ankleL', 'footL');
+  legSeg('kneeR', 'ankleR', 'footR');
+  seg('pelvis','kneeL'); seg('pelvis','kneeR');
   seg('chest','elbowL'); seg('elbowL','handL');
   seg('chest','elbowR'); seg('elbowR','handR');
   gg.beginPath(); gg.arc(0.5*S, 0.14*S, 0.1*S, 0, 7); gg.stroke();

@@ -150,7 +150,16 @@ try {
     // BASE that ramps in with the crossfade — without detrending, the
     // ramp itself reads as "early rhythm" and fakes a high early envelope
     const win = between(a, b);
-    const xs = win.map((r) => r.j.shoulderL?.th ?? 0);
+    // slow-band isolate (post-15B): the restored gait swings shoulder at
+    // 1 osc/beat and drowns the armwave's table content (1 osc/4 beats) —
+    // a ~0.5 s moving average kills the per-beat gait, keeps the wave
+    const raw = win.map((r) => r.j.shoulderL?.th ?? 0);
+    const ts = win.map((r) => r.t);
+    const xs = raw.map((_, i) => {
+      let s2 = 0, n2 = 0;
+      for (let k = i; k >= 0 && ts[i] - ts[k] < 500; k--) { s2 += raw[k]; n2++; }
+      return s2 / Math.max(1, n2);
+    });
     if (xs.length < 5) return 0;
     const n = xs.length;
     const mx = (n - 1) / 2;

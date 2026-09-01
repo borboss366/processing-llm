@@ -78,8 +78,8 @@ try {
     }
     const W = 0.11 * S;
     seg("pelvis", "chest", W * 1.5); seg("chest", "neck", W * 1.2);
-    seg("pelvis", "kneeL", W); seg("kneeL", "footL", W);
-    seg("pelvis", "kneeR", W); seg("kneeR", "footR", W);
+    seg("pelvis", "kneeL", W); seg("kneeL", "ankleL", W); seg("ankleL", "footL", W);
+    seg("pelvis", "kneeR", W); seg("kneeR", "ankleR", W); seg("ankleR", "footR", W);
     seg("chest", "elbowL", W); seg("elbowL", "handL", W);
     seg("chest", "elbowR", W); seg("elbowR", "handR", W);
     g.beginPath(); g.arc(0.5 * S, 0.14 * S, 0.11 * S, 0, 7); g.fill();
@@ -135,8 +135,8 @@ try {
       return {
         rect: { x: r.x, y: r.y, w: r.width, h: r.height },
         paths: [
-          seg("neck", "pelvis"), seg("pelvis", "kneeL"), seg("kneeL", "footL"),
-          seg("pelvis", "kneeR"), seg("kneeR", "footR"),
+          seg("neck", "pelvis"), seg("pelvis", "kneeL"), seg("kneeL", "ankleL"), seg("ankleL", "footL"),
+          seg("pelvis", "kneeR"), seg("kneeR", "ankleR"), seg("ankleR", "footR"),
           seg("chest", "elbowL"), seg("elbowL", "handL"),
           seg("chest", "elbowR"), seg("elbowR", "handR"),
           [[0.42, 0.14], [0.58, 0.14]], [[0.5, 0.06], [0.5, 0.22]],   // head blob

@@ -43,6 +43,7 @@ creature rig). Full guide in `README.md`.
 | Liveness layer (brief 15A) | amp-drift ratio ≥1.8 at 0.25 gain; fk+transition green with it ON | liveness-check |
 | Arm envelope (brief 15B) | shoulder ±π, elbow ±2.4 signed — clean static+beat+snap | rotation-stress |
 | Arm vocabulary (brief 15B) | peaks 0.2%/0.6% of authored; wrist orbit 99 px; 0 spikes | fk-check |
+| Feet (brief 15C) | heel-pivot swing 7.3→14.8 px, toe 0.0; components 1; walk stretch 62→38% | fk-check + capture |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
 dnb-174 stays bistable on the PLL tier at fixed rate (confident medians
@@ -74,7 +75,6 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-Brief 15 Section C (feet as first-class parts: own-axis foot rings
-welded at the ankle, redrawn heel/toe art, template foot regions).
-Sections A (liveness) + B (arm range/vocabulary) landed. Then D (user
-sculpting session, Route B decision).
+Brief 15 Section D: sculptMode + the USER's sculpting session (R1–R4
+gates, Route B decision). Sections A (liveness), B (arms), C (feet)
+landed; C7a tstep-legibility re-check is ready to judge.

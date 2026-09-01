@@ -49,10 +49,11 @@ verdict moves to the report and gets a ✓ + date here.
 
 ## Standing re-check triggers
 
-- **C7a tstep legibility** — re-judge after the FEET brief lands
-  (dedicated foot sampling + drawn heel/toe geometry; see
-  reports/2026-08-31-user-gates.md). The mechanism is verified; only
-  geometry blocks the read.
+- **C7a tstep legibility — READY TO JUDGE (15 C landed)**: bipeds now
+  have real profile feet (heel step, slim toe, own-axis rings welded at
+  the ankle); the measured heel-pivot swing doubled (7.3→14.8 px, toe
+  0.0 px). Force tstep and judge: does it read as a t-step now?
+  Close-ups: reports/feet-closeup-{pivot,kick}.png.
 
 - **B3 post tuning** — re-judge grain/vignette/chroma when custom
   puppet appearances exist (user's own trigger, 2026-08-30).
