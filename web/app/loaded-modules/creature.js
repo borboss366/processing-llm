@@ -761,7 +761,8 @@ function sampleMove(move, moveAcc) {
       rot: (A.rot ?? 0) + ((B.rot ?? 0) - (A.rot ?? 0)) * u,
     };
   }
-  return { joints, contacts: new Set(a.contacts ?? []), ease: a.ease ?? 'smooth', seg: i };
+  return { joints, contacts: new Set(a.contacts ?? []), ease: a.ease ?? 'smooth', seg: i,
+    travel: (a.travel ?? 0) + ((b.travel ?? 0) - (a.travel ?? 0)) * u };
 }
 
 // Move repertoire per FSM state (brief 12.6): weighted tables the rotation
@@ -769,9 +770,11 @@ function sampleMove(move, moveAcc) {
 // its joints don't match the biped tables, it stays procedural). A sidecar
 // `repertoire` field overrides per shape.
 GAITS.biped.repertoire = {
-  groove: [['groove', 0.35], ['tstep-placeholder', 0.2], ['armwave-placeholder', 0.15],
-           ['armpump-placeholder', 0.1], ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.1]],
-  hop: [['armpump-placeholder', 0.7], ['sidepunch-placeholder', 0.3]],
+  // armpump parked: the arm-raise needs the axial-rotation channel
+  // (next brief — user sculpt session 2026-09-01); back in rotation then
+  groove: [['groove', 0.4], ['tstep-placeholder', 0.25], ['armwave-placeholder', 0.15],
+           ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.1]],
+  hop: [['sidepunch-placeholder', 1.0]],
 };
 GAITS.trot.repertoire = GAITS.biped.repertoire;
 
@@ -854,7 +857,7 @@ export default {
                                // (restores whatever liveness was on exit)
     varyAmp: 0.1,              // ±10% per-joint amplitude wander (slow Perlin)
     varyPhase: 0.02,           // ±0.02 loop-phase wander per joint
-    swingPct: 0.08,            // beat's second half lands this fraction late (0–0.25)
+    swingPct: 0.2,             // beat's second half lands this fraction late (0–0.25; user taste, gate R2 2026-09-01)
     spineLagMs: 30,            // chain lead–lag: spine trails the root
     headLagMs: 60,             // …head trails further
     accentAmt: 0.15,           // downbeat "one" amplitude accent (grid tier)
@@ -1242,7 +1245,8 @@ export default {
         const prev = state.prevMove;
         const prevPose = prev ? sampleMove(prev, accW) : null;
         if (prevPose) {
-          mvPose ??= { joints: {}, contacts: prevPose.contacts };
+          mvPose ??= { joints: {}, contacts: prevPose.contacts, travel: 0 };
+          mvPose.travel = (mvPose.travel ?? 0) * wIn + (prevPose.travel ?? 0) * (1 - wIn);
           for (const nm of Object.keys(prevPose.joints)) {
             const pk = prevPose.joints[nm];
             const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0 });
@@ -1256,6 +1260,15 @@ export default {
       }
     }
     state.moveOverlay = ov;   // render-side simmer reads this
+    // move-driven travel (brief 15 D, user sculpt session): a table's
+    // `travel` channel (shape-units/beat, signed, interpolated per key)
+    // glides the WORLD position — the t-step/running-man/glide family
+    // actually moves across the stage. Walk owns its own odometry; manual
+    // scrubbing has dPhase 0 so travel never fires there.
+    if (state.hasFeet && stEff !== 'walk' && mvPose?.travel) {
+      world.x += mvPose.travel * dPhase * S;
+      world.x = Math.max(p.width * 0.12, Math.min(p.width * 0.88, world.x));
+    }
     // declared snaps (brief 15 B1): a snap-eased table segment IS the
     // choreography's hit — declare its attack as a transition window so
     // the hiccup metric doesn't flag intentional accents

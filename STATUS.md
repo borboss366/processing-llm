@@ -56,14 +56,14 @@ mod-octave so regressions still surface.
 
 - **Phone gate E11** (deferred twice; web UI suffices for testing —
   must run before a real event). Protocol in `docs/USER_GATES.md`.
-- **Inputs owed**: move-timing sculpting session (waits on brief 15's
-  sculptMode; gates R1–R4 pre-written in docs/USER_GATES.md).
-- **For the reviewer** (gate #3, reports/2026-08-31-user-gates.md):
-  the FEET workstream — dedicated foot part sampling (rings along the
-  foot's own axis, welded at the ankle), drawn heel/toe geometry in
-  built-in art, then re-judge tstep legibility; elbow concave/convex
-  flex in projection. Content briefs queued: 15 (micro-variation +
-  sculpting), spider, field scene.
+- **For the reviewer** (sculpt session #4,
+  reports/2026-09-01-sculpt-session.md — R4 DECISION: all other shapes
+  postponed until the human is done properly): (1) axial-rotation /
+  pseudo-depth channel — foot fan, arm-raise elbow flip, convex-elbow,
+  one mechanism; (2) anatomy priors — pose-dependent couplings, rules
+  vs data (Route B's extracted motion carries them for free);
+  (3) music-structure reactivity (drops → immediate move re-pick,
+  pairs with the unimplemented fillKey). Spider/field WAIT per R4.
 
 ## Architecture note
 
@@ -75,6 +75,8 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-Brief 15 Section D: sculptMode + the USER's sculpting session (R1–R4
-gates, Route B decision). Sections A (liveness), B (arms), C (feet)
-landed; C7a tstep-legibility re-check is ready to judge.
+BRIEF 15 COMPLETE (liveness, arms, feet, sculpting session #4 with
+R1–R4 recorded). Next brief: the reviewer authors the human-proper
+workstream per R4 — axial-rotation channel, anatomy priors, drop
+reactivity. New this session: move-driven `travel` channel (ABI),
+drawings→keys workflow (resources/), swingPct 0.2 default.

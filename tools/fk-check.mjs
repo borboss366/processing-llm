@@ -44,11 +44,11 @@ try {
   await osc("/creature/move", "tstep-placeholder");
   await new Promise((r) => setTimeout(r, 2500));
   await osc("/creature/clockMode", "manual");
-  await osc("/creature/phaseScrub", 0);          // kick key
+  await osc("/creature/phaseScrub", 0.125);      // kick key (tstep v3 layout)
   await new Promise((r) => setTimeout(r, 1200));
   const kick = await joint("footL");
   await page.screenshot({ path: path.join(ROOT, "reports/fk-tstep-kick.png") });
-  await osc("/creature/phaseScrub", 0.25);       // return key
+  await osc("/creature/phaseScrub", 0);          // cross key
   await new Promise((r) => setTimeout(r, 1200));
   const ret = await joint("footL");
   await page.screenshot({ path: path.join(ROOT, "reports/fk-tstep-return.png") });
@@ -57,11 +57,12 @@ try {
   if (travel < 25) failures.push(`kick-foot travel ${travel.toFixed(0)} px < 25`);
 
   // ── heel pivot (brief 14): weight-side toe stays PLANTED while its ankle
-  //    swings about it (ankleR rot 0.35 → 0.08 between the two keys)
+  //    swings about it (tstep v3: flat at 0, softened pop 0.22 at 0.0625 —
+  //    the user's palsy verdict shrank the pop; threshold scaled below)
   await osc("/creature/phaseScrub", 0);
   await new Promise((r) => setTimeout(r, 1200));
   const [toe0, ank0] = [await joint("footR"), await joint("ankleR")];
-  await osc("/creature/phaseScrub", 0.25);
+  await osc("/creature/phaseScrub", 0.0625);
   await new Promise((r) => setTimeout(r, 1200));
   const [toe1, ank1] = [await joint("footR"), await joint("ankleR")];
   const toeDrift = toe0 && toe1 ? Math.hypot(toe0.sx - toe1.sx, toe0.sy - toe1.sy) : 999;
@@ -123,8 +124,8 @@ try {
     console.log(`[fk] ${what}: ${joint2}=${got.toFixed(2)} authored ${authored} (err ${(err * 100).toFixed(1)}%) dbg=${JSON.stringify(dbg)}`);
     if (err > 0.05) failures.push(`${what}: ${joint2} ${got.toFixed(2)} vs ${authored} (>5%)`);
   };
-  await peak("armpump-placeholder", 0.02, "shoulderL", -2.6, "armpump W peak");
-  await peak("sidepunch-placeholder", 0.02, "shoulderL", 1.4, "sidepunch extension");
+  await peak("armpump-placeholder", 0.02, "shoulderL", 2.5, "armpump overhead V");   // v6: raise-the-roof (resources/armsup2.png)
+  await peak("sidepunch-placeholder", 0.02, "shoulderL", 0.95, "sidepunch extension");   // v3: horizontal jab (user sculpt)
   // elbowcircles: wrist orbit — track handL relative to shoulderL across a scrubbed orbit
   await osc("/creature/move", "elbowcircles-placeholder");
   await new Promise((r) => setTimeout(r, 1200));

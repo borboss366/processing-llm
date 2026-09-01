@@ -200,6 +200,12 @@ Rules:
   joint-speed spike metric); `linear` is linear.
 - The table layers UNDER the procedural bounce/lean/Perlin/simmer: those
   stay on, scaled by the move's `overlay`.
+- `travel` (per key, brief 15 D): shape-units per BEAT, signed (+right),
+  interpolated like the joint channels — glides the creature's WORLD
+  position while the move plays (the t-step/running-man/glide family
+  actually crosses the stage). Ignored during walk (walk owns odometry)
+  and in manual scrub. Author symmetric halves for zero net drift; the
+  engine clamps to the stage bounds.
 - Prefer `rot` keys on chained joints (knees, elbows, hands, chest): they
   join the FK chain, so bone lengths hold by construction. `dx`/`dy` on a
   chained joint stretches its bone — keep those small (≤ a few % of the

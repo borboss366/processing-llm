@@ -25,35 +25,11 @@ verdict moves to the report and gets a ✓ + date here.
    finger-draw, submit, approve, perform. Photo-of-phone + stage
    screenshot → reports/. → ____
 
-## After brief 15 lands (fold into the same or next session)
-
-6. **V1 — arm vocabulary (15 B)**: cycle armpump / sidepunch /
-   elbowcircles / upgraded armwave on the puppet. Do the arms read as a
-   DANCER'S — overhead raises, full-extension punches, visible wrist
-   circles, elbows bending BOTH ways? (`reports/fk-moves.webm`
-   previews.) → ____
-
-
-7. **R1 — performer vs loop**: from 3 m, variation+swing+accents ON —
-   does it read as a performer rather than a loop? (A/B toggle exists;
-   the OFF state is the old feel.) → ____
-8. **R2 — swing to taste**: `swingPct` slider against the straight
-   click — where does it groove for your ears? Note the value. → ____
-9. **R3 — accent/phrase to taste**: downbeat accent ×1.15 and the
-   8-bar variation — present but not cartoonish? → ____
-10. **R4 — SCULPTING SESSION + ROUTE B DECISION**: sculpt tstep +
-    armwave timing in the workbench (sculptMode ON). Verdict per the
-    standing rule: session pleasant + two moves good → Route B pilot
-    waits past Halloween; slow or underwhelming → pilot jumps the
-    spider. Tables lose `-placeholder` on your word. → ____
-
 ## Standing re-check triggers
 
-- **C7a tstep legibility — READY TO JUDGE (15 C landed)**: bipeds now
-  have real profile feet (heel step, slim toe, own-axis rings welded at
-  the ankle); the measured heel-pivot swing doubled (7.3→14.8 px, toe
-  0.0 px). Force tstep and judge: does it read as a t-step now?
-  Close-ups: reports/feet-closeup-{pivot,kick}.png.
+- **Tstep fan + arm-raise legibility** — re-judge after the
+  axial-rotation/pseudo-depth brief lands (the session's wall: floor-
+  plane foot fan and humeral-rotation elbow flip are depth phenomena).
 
 - **B3 post tuning** — re-judge grain/vignette/chroma when custom
   puppet appearances exist (user's own trigger, 2026-08-30).
@@ -70,7 +46,18 @@ verdict moves to the report and gets a ✓ + date here.
 ## Recorded verdicts
 
 Sessions: `reports/2026-08-30-user-gates.md` (#2),
-`reports/2026-08-31-user-gates.md` (#3).
+`reports/2026-08-31-user-gates.md` (#3),
+`reports/2026-09-01-sculpt-session.md` (#4, brief 15 D).
+
+- C7a ✓ 2026-09-01 — tstep "resembles" within 2D limits (travel channel
+  added; true fan needs the depth axis — re-check trigger above).
+- V1 ~ 2026-09-01 — armwave/sidepunch/elbowcircles serviceable;
+  armpump parked on the axial-rotation wall.
+- R1 ✓ 2026-09-01 — performer (+ drop-reactivity request queued).
+- R2 ✓ 2026-09-01 — swingPct 0.2 baked as default.
+- R3 ✓ 2026-09-01 — accent/phrase present, not cartoonish.
+- R4 ✓ 2026-09-01 — DECISION: all other shapes postponed until the
+  human is done properly; no tables promoted yet.
 
 - G1 ✓ 2026-08-31 — fresh 15-joint drawing performs, wave reads; three
   live fixes (validation, Perform race, region cut-off); FEET
