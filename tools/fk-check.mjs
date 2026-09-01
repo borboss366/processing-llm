@@ -103,15 +103,59 @@ try {
   if (lagSE < 0.008 || lagSE > 0.1) failures.push(`wave does not travel shoulder→elbow (lag ${lagSE.toFixed(3)})`);
   if (lagEH < 0.008 || lagEH > 0.1) failures.push(`wave does not travel elbow→wrist (lag ${lagEH.toFixed(3)})`);
 
-  // ── live webm of all three re-authored moves + spike gate (brief 14) ───
-  await osc("/creature/clockMode", "live");
-  const rec = await page.screencast({ path: path.join(ROOT, "reports/fk-moves.webm") });
-  for (const mv of ["armwave-placeholder", "tstep-placeholder", "groove"]) {
+  // ── arm vocabulary (brief 15 B3): peak angles within 5% of authored,
+  //    wrist orbit for elbowcircles. Precision section: liveness + gait off
+  //    (the ±10% wander and the level-scaled gait would defeat a 5% gate).
+  await osc("/creature/liveness", 0);
+  await osc("/creature/amplitude", 0);
+  const peak = async (mv, scrub, joint2, authored, what) => {
     await osc("/creature/move", mv);
-    await new Promise((r) => setTimeout(r, 8000));
+    await new Promise((r) => setTimeout(r, 1200));
+    await osc("/creature/phaseScrub", scrub);
+    await new Promise((r) => setTimeout(r, 1200));
+    const j = await joint(joint2);
+    const dbg = await page.evaluate(() => ({
+      move: window.__creatureBench?.move, lp: window.__creatureBench?.loopPhase,
+      blend: window.__creatureBench?.blend, bpl: window.__creatureBench?.moveBpl,
+    }));
+    const got = j?.theta ?? 0;
+    const err = Math.abs(got - authored) / Math.abs(authored);
+    console.log(`[fk] ${what}: ${joint2}=${got.toFixed(2)} authored ${authored} (err ${(err * 100).toFixed(1)}%) dbg=${JSON.stringify(dbg)}`);
+    if (err > 0.05) failures.push(`${what}: ${joint2} ${got.toFixed(2)} vs ${authored} (>5%)`);
+  };
+  await peak("armpump-placeholder", 0.02, "shoulderL", -2.6, "armpump W peak");
+  await peak("sidepunch-placeholder", 0.02, "shoulderL", 1.4, "sidepunch extension");
+  // elbowcircles: wrist orbit — track handL relative to shoulderL across a scrubbed orbit
+  await osc("/creature/move", "elbowcircles-placeholder");
+  await new Promise((r) => setTimeout(r, 1200));
+  const orbit = [];
+  for (let s = 0; s < 0.5; s += 0.03125) {   // one full orbit (2 per loop)
+    await osc("/creature/phaseScrub", s);
+    await new Promise((r) => setTimeout(r, 450));
+    const h = await joint("handL"), sh = await joint("shoulderL");
+    if (h && sh) orbit.push([h.sx - sh.sx, h.sy - sh.sy]);
+  }
+  const cx = orbit.reduce((a, o) => a + o[0], 0) / orbit.length;
+  const cy = orbit.reduce((a, o) => a + o[1], 0) / orbit.length;
+  const radii = orbit.map((o) => Math.hypot(o[0] - cx, o[1] - cy));
+  const rMean = radii.reduce((a, b) => a + b, 0) / radii.length;
+  console.log(`[fk] elbowcircles wrist orbit: mean radius ${rMean.toFixed(1)} px (min ${Math.min(...radii).toFixed(1)}, max ${Math.max(...radii).toFixed(1)})`);
+  if (rMean < 10) failures.push(`wrist orbit radius ${rMean.toFixed(1)} px < 10 — no visible circles`);
+  // ── live webm: full arm vocabulary + tstep + groove (brief 15) ─────────
+  // go live FIRST: the manual-exit blend covers the liveness/amplitude
+  // restoration re-pose (restoring while scrubbed jumps the frozen pose)
+  await osc("/creature/clockMode", "live");
+  await osc("/creature/liveness", 1);
+  await osc("/creature/amplitude", 1);
+  const rec = await page.screencast({ path: path.join(ROOT, "reports/fk-moves.webm") });
+  for (const mv of ["armwave-placeholder", "armpump-placeholder", "sidepunch-placeholder",
+                    "elbowcircles-placeholder", "tstep-placeholder", "groove"]) {
+    await osc("/creature/move", mv);
+    await new Promise((r) => setTimeout(r, 7000));
   }
   await rec.stop();
   const spikes = await page.evaluate(() => window.__creatureBench?.spikesFlagged ?? -1);
+  if (spikes) console.log("[fk] spike log:", JSON.stringify(await page.evaluate(() => window.__creatureBench?.spikeLog ?? [])));
   console.log(`[fk] spikesFlagged=${spikes} · wrote fk-tstep-{kick,return}.png + fk-heel-pivot.png + fk-moves.webm`);
   if (spikes !== 0) failures.push(`spikes=${spikes}`);
 } catch (e) {

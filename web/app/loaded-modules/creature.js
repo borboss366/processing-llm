@@ -30,8 +30,8 @@
 // accumulates three rotations per arm instead of two.
 const GAITS = {
   biped: {
-    limb:    (i, ph) => ({ A: 0.28, freq: 1, off: ph }),         // wrist swing
-    knee:    (i, ph) => ({ A: 0.24, freq: 1, off: ph - 0.1 }),
+    limb:    (i, ph) => ({ A: 0.40, freq: 1, off: ph }),         // wrist swing
+    knee:    (i, ph) => ({ A: 0.28, freq: 1, off: ph - 0.1 }),
     shoulder:(i, ph) => ({ A: 0.16, freq: 1, off: ph + 0.04 }),  // swing origin
     ankle:   (i, ph) => ({ A: 0.12, freq: 1, off: ph - 0.2 }),   // stride flex
     head:    ()      => ({ A: 0.20, freq: 2, off: -0.25 }),
@@ -40,8 +40,8 @@ const GAITS = {
     bellPulse: 0, bounce: 0.05, drift: 0,
   },
   trot: {
-    limb:    (i, ph) => ({ A: 0.36, freq: 1, off: ph }),
-    knee:    (i, ph) => ({ A: 0.30, freq: 1, off: ph - 0.1 }),
+    limb:    (i, ph) => ({ A: 0.50, freq: 1, off: ph }),
+    knee:    (i, ph) => ({ A: 0.35, freq: 1, off: ph - 0.1 }),
     shoulder:(i, ph) => ({ A: 0.20, freq: 1, off: ph + 0.04 }),
     ankle:   (i, ph) => ({ A: 0.15, freq: 1, off: ph - 0.2 }),
     head:    ()      => ({ A: 0.28, freq: 2, off: -0.25 }),
@@ -435,6 +435,14 @@ function buildFromShape(state, params, shape) {
     // even if ground joints exist — the flag drives the FSM, not new code
     hasFeet: json.grounded === false ? false : joints.some((J) => J.ground),
     repertoire: json.repertoire ?? null,   // per-state move weights override (12.6)
+    // rot limits per chain position (brief 15 B2) — SIGNED, symmetric.
+    // 2D design note: a 3D hinge's apparent bend flips with pose in
+    // projection, so elbows/knees are signed by design ("always convex"
+    // was the one-signed bug). Sidecar `rotLimits` overrides per shape.
+    rotLimits: {
+      shoulder: 3.15, elbow: 2.4, wrist: 1.2, knee: 2.0, ankle: 1.0, toe: 0.8,
+      ...(json.rotLimits ?? {}),
+    },
     dominantSide: json.dominantSide === 'L' ? 'L' : 'R',   // baked asymmetry (15 A2)
     gaitName: json.archetype ?? 'biped',
     palette: json.palette ?? {},
@@ -732,7 +740,7 @@ function sampleMove(move, moveAcc) {
       rot: (A.rot ?? 0) + ((B.rot ?? 0) - (A.rot ?? 0)) * u,
     };
   }
-  return { joints, contacts: new Set(a.contacts ?? []) };
+  return { joints, contacts: new Set(a.contacts ?? []), ease: a.ease ?? 'smooth', seg: i };
 }
 
 // Move repertoire per FSM state (brief 12.6): weighted tables the rotation
@@ -740,7 +748,9 @@ function sampleMove(move, moveAcc) {
 // its joints don't match the biped tables, it stays procedural). A sidecar
 // `repertoire` field overrides per shape.
 GAITS.biped.repertoire = {
-  groove: [['groove', 0.5], ['tstep-placeholder', 0.3], ['armwave-placeholder', 0.2]],
+  groove: [['groove', 0.35], ['tstep-placeholder', 0.2], ['armwave-placeholder', 0.15],
+           ['armpump-placeholder', 0.1], ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.1]],
+  hop: [['armpump-placeholder', 0.7], ['sidepunch-placeholder', 0.3]],
 };
 GAITS.trot.repertoire = GAITS.biped.repertoire;
 
@@ -919,12 +929,25 @@ export default {
     const manual = params.clockMode === 'manual';
     if (manual) {
       const bpl = Math.max(0.25, state.activeMoveBpl ?? 1);
-      state.manualBase ??= Math.floor(state.moveAcc / bpl) * bpl;
+      // base must align to the CURRENT move's loop grid: entering manual on
+      // a bpl-2 move could pin base=6, and a later switch to a bpl-4 move
+      // aliased every scrub by base%bpl (measured: scrub 0.02 → lp 0.52)
+      if (state.manualBase == null || state.manualBplUsed !== bpl) {
+        state.manualBase = Math.floor(state.moveAcc / bpl) * bpl;
+        state.manualBplUsed = bpl;
+      }
       state.moveAcc = state.manualBase +
         Math.max(0, Math.min(1, Number(params.phaseScrub) || 0)) * bpl;
       state.moveApplied = 0;
       state.phaseDebt = 0;
       state.mvLast = phase;
+      // an operator scrub step is a DECLARED action, not a dance hiccup —
+      // the frozen-blend windows that used to mask these are gone (15 B)
+      const scr = Number(params.phaseScrub) || 0;
+      if (state.lastScrub !== scr) {
+        state.lastScrub = scr;
+        state.declaredSnapUntil = t0 + 400;
+      }
     } else if (state.manualBase != null) {
       state.manualBase = null;
       state.mvLast = phase;          // the pause leaves no debt to drain
@@ -1156,7 +1179,11 @@ export default {
       state.prevMove = state.activeMoveObj ?? null;   // outgoing table (2.1)
       state.xfadeStart = state.moveAcc;
       state.activeMove = move?.name ?? null;
-      startBlend();
+      // NOT in manual: blend progress rides moveAcc, which the scrub pins —
+      // a frozen blend masks the new table forever (same rule as hot-swap).
+      // The instant swap is an operator action — declare it to the metric.
+      if (!manual) startBlend();
+      else { state.blend = null; state.declaredSnapUntil = t0 + 600; }
     }
     state.activeMoveObj = move;
     state.activeMoveBpl = move ? Math.max(0.25, move.beatsPerLoop ?? 1) : 1;
@@ -1206,6 +1233,21 @@ export default {
       }
     }
     state.moveOverlay = ov;   // render-side simmer reads this
+    // declared snaps (brief 15 B1): a snap-eased table segment IS the
+    // choreography's hit — declare its attack as a transition window so
+    // the hiccup metric doesn't flag intentional accents
+    if (mvPose?.ease === 'snap') {
+      const segId = `${state.activeMove}:${mvPose.seg}`;
+      if (state.snapSeg !== segId) {
+        state.snapSeg = segId;
+        // 800 ms: the offset spring (wn 10) needs ~0.5 s to settle a
+        // 2.5 rad snap, and at capture ~10 fps the tail stretches — the
+        // whole attack is the declared window
+        state.declaredSnapUntil = t0 + 800;
+      }
+    } else {
+      state.snapSeg = null;
+    }
 
     // critically damped spring on every table offset: key easing (snap
     // especially) can attack faster than a few frames, and a raw or
@@ -1308,10 +1350,25 @@ export default {
       // share there is ~0.04 rad). Phase wander rides the procedural
       // sinusoid only; gaze (headLook) stays un-wandered.
       const tk = mvPose?.joints[J.name];
+      // rotLimits clamp (15 B2): tables own their numbers up to the
+      // sidecar's per-chain-position limit; beyond it, clamp + warn once
+      let tRot = tk?.rot ?? 0;
+      if (tRot) {
+        const lk = J.role === 'knee' ? (J.limb >= 2 ? 'elbow' : 'knee')
+          : J.role === 'limb' ? (J.limb >= 2 ? 'wrist' : 'toe') : J.role;
+        const lim = Number(state.rotLimits?.[lk]) || 0;
+        if (lim && Math.abs(tRot) > lim) {
+          if (!(state.limWarned ??= new Set()).has(J.name)) {
+            state.limWarned.add(J.name);
+            console.warn(`[creature] table rot ${tRot.toFixed(2)} on ${J.name} clamped to ±${lim} (rotLimits.${lk})`);
+          }
+          tRot = Math.sign(tRot) * lim;
+        }
+      }
       const dance =
         (stEff === 'idle' ? 0
           : g.A * amp * accentK * sideMul * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off + vP))) +
-        (tk?.rot ? tk.rot * accentK : 0);
+        tRot * accentK;
       J.theta = dance * vA;
       if (J.role === 'head') J.theta += headLook;
       // chain lead–lag (A3): spine (rootMid) trails the root by
@@ -1509,7 +1566,12 @@ export default {
     // joint-target speed metric (brief 8.2 Task 3): max per-frame target
     // displacement across joints, vs a rolling median; spikes outside a
     // declared transition window (or hop) are the "hiccup" signal
-    if ((state.spkLast ??= t0) <= t0 - 40) {
+    // ≥60 ms window (was 40): every remaining false flag sat in a 41–47 ms
+    // burst window straddling a clock catch-up (dPhase ~0.09 in 0.041 s =
+    // 2× realtime after a stall) — the short window divides a legitimate
+    // catch-up step into a phantom velocity. 60 ms folds the burst into
+    // its stall neighborhood; teleports are displacement-based and survive.
+    if ((state.spkLast ??= t0) <= t0 - 60) {
       // velocity over a fixed ≥40 ms wall-clock window, NOT per frame: frame
       // durations at capture fps mix 17 ms bursts into 50-67 ms gaps, and a
       // burst frame divides normal jitter by a tiny dt into a phantom spike
@@ -1528,7 +1590,7 @@ export default {
       const jm = (state.jm ??= { buf: new Float64Array(120), i: 0, n: 0, spikesAll: 0, spikesFlagged: 0, transitionUntil: 0 });
       const sorted = Array.from(jm.buf.slice(0, jm.n)).sort((a, b) => a - b);
       const median = jm.n > 30 ? sorted[(jm.n / 2) | 0] : 0;
-      const inWindow = t0 < jm.transitionUntil || st === 'hop';
+      const inWindow = t0 < jm.transitionUntil || t0 < (state.declaredSnapUntil ?? 0) || st === 'hop';
       // discontinuity test: sustained fast passages (loud groove ramping the
       // amplitude) keep v continuous frame-to-frame; a hiccup is a JUMP both
       // vs the rolling median and vs the previous frame's own speed. The
@@ -1553,9 +1615,20 @@ export default {
       // flagged legitimate 93 ms-window arm swings), so 0.3×body height.
       const accel = (vmax - vPrev) / dtReal;
       const wPeak = 2 * Math.PI / beatSec;
-      const accelBound = Math.max(20, 2 * 0.15 * state.bbox.h * wPeak * wPeak);
+      // 0.3×H since brief 15 B2: the defensive FK-amplitude scaling is
+      // gone — the 3-link wrist at full gait (dominant ×1.08, wander
+      // ×1.1, accent ×1.15) legitimately arcs ~0.25–0.3·H (measured:
+      // walk handR 2.4–5.7 u/s flagged under the 0.15·H calibration).
+      // Same design rule as ever: hiccup = 2× the physical peak.
+      const accelBound = Math.max(20, 2 * 0.3 * state.bbox.h * wPeak * wPeak);
       const adequate = dtReal <= beatSec / 6;
-      const teleport = vmax * dtReal > 0.3 * state.bbox.h;
+      // a teleport is a STEP, not sustained speed: an orbiting wrist at
+      // capture fps moves ~0.27 H/window continuously (measured,
+      // elbowcircles) — only flag when the displacement is also a jump
+      // vs the previous window (real glitches start from normal speeds)
+      // 0.45×H: the full-amplitude wrist arc per ~110 ms window measures
+      // 0.27×H legitimately (post-B2); a real glitch jumps ≥ H
+      const teleport = vmax * dtReal > 0.45 * state.bbox.h && vmax > 2.5 * vPrev + 0.05;
       if (median > 0.05 &&
           ((adequate && vmax > 3 * median && vmax > 2.5 * vPrev + 0.05 && accel > accelBound) || teleport)) {
         jm.spikesAll++;
@@ -1689,6 +1762,7 @@ export default {
       bpmUsed: +(state.bpmSlew ?? 0).toFixed(1),
       moveApplied: +(state.moveApplied ?? 0).toFixed(4),
       // Task 2 acceptance observables (read-only): turn sweep + odometry
+      spikeLog: state.jm?.log ?? [],
       worldX: +(state.world?.x ?? 0).toFixed(1),
       facingVis: +(state.world?.facingVis ?? 1).toFixed(3),
       walkEase: +(state.walkEase ?? 0).toFixed(3),

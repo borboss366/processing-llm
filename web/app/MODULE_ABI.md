@@ -139,6 +139,13 @@ All coordinates are image fractions (0..1, y down). Rules:
   body sampling excludes them.
 - `palette` sets the part hues; the module's `hue*` params override it
   when changed from their defaults.
+- `rotLimits` (brief 15): per-chain-position SIGNED table-rotation limits
+  — `{ shoulder, elbow, wrist, knee, ankle, toe }` radians (defaults
+  3.15/2.4/1.2/2.0/1.0/0.8). Tables exceeding a limit are clamped with a
+  console warning. Elbows/knees are signed by design: a 3D hinge's
+  apparent bend flips with pose in 2D projection.
+- `dominantSide` ('R' default): baked asymmetry — dominant-suffix
+  joints ×1.08 gait amplitude, off side ×0.94 (brief 15 A2).
 
 **Recommended fallback** — while `beatConfidence < 0.4` the PLL is acquiring
 and `beatPhase` may jump; don't freeze, free-run your own phase at

@@ -1,0 +1,114 @@
+{
+  "name": "sidepunch-placeholder",
+  "beatsPerLoop": 2,
+  "overlay": 0.3,
+  "verticalContent": 0.1,
+  "keys": [
+    {
+      "phase": 0.0,
+      "joints": {
+        "shoulderL": {
+          "rot": 1.4
+        },
+        "elbowL": {
+          "rot": 0.1
+        },
+        "shoulderR": {
+          "rot": 0.35
+        },
+        "elbowR": {
+          "rot": -1.9
+        },
+        "chest": {
+          "rot": -0.16
+        },
+        "pelvis": {
+          "dx": 0.006
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.35,
+      "joints": {
+        "shoulderL": {
+          "rot": 0.55
+        },
+        "elbowL": {
+          "rot": 1.9
+        },
+        "shoulderR": {
+          "rot": 0.35
+        },
+        "elbowR": {
+          "rot": -1.9
+        },
+        "chest": {
+          "rot": -0.04
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap"
+    },
+    {
+      "phase": 0.5,
+      "joints": {
+        "shoulderL": {
+          "rot": -0.35
+        },
+        "elbowL": {
+          "rot": 1.9
+        },
+        "shoulderR": {
+          "rot": -1.4
+        },
+        "elbowR": {
+          "rot": -0.1
+        },
+        "chest": {
+          "rot": 0.16
+        },
+        "pelvis": {
+          "dx": -0.006
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth"
+    },
+    {
+      "phase": 0.85,
+      "joints": {
+        "shoulderL": {
+          "rot": -0.35
+        },
+        "elbowL": {
+          "rot": 1.9
+        },
+        "shoulderR": {
+          "rot": -0.55
+        },
+        "elbowR": {
+          "rot": -1.9
+        },
+        "chest": {
+          "rot": 0.04
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap"
+    }
+  ]
+}

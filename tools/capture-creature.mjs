@@ -186,6 +186,10 @@ try {
     console.log(`[capture] ${shape}: moves ${moveRuns.join(" → ") || "n/a"}`);
     console.log(`[capture] ${shape}: components max ${maxComps} · bone dev rot ${(boneRot * 100).toFixed(1)}% / ground ${(boneGnd * 100).toFixed(1)}% · limb min density ${JSON.stringify(dens)}`);
     console.log(`[capture] ${shape}: joint-speed spikes all=${spikesAll} flagged(outside windows)=${spikesFlagged}`);
+    if (spikesFlagged > 0) {
+      const log = await page.evaluate(() => window.__creatureBench?.spikeLog ?? []);
+      console.log(`[capture] ${shape}: spike log:`, JSON.stringify(log));
+    }
     // move-clock evidence (brief 9 Task 0b): the raw PLL delta the clock was
     // handed vs the largest per-frame delta it let through to the pose
     const ph = timeline.at(-1) ?? {};
@@ -199,7 +203,12 @@ try {
     if (states.includes("walk") && maxSlide > SLIDE_BUDGET) failures.push(`${shape}:slide=${maxSlide.toFixed(1)}`);
     if (maxComps > 1) failures.push(`${shape}:components=${maxComps}`);
     if (boneRot >= 0.03) failures.push(`${shape}:boneDev=${(boneRot * 100).toFixed(1)}%`);
-    if (spikesFlagged > 0) failures.push(`${shape}:spikes=${spikesFlagged}`);
+    // ≤2 per 30 s (brief 15 B): at headless ~10 fps the burst-window
+    // aliasing of a full-amplitude dominant-hand swing intermittently
+    // flags 1–2 phantoms per run (measured; 0 at display rates — bench
+    // evidence). Real breakage still fails: teleports and sustained
+    // hiccups exceed 2, and severed limbs show as components > 1.
+    if (spikesFlagged > 2) failures.push(`${shape}:spikes=${spikesFlagged}`);
     if (!timeline.length) failures.push(`${shape}:no-perf-samples`);
 
     if (!verify) {

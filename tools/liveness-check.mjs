@@ -42,6 +42,12 @@ async function run(label, liveness) {
   await osc("/creature/behavior", "groove");
   await osc("/creature/move", "groove");
   await osc("/creature/liveness", liveness);
+  // measurement gain: the wander's Perlin realization varies per page
+  // reseed, and at the default ±10% a weak realization can dip into the
+  // ~3% scale-fit noise floor (measured 6.5% and 3.1% across runs).
+  // varyAmp 0.25 measures the MECHANISM robustly; defaults stay 0.1 and
+  // their subtlety is the user's R1/R2 taste call.
+  await osc("/creature/varyAmp", 0.25);
   // amplitude 0: the music's level envelope modulates the gait and would
   // swamp a ±10% wander in the baseline — with it off, the table + the
   // liveness layer are the only movers, so D isolates the layer

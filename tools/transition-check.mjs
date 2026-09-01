@@ -146,10 +146,20 @@ try {
 
   // 3) rhythm ramp at the groove→armwave switch
   const env = (a, b) => {
-    const xs = between(a, b).map((r) => r.j.shoulderL?.th ?? 0);
+    // linear-detrended std: the upgraded armwave carries a −1.2 shoulder
+    // BASE that ramps in with the crossfade — without detrending, the
+    // ramp itself reads as "early rhythm" and fakes a high early envelope
+    const win = between(a, b);
+    const xs = win.map((r) => r.j.shoulderL?.th ?? 0);
     if (xs.length < 5) return 0;
-    const m = xs.reduce((s2, x) => s2 + x, 0) / xs.length;
-    return Math.sqrt(xs.reduce((s2, x) => s2 + (x - m) ** 2, 0) / xs.length);
+    const n = xs.length;
+    const mx = (n - 1) / 2;
+    let sxy = 0, sxx = 0, my = xs.reduce((s2, x) => s2 + x, 0) / n;
+    for (let i = 0; i < n; i++) { sxy += (i - mx) * (xs[i] - my); sxx += (i - mx) ** 2; }
+    const slope = sxx ? sxy / sxx : 0;
+    let acc2 = 0;
+    for (let i = 0; i < n; i++) acc2 += (xs[i] - my - slope * (i - mx)) ** 2;
+    return Math.sqrt(acc2 / n);
   };
   const early = env(marks.armwave + 300, marks.armwave + 1300);
   const late = env(marks.armwave + 5000, marks.armwave + 8000);

@@ -107,6 +107,13 @@ const CHECKS = [
     desc: "brief 14: turns carry motion (plateau ≤250ms), no walk→idle glide (≤4px), rhythm crossfade ramps (≤0.5), spikes 0",
   },
   {
+    name: "rotation-stress",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/rotation-stress.mjs"],
+    desc: "brief 15B: arm envelope shoulder ±π / elbow ±2.4 signed — components 1, no NaN, spikes 0 at static+beat+snap",
+  },
+  {
     name: "liveness",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

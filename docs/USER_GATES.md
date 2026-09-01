@@ -27,6 +27,13 @@ verdict moves to the report and gets a ✓ + date here.
 
 ## After brief 15 lands (fold into the same or next session)
 
+6. **V1 — arm vocabulary (15 B)**: cycle armpump / sidepunch /
+   elbowcircles / upgraded armwave on the puppet. Do the arms read as a
+   DANCER'S — overhead raises, full-extension punches, visible wrist
+   circles, elbows bending BOTH ways? (`reports/fk-moves.webm`
+   previews.) → ____
+
+
 7. **R1 — performer vs loop**: from 3 m, variation+swing+accents ON —
    does it read as a performer rather than a loop? (A/B toggle exists;
    the OFF state is the old feel.) → ____

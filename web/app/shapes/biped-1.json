@@ -180,5 +180,14 @@
       "y": 0.55,
       "r": 0.145
     }
-  ]
+  ],
+  "rotLimits": {
+    "shoulder": 3.15,
+    "elbow": 2.4,
+    "wrist": 1.2,
+    "knee": 2.0,
+    "ankle": 1.0,
+    "toe": 0.8
+  },
+  "dominantSide": "R"
 }
