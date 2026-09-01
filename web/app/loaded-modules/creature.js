@@ -850,6 +850,8 @@ export default {
     xFrac: 0.5,
     huePrimary: 190, hueSecondary: 150, hueAccent: 315,  // override the shape palette when changed
     liveness: 1,               // brief 15A master: variation/asymmetry/lag/swing/accent
+    sculptMode: 0,             // brief 15D: force liveness OFF while editing tables
+                               // (restores whatever liveness was on exit)
     varyAmp: 0.1,              // ±10% per-joint amplitude wander (slow Perlin)
     varyPhase: 0.02,           // ±0.02 loop-phase wander per joint
     swingPct: 0.08,            // beat's second half lands this fraction late (0–0.25)
@@ -997,7 +999,7 @@ export default {
     // is applied ONCE at the clock source — tables, procedural layers,
     // feet cycle and odometry all read the warped clock, so they can
     // never disagree. Identity in manual (scrub stays linear).
-    const swing = manual || !Number(params.liveness)
+    const swing = manual || !Number(params.liveness) || Number(params.sculptMode) !== 0
       ? 0
       : Math.max(0, Math.min(0.25, Number(state.activeMoveObj?.swingPct ?? params.swingPct) || 0));
     const swingMid = 0.5 + swing * 0.5;
@@ -1031,7 +1033,7 @@ export default {
     // barPhase is not anchored to the musical downbeat). accentT decays
     // over half a beat; accentEnv chases it with ~80 ms attack so the
     // amplitude step never lands in one frame.
-    const liveOn = Number(params.liveness) !== 0 && !manual;
+    const liveOn = Number(params.liveness) !== 0 && !manual && Number(params.sculptMode) === 0;
     const onGrid = a.clockTier === 'grid';
     if (liveOn && onGrid && wrapped) {
       state.accentT = Math.max(0, Number(params.accentAmt) || 0);
