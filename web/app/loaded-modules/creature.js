@@ -485,12 +485,19 @@ function buildFromShape(state, params, shape) {
 
 function startBuild(state, params) {
   const token = (state.buildToken = (state.buildToken ?? 0) + 1);
+  const prevN = state.n ?? 0;
   state.n = 0;                       // not ready; draw() waits
   state.builtShape = params.shape;   // claim now so draw() doesn't re-trigger
   state.builtCount = params.nodeCount;
   loadShape(params.shape)
     .then((shape) => { if (state.buildToken === token) buildFromShape(state, params, shape); })
-    .catch((e) => console.error(`[creature] shape "${params.shape}" failed to load:`, e));
+    .catch((e) => {
+      console.error(`[creature] shape "${params.shape}" failed to load:`, e);
+      // live-path degrade (found by moves-x-shapes): a bad shape name from
+      // the controller must not wedge the creature at n=0 forever — resume
+      // the previous body; the claimed name prevents a refetch storm
+      if (state.buildToken === token && !state.n) state.n = prevN;
+    });
 }
 
 // ── Shaded metaball layer (brief 8 Task 1) ────────────────────────────────
@@ -776,9 +783,12 @@ function sampleMove(move, moveAcc) {
 // `repertoire` field overrides per shape.
 GAITS.biped.repertoire = {
   // armpump parked: the arm-raise needs the axial-rotation channel
-  // (next brief — user sculpt session 2026-09-01); back in rotation then
-  groove: [['groove', 0.4], ['tstep-placeholder', 0.25], ['armwave-placeholder', 0.15],
-           ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.1]],
+  // (next brief — user sculpt session 2026-09-01); back in rotation then.
+  // tstep-captured (brief 16): mocap pilot behind a weight — replaces the
+  // placeholder outright on the user's done-bar word
+  groove: [['groove', 0.4], ['tstep-placeholder', 0.2], ['tstep-captured', 0.15],
+           ['armwave-placeholder', 0.15], ['sidepunch-placeholder', 0.1],
+           ['elbowcircles-placeholder', 0.1]],
   hop: [['sidepunch-placeholder', 1.0]],
 };
 GAITS.trot.repertoire = GAITS.biped.repertoire;

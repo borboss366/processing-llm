@@ -25,6 +25,15 @@ verdict moves to the report and gets a ✓ + date here.
    finger-draw, submit, approve, perform. Photo-of-phone + stage
    screenshot → reports/. → ____
 
+2. **Captured T-step (brief 16 done-bar)** — with `tstep-captured`
+   playing (rotation or forced via puppet.html): recognizably the
+   instructor's move (vs corpus/tstep-L.qa.mp4)? Legible as a T-step
+   from 3 m? MORE natural than the authored placeholder it replaces
+   (A/B: tstep-placeholder, now hip-led too)? Also pick plain vs
+   `tstep-captured-x` (×1.35 stage-read exaggeration). Promotion =
+   captured replaces placeholder, on your word only. → ____
+   (economics note lands after move #2)
+
 ## Standing re-check triggers
 
 - **Tstep fan + arm-raise legibility** — re-judge after the

@@ -11,6 +11,9 @@
  *                          rot/dx/travel, swap contacts). Used when the real
  *                          R window is too thin or off-move.
  *        [--out <path>]    output (default web/app/moves/<name>.json)
+ *        [--exaggerate F]  scale all joint rot/dx by F (stage-read pass:
+ *                          capture is often understated at distance; travel
+ *                          and contacts stay as captured)
  *
  * With a real R half, its keys are phase-rotated to best match the mirror of
  * the L half at the seam (the two extractions anchor independently).
@@ -68,7 +71,16 @@ if (flag("mirror")) {
   console.log(`[stitch] aligned R half: rotated by ${shift} (key ${best}, dist ${bestD.toFixed(3)})`);
 }
 
-const half = (keys, offset) => keys.map((k) => ({ ...k, phase: +(offset + k.phase / 2).toFixed(5) }));
+const exag = +opt("exaggerate", 1);
+const scaleKey = (k) => exag === 1 ? k : {
+  ...k,
+  joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => [nm, {
+    ...(ch.rot != null ? { rot: +(ch.rot * exag).toFixed(3) } : {}),
+    ...(ch.dx != null ? { dx: +(ch.dx * exag).toFixed(4) } : {}),
+    ...(ch.dy != null ? { dy: +(ch.dy * exag).toFixed(4) } : {}),
+  }])),
+};
+const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offset + k.phase / 2).toFixed(5) }));
 const table = {
   name,
   beatsPerLoop: (L.beatsPerLoop ?? 2) * 2,
@@ -78,6 +90,7 @@ const table = {
   provenance: {
     halves: files.map((f) => path.basename(f)),
     mode: flag("mirror") ? "L + mirror(L)" : "L + aligned real R",
+    exaggerate: exag,
     L: L.provenance ?? null,
     pipeline: "tools/mocap/stitch.mjs",
   },
