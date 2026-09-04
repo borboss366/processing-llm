@@ -1,0 +1,4 @@
+# pinned per brief 16 — bump deliberately, rerun determinism check after
+mediapipe==0.10.21
+opencv-python==4.10.0.84
+numpy==1.26.4

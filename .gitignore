@@ -14,6 +14,12 @@ music/
 sketches/
 _attic/
 
+# mocap corpus (brief 16): user-downloaded tutorial clips + extraction
+# intermediates; only distilled move tables + QA videos are committed
+corpus/
+tools/mocap/.venv/
+tools/mocap/models/
+
 # editor / OS
 .idea/
 .vscode/

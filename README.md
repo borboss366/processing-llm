@@ -198,8 +198,10 @@ flowchart LR
     BEAT["beat-test*.mjs<br/>PLL harnesses"]
     CAP["capture-creature.mjs"]
     MODGEN["modgen/gen.mjs"]
+    MOCAP["mocap/extract.mjs<br/>pose → retarget → distill"]
   end
 
+  CORPUS[("corpus/<br/>tutorial clips (gitignored)")] --> MOCAP -- "captured tables + QA video" --> MOVES
   SESS --> REPLAY --> DCORE
   BEAT -. "headless Chrome" .-> RENDER
   CAP -. "headless Chrome" .-> RENDER
