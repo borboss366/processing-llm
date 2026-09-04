@@ -76,10 +76,12 @@ export function distillMove(avg, opts) {
   for (const side of ['L', 'R']) {
     const y = avg.footY[side], vx = avg.footVX[side];
     const yMax = Math.max(...y), yMin = Math.min(...y);
+    // absolute floor band: a pivoting weighted foot barely changes height, so
+    // a purely relative band collapses to nothing and reports zero contacts
+    const band = Math.max(0.02, 0.15 * (yMax - yMin));
     const vLim = 2.5 * (vx.reduce((a, b) => a + Math.abs(b), 0) / bins);
     for (let b = 0; b < bins; b++) {
-      contactMask[side][b] = y[b] >= yMax - 0.15 * (yMax - yMin || 1)
-        && Math.abs(vx[b]) <= vLim;
+      contactMask[side][b] = y[b] >= yMax - band && Math.abs(vx[b]) <= vLim;
     }
   }
 
@@ -90,11 +92,16 @@ export function distillMove(avg, opts) {
   // guaranteed; keepDrift preserves it for single-side captures (a lone
   // t-step half REALLY travels; the stitched full loop nets zero).
   const pU = avg.pelvisU;
-  const net = pU[bins - 1] - pU[0];
+  // per-loop drift: the loop closes at bin `bins` (next cycle's bin 0), so
+  // last-minus-first spans only bins-1 of it — extrapolate the missing bin
+  const net = (pU[bins - 1] - pU[0]) * bins / (bins - 1);
   const detrend = opts.keepDrift ? 0 : net / bins;
+  // seam samples live in the neighbouring loop: b+1 wrapping forward gains
+  // +net (next loop is net further along), b-1 wrapping back is net BEHIND —
+  // adding net to the difference in both cases keeps the derivative continuous
   const travelAt = (b) => {
     const d = (pU[(b + 1) % bins] - pU[(b - 1 + bins) % bins]
-      + (b + 1 >= bins ? net : 0) - (b - 1 < 0 ? net : 0));
+      + (b + 1 >= bins ? net : 0) + (b - 1 < 0 ? net : 0));
     return (d / 2 - detrend) * (bins / bpl);
   };
 

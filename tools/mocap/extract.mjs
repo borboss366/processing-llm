@@ -16,6 +16,8 @@
  *     --anchor F                extra phase shift 0..1 after auto-anchor
  *     --keep-drift              keep net pelvis drift in `travel` (single-side
  *                               captures of travelling moves; default removes it)
+ *     --out <prefix>            output path prefix (default: next to the clip;
+ *                               needed when extracting several windows of one clip)
  *     --no-qa                   skip the QA video render
  *     --self-test               run synthetic math checks and exit
  *
@@ -37,7 +39,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
 const RIG_HEIGHT_UNITS = 0.82;           // ground 0.905 → head top ≈ 0.085 in shape units
 const ARTICULATED = ["chest", "neck", "shoulderL", "elbowL", "shoulderR", "elbowR",
-                     "kneeL", "ankleL", "kneeR", "ankleR"];
+                     "hipL", "kneeL", "ankleL", "hipR", "kneeR", "ankleR"];
 
 // ── args ──────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -54,7 +56,7 @@ const parseTime = (s) => {
 if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
-                            "min-cutoff", "beta", "anchor", "max-keys"]);
+                            "min-cutoff", "beta", "anchor", "max-keys", "out"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -69,7 +71,7 @@ const mirror = flag("mirror");
 const rigPath = opt("rig", path.join(ROOT, "web/app/shapes/biped-1.json"));
 const sidecar = JSON.parse(fs.readFileSync(rigPath, "utf8"));
 const rig = buildRig(sidecar);
-const clipBase = video.replace(/\.[^.]+$/, "");
+const clipBase = opt("out", video.replace(/\.[^.]+$/, ""));   // output prefix (default: next to clip)
 const moveName = opt("name", `${path.basename(clipBase)}-captured`);
 const euro = { minCutoff: +opt("min-cutoff", 1.2), beta: +opt("beta", 0.35) };
 
@@ -327,13 +329,13 @@ function selfTest() {
     const sc = JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-1.json"), "utf8"));
     const rg = buildRig(sc);
     const truth = { chest: -0.12, neck: 0.08, shoulderL: 0.95, elbowL: 0.6,
-                    shoulderR: -0.3, elbowR: -0.5, kneeL: 0.7, ankleL: -0.25,
-                    kneeR: -0.2, ankleR: 0.22 };
+                    shoulderR: -0.3, elbowR: -0.5, hipL: -0.55, kneeL: 0.7,
+                    ankleL: -0.25, hipR: 0.4, kneeR: -0.2, ankleR: 0.22 };
     const pose = fkPose(rg, truth);
     // build a fake de-yawed frame: place MP landmarks at the rig joint
     // positions the observed segments read from
     const fake = [];
-    fake[MP.hipL] = pose.pelvis; fake[MP.hipR] = pose.pelvis;
+    fake[MP.hipL] = pose.hipL; fake[MP.hipR] = pose.hipR;
     fake[MP.shoulderL] = pose.shoulderL; fake[MP.shoulderR] = pose.shoulderR;
     fake[MP.elbowL] = pose.elbowL; fake[MP.elbowR] = pose.elbowR;
     fake[MP.wristL] = pose.handL; fake[MP.wristR] = pose.handR;
@@ -346,14 +348,16 @@ function selfTest() {
     // arm/leg chains, which must be exact
     const rec = retargetFrame(fake, rg, false);
     let worst = 0, worstName = "";
-    for (const nm of ["shoulderL", "elbowL", "shoulderR", "elbowR", "kneeL", "ankleL", "kneeR", "ankleR"]) {
+    for (const nm of ["shoulderL", "elbowL", "shoulderR", "elbowR",
+                      "hipL", "kneeL", "ankleL", "hipR", "kneeR", "ankleR"]) {
       // arm chain parent is chest: recovered accRot is exact, theta differs
       // by the chest projection error — compare CHAIN-ACCUMULATED rotation
       const chain = (th, names2) => names2.reduce((a, n2) => a + (th[n2] ?? 0), 0);
       const pairs = {
         shoulderL: ["chest", "shoulderL"], elbowL: ["chest", "shoulderL", "elbowL"],
         shoulderR: ["chest", "shoulderR"], elbowR: ["chest", "shoulderR", "elbowR"],
-        kneeL: ["kneeL"], ankleL: ["kneeL", "ankleL"], kneeR: ["kneeR"], ankleR: ["kneeR", "ankleR"],
+        hipL: ["hipL"], kneeL: ["hipL", "kneeL"], ankleL: ["hipL", "kneeL", "ankleL"],
+        hipR: ["hipR"], kneeR: ["hipR", "kneeR"], ankleR: ["hipR", "kneeR", "ankleR"],
       };
       const d = Math.abs(chain(rec, pairs[nm]) - chain(truth, pairs[nm]));
       if (d > worst) { worst = d; worstName = nm; }
@@ -405,6 +409,16 @@ function selfTest() {
     if (t.keys.length > 12) fails.push(`distill keys ${t.keys.length} > 12`);
     if (worst > 0.08) fails.push(`distill reconstruction err ${worst.toFixed(3)} rad > 0.08`);
     if ("chest" in t.keys[0].joints) fails.push("sub-range joint not excluded");
+    // keepDrift seam regression: constant-rate drift must give a FLAT travel
+    // channel — the wrap-sign bug multiplied the seam key by ~bins
+    const drift = -0.12;
+    const t2 = distillMove({ ...avg, pelvisU: th((u) => drift * u) },
+      { bins, bpl: 2, maxKeys: 12, name: "drift", keepDrift: true });
+    const tv = t2.keys.map((k) => k.travel);
+    const want = drift / 2;                        // u/beat at bpl 2
+    const worstTv = Math.max(...tv.map((v) => Math.abs(v - want)));
+    console.log(`[self-test] keepDrift seam: travel ${Math.min(...tv).toFixed(3)}..${Math.max(...tv).toFixed(3)} u/beat (want flat ${want.toFixed(3)})`);
+    if (worstTv > 0.02) fails.push(`keepDrift travel deviates ${worstTv.toFixed(3)} from flat`);
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);
   console.log(`VERIFY:${fails.length ? "FAIL" : "PASS"} mocap-self-test`);

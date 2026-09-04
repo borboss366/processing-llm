@@ -34,6 +34,9 @@ const GAITS = {
     knee:    (i, ph) => ({ A: 0.28, freq: 1, off: ph - 0.1 }),
     shoulder:(i, ph) => ({ A: 0.16, freq: 1, off: ph + 0.04 }),  // swing origin
     ankle:   (i, ph) => ({ A: 0.12, freq: 1, off: ph - 0.2 }),   // stride flex
+    // hip DOF is table-only for now (16.1): A=0 keeps the walk pixel-identical
+    // to pre-hip builds instead of inheriting root's 0.03 lean via fallback
+    hip:     ()      => ({ A: 0, freq: 1, off: 0 }),
     head:    ()      => ({ A: 0.20, freq: 2, off: -0.25 }),
     root:    ()      => ({ A: 0.03, freq: 1, off: 0 }),          // stride lean
     rootMid: ()      => ({ A: 0.03, freq: 1, off: 0.5 }),
@@ -44,6 +47,7 @@ const GAITS = {
     knee:    (i, ph) => ({ A: 0.35, freq: 1, off: ph - 0.1 }),
     shoulder:(i, ph) => ({ A: 0.20, freq: 1, off: ph + 0.04 }),
     ankle:   (i, ph) => ({ A: 0.15, freq: 1, off: ph - 0.2 }),
+    hip:     ()      => ({ A: 0, freq: 1, off: 0 }),
     head:    ()      => ({ A: 0.28, freq: 2, off: -0.25 }),
     root:    ()      => ({ A: 0.04, freq: 1, off: 0 }),
     rootMid: ()      => ({ A: 0.04, freq: 1, off: 0.5 }),
@@ -462,6 +466,7 @@ function buildFromShape(state, params, shape) {
     // was the one-signed bug). Sidecar `rotLimits` overrides per shape.
     rotLimits: {
       shoulder: 3.15, elbow: 2.4, wrist: 1.2, knee: 2.0, ankle: 1.0, toe: 0.8,
+      hip: 0.9,        // 16.1: whole-leg swing, 2D projection of abduction/flexion
       ...(json.rotLimits ?? {}),
     },
     dominantSide: json.dominantSide === 'L' ? 'L' : 'R',   // baked asymmetry (15 A2)

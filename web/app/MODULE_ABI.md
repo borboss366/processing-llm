@@ -109,7 +109,8 @@ designer will emit): a pair in `web/app/shapes/` —
   "eyes": [ { "x": -0.035, "y": -0.01, "r": 0.013 } ],   // head-relative
   "joints": [
     { "name": "pelvis", "x": 0.50, "y": 0.53, "parent": null, "role": "root" },
-    { "name": "kneeL",  "x": 0.435,"y": 0.70, "parent": "pelvis", "role": "knee", "limb": 0 },
+    { "name": "hipL",   "x": 0.487,"y": 0.564,"parent": "pelvis", "role": "hip", "limb": 0 },
+    { "name": "kneeL",  "x": 0.435,"y": 0.70, "parent": "hipL", "role": "knee", "limb": 0 },
     { "name": "ankleL", "x": 0.42, "y": 0.826,"parent": "kneeL", "role": "ankle", "limb": 0 },
     { "name": "footL",  "x": 0.415,"y": 0.875,"parent": "ankleL","role": "limb",
       "limb": 0, "paw": true, "ground": true, "phase": 0 }
@@ -124,10 +125,13 @@ designer will emit): a pair in `web/app/shapes/` —
 All coordinates are image fractions (0..1, y down). Rules:
 
 - `joints`: parents by name, and a parent must be listed before its
-  children. `role` ∈ root | rootMid | head | shoulder | knee | ankle |
-  limb. Full chains (brief 14): arm = rootMid→shoulder→knee(=elbow)→
-  limb(=wrist); leg = root→knee→ankle→limb(=toe). `limb` ties a chain's
-  joints to their tip. `paw: true` pins a rigid cluster; `ground: true`
+  children. `role` ∈ root | rootMid | head | shoulder | hip | knee |
+  ankle | limb. Full chains (brief 14; hip DOF 16.1): arm = rootMid→
+  shoulder→knee(=elbow)→limb(=wrist); leg = root→hip→knee→ankle→
+  limb(=toe). A `hip` rot swings the WHOLE leg about the hip point
+  (FK-propagating, like shoulders — table-only for now, gait-inert);
+  shapes without hip joints simply ignore hip keys, so hip-led tables
+  read flatter on them. `limb` ties a chain's joints to their tip. `paw: true` pins a rigid cluster; `ground: true`
   marks a walking foot (stance/swing cycle); `phase` is the gait offset
   (0 / 0.5 for left/right alternation — also used for arm counter-swing).
   While a ground tip is contact-locked by a move table, an authored
@@ -139,10 +143,10 @@ All coordinates are image fractions (0..1, y down). Rules:
   body sampling excludes them.
 - `palette` sets the part hues; the module's `hue*` params override it
   when changed from their defaults.
-- `rotLimits` (brief 15): per-chain-position SIGNED table-rotation limits
-  — `{ shoulder, elbow, wrist, knee, ankle, toe }` radians (defaults
-  3.15/2.4/1.2/2.0/1.0/0.8). Tables exceeding a limit are clamped with a
-  console warning. Elbows/knees are signed by design: a 3D hinge's
+- `rotLimits` (brief 15; hip 16.1): per-chain-position SIGNED
+  table-rotation limits — `{ shoulder, elbow, wrist, hip, knee, ankle,
+  toe }` radians (defaults 3.15/2.4/1.2/0.9/2.0/1.0/0.8). Tables
+  exceeding a limit are clamped with a console warning. Elbows/knees are signed by design: a 3D hinge's
   apparent bend flips with pose in 2D projection.
 - `dominantSide` ('R' default): baked asymmetry — dominant-suffix
   joints ×1.08 gait amplitude, off side ×0.94 (brief 15 A2).

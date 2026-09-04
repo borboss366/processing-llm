@@ -44,8 +44,9 @@ creature rig). Full guide in `README.md`.
 | Arm envelope (brief 15B) | shoulder ±π, elbow ±2.4 signed — clean static+beat+snap | rotation-stress |
 | Arm vocabulary (brief 15B) | peaks 0.2%/0.6% of authored; wrist orbit 99 px; 0 spikes | fk-check |
 | Feet (brief 15C) | heel-pivot swing 7.3→14.8 px, toe 0.0; components 1; walk stretch 62→38% | fk-check + capture |
-| Mocap pipeline math (brief 16 T1) | round-trip 4.4e-16 rad; period ×1/×2 both correct; distill err 0.044 rad | mocap self-test |
+| Mocap pipeline math (brief 16 T1) | round-trip 6.1e-16 rad incl. hips; period ×1/×2 both correct; distill err 0.044 rad | mocap self-test |
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
+| Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
 dnb-174 stays bistable on the PLL tier at fixed rate (confident medians
@@ -77,10 +78,10 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-BRIEF 16 (Route B pilot) Task 1 COMPLETE: tools/mocap/ extraction
-pipeline (MediaPipe → One Euro → de-yaw → orientation-matched retarget →
-motion-derived timing → cycle-averaged table + QA video), validated on
-the first corpus clip. Next: Task 2 — T-step depth-first: extract the
-R-lead window, stitch L+R into the full bpl-4 table, load into the rig,
-run the done-bar (legible at 3 m, moves-x-shapes, groove rotation,
-workbench pass, user judges vs QA video).
+BRIEF 16 Task 1 COMPLETE (tools/mocap/ pipeline) + BRIEF 16.1 COMPLETE
+(hip DOF: 17-joint rig, leg stress row, femur-decomposed retarget,
+hip-led tstep-placeholder). Task 2 IN FLIGHT: tstep-captured (L +
+mirrored L, hip-led, real travel) is stitched, probed clean, and loaded;
+awaiting the user's done-bar judgment (legible at 3 m, vs QA video, vs
+placeholder). Then: groove-rotation soak + workbench exaggeration pass,
+move #2 (body roll) for the economics number, Task 3 anatomy stats.

@@ -1,205 +1,222 @@
 {
-  "name": "biped-2",
-  "archetype": "biped",
-  "palette": {
-    "primary": 275,
-    "secondary": 205,
-    "accent": 45
+ "name": "biped-2",
+ "archetype": "biped",
+ "palette": {
+  "primary": 275,
+  "secondary": 205,
+  "accent": 45
+ },
+ "pinRadius": 0.07,
+ "ground": 0.905,
+ "eyes": [
+  {
+   "x": -0.035,
+   "y": -0.005,
+   "r": 0.014
   },
-  "pinRadius": 0.07,
-  "ground": 0.905,
-  "eyes": [
-    {
-      "x": -0.035,
-      "y": -0.005,
-      "r": 0.014
-    },
-    {
-      "x": 0.035,
-      "y": -0.005,
-      "r": 0.014
-    }
-  ],
-  "joints": [
-    {
-      "name": "pelvis",
-      "x": 0.5,
-      "y": 0.54,
-      "parent": null,
-      "role": "root"
-    },
-    {
-      "name": "chest",
-      "x": 0.5,
-      "y": 0.37,
-      "parent": "pelvis",
-      "role": "rootMid"
-    },
-    {
-      "name": "neck",
-      "x": 0.5,
-      "y": 0.19,
-      "parent": "chest",
-      "role": "head"
-    },
-    {
-      "name": "kneeL",
-      "x": 0.43,
-      "y": 0.71,
-      "parent": "pelvis",
-      "role": "knee",
-      "limb": 0
-    },
-    {
-      "name": "ankleL",
-      "x": 0.4034,
-      "y": 0.859,
-      "parent": "kneeL",
-      "role": "ankle",
-      "limb": 0
-    },
-    {
-      "name": "footL",
-      "x": 0.3084,
-      "y": 0.8868,
-      "parent": "ankleL",
-      "role": "limb",
-      "limb": 0,
-      "paw": true,
-      "ground": true,
-      "phase": 0
-    },
-    {
-      "name": "kneeR",
-      "x": 0.57,
-      "y": 0.71,
-      "parent": "pelvis",
-      "role": "knee",
-      "limb": 1
-    },
-    {
-      "name": "ankleR",
-      "x": 0.5966,
-      "y": 0.859,
-      "parent": "kneeR",
-      "role": "ankle",
-      "limb": 1
-    },
-    {
-      "name": "footR",
-      "x": 0.6916,
-      "y": 0.8868,
-      "parent": "ankleR",
-      "role": "limb",
-      "limb": 1,
-      "paw": true,
-      "ground": true,
-      "phase": 0.5
-    },
-    {
-      "name": "shoulderL",
-      "x": 0.42,
-      "y": 0.402,
-      "parent": "chest",
-      "role": "shoulder",
-      "limb": 2
-    },
-    {
-      "name": "elbowL",
-      "x": 0.3,
-      "y": 0.45,
-      "parent": "shoulderL",
-      "role": "knee",
-      "limb": 2
-    },
-    {
-      "name": "handL",
-      "x": 0.225,
-      "y": 0.635,
-      "parent": "elbowL",
-      "role": "limb",
-      "limb": 2,
-      "paw": true,
-      "phase": 0.5
-    },
-    {
-      "name": "shoulderR",
-      "x": 0.58,
-      "y": 0.402,
-      "parent": "chest",
-      "role": "shoulder",
-      "limb": 3
-    },
-    {
-      "name": "elbowR",
-      "x": 0.7,
-      "y": 0.45,
-      "parent": "shoulderR",
-      "role": "knee",
-      "limb": 3
-    },
-    {
-      "name": "handR",
-      "x": 0.775,
-      "y": 0.635,
-      "parent": "elbowR",
-      "role": "limb",
-      "limb": 3,
-      "paw": true,
-      "phase": 0
-    }
-  ],
-  "parts": [
-    {
-      "label": "head",
-      "x": 0.5,
-      "y": 0.155,
-      "r": 0.135
-    },
-    {
-      "label": "limb0",
-      "x": 0.425,
-      "y": 0.765,
-      "r": 0.14
-    },
-    {
-      "label": "limb1",
-      "x": 0.585,
-      "y": 0.765,
-      "r": 0.14
-    },
-    {
-      "label": "limb2",
-      "x": 0.255,
-      "y": 0.56,
-      "r": 0.155
-    },
-    {
-      "label": "limb3",
-      "x": 0.745,
-      "y": 0.56,
-      "r": 0.155
-    },
-    {
-      "label": "foot0",
-      "x": 0.3559,
-      "y": 0.875,
-      "r": 0.085
-    },
-    {
-      "label": "foot1",
-      "x": 0.6441,
-      "y": 0.875,
-      "r": 0.085
-    }
-  ],
-  "rotLimits": {
-    "shoulder": 3.15,
-    "elbow": 2.4,
-    "wrist": 1.2,
-    "knee": 2.0,
-    "ankle": 1.0,
-    "toe": 0.8
+  {
+   "x": 0.035,
+   "y": -0.005,
+   "r": 0.014
+  }
+ ],
+ "joints": [
+  {
+   "name": "pelvis",
+   "x": 0.5,
+   "y": 0.54,
+   "parent": null,
+   "role": "root"
   },
-  "dominantSide": "R"
+  {
+   "name": "hipL",
+   "x": 0.486,
+   "y": 0.574,
+   "parent": "pelvis",
+   "role": "hip",
+   "limb": 0
+  },
+  {
+   "name": "hipR",
+   "x": 0.514,
+   "y": 0.574,
+   "parent": "pelvis",
+   "role": "hip",
+   "limb": 1
+  },
+  {
+   "name": "chest",
+   "x": 0.5,
+   "y": 0.37,
+   "parent": "pelvis",
+   "role": "rootMid"
+  },
+  {
+   "name": "neck",
+   "x": 0.5,
+   "y": 0.19,
+   "parent": "chest",
+   "role": "head"
+  },
+  {
+   "name": "kneeL",
+   "x": 0.43,
+   "y": 0.71,
+   "parent": "hipL",
+   "role": "knee",
+   "limb": 0
+  },
+  {
+   "name": "ankleL",
+   "x": 0.4034,
+   "y": 0.859,
+   "parent": "kneeL",
+   "role": "ankle",
+   "limb": 0
+  },
+  {
+   "name": "footL",
+   "x": 0.3084,
+   "y": 0.8868,
+   "parent": "ankleL",
+   "role": "limb",
+   "limb": 0,
+   "paw": true,
+   "ground": true,
+   "phase": 0
+  },
+  {
+   "name": "kneeR",
+   "x": 0.57,
+   "y": 0.71,
+   "parent": "hipR",
+   "role": "knee",
+   "limb": 1
+  },
+  {
+   "name": "ankleR",
+   "x": 0.5966,
+   "y": 0.859,
+   "parent": "kneeR",
+   "role": "ankle",
+   "limb": 1
+  },
+  {
+   "name": "footR",
+   "x": 0.6916,
+   "y": 0.8868,
+   "parent": "ankleR",
+   "role": "limb",
+   "limb": 1,
+   "paw": true,
+   "ground": true,
+   "phase": 0.5
+  },
+  {
+   "name": "shoulderL",
+   "x": 0.42,
+   "y": 0.402,
+   "parent": "chest",
+   "role": "shoulder",
+   "limb": 2
+  },
+  {
+   "name": "elbowL",
+   "x": 0.3,
+   "y": 0.45,
+   "parent": "shoulderL",
+   "role": "knee",
+   "limb": 2
+  },
+  {
+   "name": "handL",
+   "x": 0.225,
+   "y": 0.635,
+   "parent": "elbowL",
+   "role": "limb",
+   "limb": 2,
+   "paw": true,
+   "phase": 0.5
+  },
+  {
+   "name": "shoulderR",
+   "x": 0.58,
+   "y": 0.402,
+   "parent": "chest",
+   "role": "shoulder",
+   "limb": 3
+  },
+  {
+   "name": "elbowR",
+   "x": 0.7,
+   "y": 0.45,
+   "parent": "shoulderR",
+   "role": "knee",
+   "limb": 3
+  },
+  {
+   "name": "handR",
+   "x": 0.775,
+   "y": 0.635,
+   "parent": "elbowR",
+   "role": "limb",
+   "limb": 3,
+   "paw": true,
+   "phase": 0
+  }
+ ],
+ "parts": [
+  {
+   "label": "head",
+   "x": 0.5,
+   "y": 0.155,
+   "r": 0.135
+  },
+  {
+   "label": "limb0",
+   "x": 0.425,
+   "y": 0.765,
+   "r": 0.14
+  },
+  {
+   "label": "limb1",
+   "x": 0.585,
+   "y": 0.765,
+   "r": 0.14
+  },
+  {
+   "label": "limb2",
+   "x": 0.255,
+   "y": 0.56,
+   "r": 0.155
+  },
+  {
+   "label": "limb3",
+   "x": 0.745,
+   "y": 0.56,
+   "r": 0.155
+  },
+  {
+   "label": "foot0",
+   "x": 0.3559,
+   "y": 0.875,
+   "r": 0.085
+  },
+  {
+   "label": "foot1",
+   "x": 0.6441,
+   "y": 0.875,
+   "r": 0.085
+  }
+ ],
+ "rotLimits": {
+  "shoulder": 3.15,
+  "elbow": 2.4,
+  "wrist": 1.2,
+  "knee": 2.0,
+  "ankle": 1.0,
+  "toe": 0.8,
+  "hip": 0.9
+ },
+ "dominantSide": "R"
 }

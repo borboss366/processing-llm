@@ -70,9 +70,14 @@ export function buildRig(sidecar) {
     [`elbow${pl}`, `shoulder${pl}`, MP.elbowL, MP.wristL, rest('elbowL', 'handL')],
     [`shoulder${pr}`, 'chest', MP.shoulderR, MP.elbowR, rest('shoulderR', 'elbowR')],
     [`elbow${pr}`, `shoulder${pr}`, MP.elbowR, MP.wristR, rest('elbowR', 'handR')],
-    [`knee${pl}`, null, MP.kneeL, MP.ankleL, rest('kneeL', 'ankleL')],
+    // femur decomposition (16.1): hip absorbs the whole-leg swing, knee is
+    // the RELATIVE femur–tibia angle, ankle relative tibia–foot — same
+    // discipline as the arm chain
+    [`hip${pl}`, null, MP.hipL, MP.kneeL, rest('hipL', 'kneeL')],
+    [`knee${pl}`, `hip${pl}`, MP.kneeL, MP.ankleL, rest('kneeL', 'ankleL')],
     [`ankle${pl}`, `knee${pl}`, MP.ankleL, MP.toeL, rest('ankleL', 'footL')],
-    [`knee${pr}`, null, MP.kneeR, MP.ankleR, rest('kneeR', 'ankleR')],
+    [`hip${pr}`, null, MP.hipR, MP.kneeR, rest('hipR', 'kneeR')],
+    [`knee${pr}`, `hip${pr}`, MP.kneeR, MP.ankleR, rest('kneeR', 'ankleR')],
     [`ankle${pr}`, `knee${pr}`, MP.ankleR, MP.toeR, rest('ankleR', 'footR')],
   ];
   return {

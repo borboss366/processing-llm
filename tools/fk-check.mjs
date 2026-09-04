@@ -47,14 +47,20 @@ try {
   await osc("/creature/phaseScrub", 0.125);      // kick key (tstep v3 layout)
   await new Promise((r) => setTimeout(r, 1200));
   const kick = await joint("footL");
+  const kickHip = await joint("hipL");
   await page.screenshot({ path: path.join(ROOT, "reports/fk-tstep-kick.png") });
   await osc("/creature/phaseScrub", 0);          // cross key
   await new Promise((r) => setTimeout(r, 1200));
   const ret = await joint("footL");
   await page.screenshot({ path: path.join(ROOT, "reports/fk-tstep-return.png") });
   const travel = kick && ret ? Math.hypot(kick.sx - ret.sx, kick.sy - ret.sy) : 0;
-  console.log(`[fk] tstep kick-foot travel kick→return: ${travel.toFixed(0)} px (kick accRot=${kick?.accRot})`);
+  console.log(`[fk] tstep kick-foot travel kick→return: ${travel.toFixed(0)} px (kick accRot=${kick?.accRot}, hipL=${kickHip?.theta?.toFixed(2)})`);
   if (travel < 25) failures.push(`kick-foot travel ${travel.toFixed(0)} px < 25`);
+  // 16.1: kick is HIP-LED — authored hipL 0.42 (0.6 of the old knee fake)
+  // must reach the joint, not be clamped or dropped by a hip-less rig
+  if (!kickHip || Math.abs((kickHip.theta ?? 0) - 0.42) > 0.1) {
+    failures.push(`kick not hip-led: hipL theta ${kickHip?.theta?.toFixed(2) ?? "missing"} vs authored 0.42`);
+  }
 
   // ── heel pivot (brief 14): weight-side toe stays PLANTED while its ankle
   //    swings about it (tstep v3: flat at 0, softened pop 0.22 at 0.0625 —
