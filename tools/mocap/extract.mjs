@@ -631,6 +631,59 @@ function selfTest() {
     console.log(`[self-test] measured-rest self-calibration: max |theta| ${maxCal.toExponential(2)} rad, fallbacks [${c.fallbacks}]`);
     if (maxCal > 1e-9) fails.push(`self-calibration theta ${maxCal} — measured rest broken`);
     if (c.fallbacks.length) fails.push(`self-calibration fell back on [${c.fallbacks}]`);
+    // profile knee-lift, BOTH sides (2026-09-21 far-side flip): measured
+    // rest + per-side sign together — each side's lift must round-trip
+    // < 1° in the side-aware sense (rendered deviation × sideSign ==
+    // observed deviation). Pre-fix the far side erred at 2× the lift.
+    {
+      const prof = (lift) => {
+        const f = [];
+        const leg = (s, dx) => {
+          f[MP[`hip${s}`]] = [dx, 0.5]; f[MP[`knee${s}`]] = [dx, 0.75];
+          f[MP[`ankle${s}`]] = [dx, 1.0]; f[MP[`heel${s}`]] = [dx + 0.01, 1.02];
+          f[MP[`toe${s}`]] = [dx - 0.09, 1.02];              // feet point LEFT (facing -1)
+        };
+        leg("L", 0); leg("R", 0.02);
+        if (lift) {
+          // swing the whole leg forward (screen left, facing -1): femur
+          // rotates +40°, shin follows, foot dangles
+          f[MP[`knee${lift}`]] = [f[MP[`hip${lift}`]][0] - 0.16, 0.69];
+          f[MP[`ankle${lift}`]] = [f[MP[`knee${lift}`]][0] - 0.05, 0.93];
+          f[MP[`heel${lift}`]] = [f[MP[`ankle${lift}`]][0] + 0.01, 0.95];
+          f[MP[`toe${lift}`]] = [f[MP[`ankle${lift}`]][0] - 0.09, 0.95];
+        }
+        for (const [s, dx] of [["L", 0], ["R", 0.02]]) {
+          f[MP[`shoulder${s}`]] = [dx, 0.1]; f[MP[`elbow${s}`]] = [dx, 0.3];
+          f[MP[`wrist${s}`]] = [dx, 0.45];
+        }
+        f[MP.earL] = [0, 0]; f[MP.earR] = [0.02, 0]; f[MP.nose] = [-0.03, 0.01];
+        return f;
+      };
+      const view2 = { profileFacing: -1 };
+      const stand = prof(null);
+      for (const lift of ["L", "R"]) {
+        const clip = [...Array.from({ length: 8 }, () => stand), prof(lift), prof(lift)];
+        const m2 = calibMasks(clip);
+        const c2 = measureRest(clip, rg, false, view2, m2);
+        const th2 = retargetFrame(prof(lift), rg, false, view2, c2.rests);
+        const pose2 = fkPose(rg, th2);
+        const sgn = (nm) => (Math.sign(rg.joints[`foot${nm.slice(-1)}`].x - rg.joints[`ankle${nm.slice(-1)}`].x) === -1 ? 1 : -1);
+        let worstS = 0, worstSB = "";
+        for (const [pa, ch, a, b] of [[`hip${lift}`, `knee${lift}`, MP[`hip${lift}`], MP[`knee${lift}`]],
+                                      [`knee${lift}`, `ankle${lift}`, MP[`knee${lift}`], MP[`ankle${lift}`]]]) {
+          const F = prof(lift);
+          const obsDev = Math.atan2(Math.sin(Math.atan2(F[b][1] - F[a][1], F[b][0] - F[a][0]) - c2.rests[pa]),
+                                    Math.cos(Math.atan2(F[b][1] - F[a][1], F[b][0] - F[a][0]) - c2.rests[pa]));
+          const rigRest2 = Math.atan2(rg.joints[ch].y - rg.joints[pa].y, rg.joints[ch].x - rg.joints[pa].x);
+          const renDev = Math.atan2(Math.sin(Math.atan2(pose2[ch][1] - pose2[pa][1], pose2[ch][0] - pose2[pa][0]) - rigRest2),
+                                    Math.cos(Math.atan2(pose2[ch][1] - pose2[pa][1], pose2[ch][0] - pose2[pa][0]) - rigRest2));
+          const d = Math.abs(Math.atan2(Math.sin(sgn(pa) * renDev - obsDev), Math.cos(sgn(pa) * renDev - obsDev)));
+          if (d > worstS) { worstS = d; worstSB = pa; }
+        }
+        console.log(`[self-test] profile knee-lift ${lift}: side-aware round-trip worst ${(worstS * 180 / Math.PI).toFixed(2)}° (${worstSB})`);
+        if (worstS > Math.PI / 180) fails.push(`profile lift ${lift}: ${(worstS * 180 / Math.PI).toFixed(1)}° > 1°`);
+      }
+    }
   }
   // 4) outlier cycles dropped: 6 clean + 2 scaled
   {

@@ -116,6 +116,20 @@ const point2 = (f, key) => typeof key === "number" ? f[key]
   : key === "hipMid" ? mid(f[MP.hipL], f[MP.hipR])
   : key === "shoulderMid" ? mid(f[MP.shoulderL], f[MP.shoulderR])
   : mid(f[MP.earL], f[MP.earR]);
+// SIDE-AWARE expectation (2026-09-21 far-side flip): the transfer of a
+// screen deviation onto a side-mirrored rig rest is orientation-REVERSING
+// for the side whose rig foot opposes the facing direction — the rendered
+// deviation there must be the NEGATED observed deviation. A convention-
+// blind identity check (rendered−rigRest == obs−humanRest, unsigned per
+// side) reads 0 while the screen shows the far leg kicking backward.
+const sideSign = (nm) => {
+  const m = /([LR])$/.exec(nm);
+  if (!m || !view?.profileFacing) return 1;
+  const s = m[1];
+  const footDir = Math.sign(rig.joints[`foot${s}`].x - rig.joints[`ankle${s}`].x);
+  return footDir === view.profileFacing ? 1 : -1;
+};
+const perBone = {};
 for (let i = 0; i < frontal.length; i++) {
   const th = retargetFrame(frontal[i], rig, mirror, view, cal.rests);
   for (const [nm, v] of Object.entries(th)) {
@@ -129,10 +143,17 @@ for (let i = 0; i < frontal.length; i++) {
     const observed = ang(point2(frontal[i], a), point2(frontal[i], b));
     const rendered = ang(pose[pa], pose[ch]);
     const rigRest = ang([rig.joints[pa].x, rig.joints[pa].y], [rig.joints[ch].x, rig.joints[ch].y]);
-    const lhs = rendered - rigRest, rhs = observed - cal.rests[nm];
+    const lhs = sideSign(nm) * Math.atan2(Math.sin(rendered - rigRest), Math.cos(rendered - rigRest));
+    const rhs = Math.atan2(Math.sin(observed - cal.rests[nm]), Math.cos(observed - cal.rests[nm]));
     const d = Math.abs(Math.atan2(Math.sin(lhs - rhs), Math.cos(lhs - rhs)));
+    (perBone[nm] ??= { worst: 0, at: 0, dev: 0 });
+    if (d > perBone[nm].worst) { perBone[nm].worst = d; perBone[nm].at = times[i]; perBone[nm].dev = rhs; }
     if (d > worstRT) { worstRT = d; worstBone = `${pa}→${ch}@${times[i].toFixed(2)}s`; }
   }
+}
+console.log(`[root-diag] per-bone side-aware round-trip (worst over window; dev = observed deviation there):`);
+for (const [nm, r] of Object.entries(perBone)) {
+  console.log(`  ${nm.padEnd(10)} err ${(r.worst * 180 / Math.PI).toFixed(1).padStart(6)}° @${r.at.toFixed(2)}s (obs dev ${(r.dev * 180 / Math.PI).toFixed(1)}°, sideSign ${sideSign(nm)})`);
 }
 
 const stats = (vals) => {

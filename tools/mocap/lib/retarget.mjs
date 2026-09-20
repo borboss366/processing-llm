@@ -209,11 +209,33 @@ function point(frame2d, key) {
 
 // One de-yawed 2D frame → { jointName: theta } for the 10 articulated joints
 // (pelvis is root, leaves stay 0). accRot chains through parent entries.
+// Per-side deviation sign (2026-09-21 far-side flip): transferring a screen
+// deviation onto the rig's side-MIRRORED rests is orientation-reversing for
+// the side whose rig foot opposes the profile facing — in profile both
+// human limbs deviate with the SAME screen sign, so without the flip the
+// far leg kicks backward while the near leg lifts (measured: every
+// far-side bone erred at exactly 2× its deviation). Frontal capture needs
+// no sign: there the human's own sides already move mirrored. Applied ONCE,
+// here, at the acc level so parent chains of mixed sign stay consistent
+// (FK reconstructs acc from theta sums).
+export function sideSigns(rig, view) {
+  if (!view?.profileFacing) return () => 1;
+  const dir = {};
+  for (const s of ['L', 'R']) {
+    dir[s] = Math.sign(rig.joints[`foot${s}`].x - rig.joints[`ankle${s}`].x) === view.profileFacing ? 1 : -1;
+  }
+  return (name) => {
+    const m = /([LR])$/.exec(name);
+    return m ? dir[m[1]] : 1;
+  };
+}
+
 export function retargetFrame(frame2d, rig, mirror, view = null, humanRest = null) {
   const thetas = {}, acc = {};
+  const sign = sideSigns(rig, view);
   for (const [name, parent, a, b, restAngle] of rig.defs(mirror, view)) {
     const obs = ang(point(frame2d, a), point(frame2d, b));
-    const accHere = wrap(obs - (humanRest?.[name] ?? restAngle));
+    const accHere = sign(name) * wrap(obs - (humanRest?.[name] ?? restAngle));
     acc[name] = accHere;
     thetas[name] = wrap(accHere - (parent ? acc[parent] : 0));
   }
