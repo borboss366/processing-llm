@@ -17,6 +17,10 @@
  *                               frames, kept only for future live capture)
  *     --sg-window N --sg-order N  Savitzky–Golay tuning (default 9 / 3)
  *     --min-cutoff F --beta F   One Euro tuning (default 1.2 / 0.35)
+ *     --foot-gate F             projected/full heel→toe ratio below which the
+ *                               ankle angle holds last valid (default 0.35)
+ *     --enhance on|off          bbox crop + flip-TTA pose inference (default
+ *                               on; off = legacy full-frame single-pass)
  *     --anchor F                extra phase shift 0..1 after auto-anchor
  *     --keep-drift              keep net pelvis drift in `travel` (single-side
  *                               captures of travelling moves; default removes it)
@@ -35,8 +39,8 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { filterLandmarks, oneEuro } from "./lib/oneeuro.mjs";
-import { sgLandmarks, savgolSmooth } from "./lib/smooth.mjs";
-import { MP, buildRig, detectYSign, frameYaw, deYaw, retargetFrame, fkPose } from "./lib/retarget.mjs";
+import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
+import { MP, buildRig, detectYSign, frameYaw, deYaw, deYaw3, boneTwists, retargetFrame, fkPose } from "./lib/retarget.mjs";
 import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove } from "./lib/distill.mjs";
 
@@ -62,7 +66,7 @@ if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
                             "min-cutoff", "beta", "anchor", "max-keys", "out",
-                            "filter", "sg-window", "sg-order"]);
+                            "filter", "sg-window", "sg-order", "foot-gate", "enhance"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -93,8 +97,9 @@ else if (opt("grid", null)) {
 const py = path.join(HERE, ".venv/bin/python");
 if (!fs.existsSync(py)) { console.error("[mocap] no .venv — run tools/mocap/setup.sh first"); process.exit(1); }
 console.log(`[mocap] extracting poses: ${path.basename(video)} window ${winA}-${winB}s mirror=${mirror}`);
+const enhance = opt("enhance", "on");   // 16.2 item 3: bbox crop + flip-TTA (off = legacy full-frame VIDEO mode)
 const raw = await new Promise((resolve, reject) => {
-  const p = spawn(py, [path.join(HERE, "pose_worker.py"), video, String(winA), String(winB)]);
+  const p = spawn(py, [path.join(HERE, "pose_worker.py"), video, String(winA), String(winB), enhance]);
   let buf = "", err = "";
   const frames = [];
   let meta = null;
@@ -115,7 +120,22 @@ const raw = await new Promise((resolve, reject) => {
 });
 const detected = raw.frames.filter((f) => !f.miss);
 const missed = raw.frames.length - detected.length;
-console.log(`[mocap] frames: ${raw.frames.length} in window, ${detected.length} with pose (${missed} missed) @ ${raw.meta.fps.toFixed(2)} fps`);
+console.log(`[mocap] frames: ${raw.frames.length} in window, ${detected.length} with pose (${missed} missed) @ ${raw.meta.fps.toFixed(2)} fps · enhance=${enhance}`);
+// landmark jitter: mean SECOND DIFFERENCE of raw image landmarks (px) —
+// second diff cancels constant-velocity real motion and isolates
+// frame-to-frame noise (a plain Δ metric mostly measures the dance)
+{
+  let s = 0, k = 0;
+  for (let i = 1; i < detected.length - 1; i++) {
+    for (let l = 0; l < detected[i].img.length; l++) {
+      const ddx = (detected[i - 1].img[l][0] + detected[i + 1].img[l][0] - 2 * detected[i].img[l][0]) * raw.meta.w;
+      const ddy = (detected[i - 1].img[l][1] + detected[i + 1].img[l][1] - 2 * detected[i].img[l][1]) * raw.meta.h;
+      s += Math.hypot(ddx, ddy) / 2;
+      k++;
+    }
+  }
+  console.log(`[mocap] landmark jitter (second-difference, pre-smoothing): ${(s / k).toFixed(2)} px mean`);
+}
 if (detected.length < 30) { console.error("[mocap] too few pose frames — check the loop window / clip"); process.exit(1); }
 
 // ── stage 2: smoothing on LANDMARK POSITIONS (world + image), then angles.
@@ -145,6 +165,29 @@ console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"}
 // ── stage 4: retarget to rig rotations ────────────────────────────────────
 const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror));
 
+// foot-length gating (16.2 item 1): where the projected heel→toe length
+// collapses (foot pointing at the camera), the 2D ankle angle is atan2 of
+// noise — hold the last valid sample instead. Ratio = projected/full-3D.
+const FOOT_GATE = +opt("foot-gate", 0.35);
+{
+  const gateLog = {};
+  for (const rigSide of ["L", "R"]) {
+    const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
+    const mask = frontal.map((f2, i) => {
+      const h2 = f2[MP[`heel${p}`]], t2 = f2[MP[`toe${p}`]];
+      const h3 = worldN[i][MP[`heel${p}`]], t3 = worldN[i][MP[`toe${p}`]];
+      const proj = Math.hypot(t2[0] - h2[0], t2[1] - h2[1]);
+      const full = Math.hypot(t3[0] - h3[0], t3[1] - h3[1], t3[2] - h3[2]);
+      return proj / (full || 1) < FOOT_GATE;
+    });
+    const series = thetaFrames.map((f2) => f2[`ankle${rigSide}`]);
+    const held = holdWhere(series, mask);
+    thetaFrames.forEach((f2, i) => { f2[`ankle${rigSide}`] = series[i]; });
+    gateLog[`ankle${rigSide}`] = held;
+  }
+  console.log(`[mocap] foot gate (<${FOOT_GATE}): held ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
+}
+
 // ankle re-centering (2026-09-20 "ankles reversed" — ankle-diag): the rig's
 // PROFILE feet point sideways, a frontal source's feet point at the camera,
 // so absolute retarget parks a ~rad-scale constant offset on the ankle
@@ -162,12 +205,17 @@ for (const nm of ["ankleL", "ankleR"]) {
   for (const f of thetaFrames) f[nm] = Math.atan2(Math.sin(f[nm] - mean), Math.cos(f[nm] - mean));
 }
 console.log(`[mocap] ankle stance offsets removed: ${JSON.stringify(ankleOffsets)} rad (profile rig vs frontal source)`);
-// 3D heel→toe yaw per rig side (mirror swaps which person foot feeds which)
-const footYawOf = (f, rigSide) => {
+
+// depth channels (16.2 item 2 — emitted now, consumed by brief 17's depth
+// mechanism): per-frame de-yawed 3D pose → footYaw (floor-plane heel→toe
+// angle) + per-bone out-of-plane twist
+const frontal3 = worldN.map((f, i) => deYaw3(f, yaws[i]));
+const footYawOf = (i, rigSide) => {
   const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
-  const h = f[MP[`heel${p}`]], t = f[MP[`toe${p}`]];
+  const h = frontal3[i][MP[`heel${p}`]], t = frontal3[i][MP[`toe${p}`]];
   return Math.atan2(t[2] - h[2], t[0] - h[0]);
 };
+const twistFrames = frontal3.map((f) => boneTwists(f, rig, mirror));
 
 // ── lag diagnostic: filtered pipeline vs a RAW parallel path ─────────────
 // Cross-correlate joint-angle signals; peak at lag>0 = rig lags source.
@@ -317,7 +365,8 @@ const poses = {
     conf: +conf[i].toFixed(3),
     thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
     pelvisU: +pelvisU[i].toFixed(4),
-    footYaw: { L: +footYawOf(worldN[i], "L").toFixed(4), R: +footYawOf(worldN[i], "R").toFixed(4) },
+    footYaw: { L: +footYawOf(i, "L").toFixed(4), R: +footYawOf(i, "R").toFixed(4) },
+    twist: Object.fromEntries(Object.entries(twistFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])),
   })),
 };
 fs.writeFileSync(`${clipBase}.poses.json`, JSON.stringify(poses));
@@ -336,10 +385,17 @@ if (!flag("no-qa")) {
     w: raw.meta.w, h: raw.meta.h, fps: raw.meta.fps,
     period, anchorSec, t0: times[0], bpl, beatSec,
     droppedCycles: dropped, bones,
+    ground: sidecar.ground ?? 0.905,
+    // extracted pelvis drift about the window mean, shape units — the QA
+    // ground marker (16.2 item 4) makes travel capture visible
+    pelvisDrift: (() => {
+      const m = pelvisU.reduce((a, b) => a + b, 0) / pelvisU.length;
+      return pelvisU.map((v) => +(v - m).toFixed(4));
+    })(),
     frames: detected.map((f, i) => {
       const pose = fkPose(rig, thetaFrames[i]);
       return {
-        i: f.i, t: +times[i].toFixed(4),
+        i: f.i, k: i, t: +times[i].toFixed(4),
         img: img[i].map(([x, y]) => [+(x).toFixed(4), +(y).toFixed(4)]),
         rig: Object.fromEntries(Object.entries(pose).map(([nm, [x, y]]) => [nm, [+x.toFixed(4), +y.toFixed(4)]])),
       };
@@ -533,6 +589,16 @@ function selfTest() {
     const worstTv = Math.max(...tv.map((v) => Math.abs(v - want)));
     console.log(`[self-test] keepDrift seam: travel ${Math.min(...tv).toFixed(3)}..${Math.max(...tv).toFixed(3)} u/beat (want flat ${want.toFixed(3)})`);
     if (worstTv > 0.02) fails.push(`keepDrift travel deviates ${worstTv.toFixed(3)} from flat`);
+  }
+  // 6) foot gate hold (16.2): masked spans hold last valid, masked prefix
+  //    backfills from the first valid sample
+  {
+    const vals = [9, 1, 2, 3, 4, 5];
+    const held = holdWhere(vals, [true, false, false, true, true, false]);
+    const want = [1, 1, 2, 2, 2, 5];
+    const ok = vals.every((v, i) => v === want[i]) && held === 3;
+    console.log(`[self-test] foot gate hold: [${vals}] held=${held} (want [${want}] held=3)`);
+    if (!ok) fails.push("holdWhere gating wrong");
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);
   console.log(`VERIFY:${fails.length ? "FAIL" : "PASS"} mocap-self-test`);

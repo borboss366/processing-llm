@@ -68,6 +68,17 @@ def main() -> int:
         cv2.putText(canvas, "retargeted rig", (view_w + 20, 24),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (160, 160, 160), 1)
 
+        # ground marker (16.2): extracted pelvis drift as a moving tick on a
+        # fixed ground line — captured travel is visible at a glance
+        gy = rp((0.5, spec["ground"]))[1] + 8
+        cv2.line(canvas, (view_w + 15, gy), (out_w - 15, gy), (90, 90, 90), 1)
+        k = f.get("k", 0)
+        drift = spec["pelvisDrift"][k] if k < len(spec["pelvisDrift"]) else 0.0
+        mx = rp((0.5 + drift, 0))[0]
+        cv2.drawMarker(canvas, (mx, gy), (0, 200, 255), cv2.MARKER_TRIANGLE_UP, 12, 2)
+        cv2.putText(canvas, f"drift {drift:+.3f}u", (view_w + 20, gy + 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
+
         # bottom: phase bar + beat ticks
         elapsed = f["t"] - t0 - anchor
         phase = (elapsed / period) % 1.0 if elapsed >= 0 else 0.0

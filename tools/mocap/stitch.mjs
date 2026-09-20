@@ -11,9 +11,12 @@
  *                          rot/dx/travel, swap contacts). Used when the real
  *                          R window is too thin or off-move.
  *        [--out <path>]    output (default web/app/moves/<name>.json)
- *        [--exaggerate F]  scale all joint rot/dx by F (stage-read pass:
- *                          capture is often understated at distance; travel
- *                          and contacts stay as captured)
+ *        [--exag-map <sidecar.json>]  per-part exaggeration from the shape
+ *                          sidecar's `captureExag` map (feet/legs/arms/head/
+ *                          spine scaled separately — 16.2, replaces the old
+ *                          global --exaggerate F; travel and contacts stay
+ *                          as captured)
+ *        [--exaggerate F]  legacy uniform scale (kept for comparisons)
  *
  * With a real R half, its keys are phase-rotated to best match the mirror of
  * the L half at the seam (the two extractions anchor independently).
@@ -26,7 +29,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(`--${n}`);
 const opt = (n, d) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
-const files = argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--name" && argv[i - 1] !== "--out");
+const VALUED = new Set(["--name", "--out", "--exaggerate", "--exag-map"]);
+const files = argv.filter((a, i) => !a.startsWith("--") && !VALUED.has(argv[i - 1]));
 
 const name = opt("name", "stitched");
 const outPath = opt("out", path.join(ROOT, "web/app/moves", `${name}.json`));
@@ -72,13 +76,28 @@ if (flag("mirror")) {
 }
 
 const exag = +opt("exaggerate", 1);
-const scaleKey = (k) => exag === 1 ? k : {
+// joint → sidecar captureExag group (16.2): per-part scaling — a stage read
+// wants big feet and calm head, which one global factor can't express
+const groupOf = (nm) =>
+  /^ankle/.test(nm) ? "feet"
+  : /^(hip|knee)/.test(nm) ? "legs"
+  : /^(shoulder|elbow|hand)/.test(nm) ? "arms"
+  : nm === "neck" ? "head"
+  : "spine";                                   // chest, pelvis dx
+const exagMapPath = opt("exag-map", null);
+const exagMap = exagMapPath ? (JSON.parse(fs.readFileSync(exagMapPath, "utf8")).captureExag ?? null) : null;
+if (exagMapPath && !exagMap) throw new Error(`${exagMapPath} has no captureExag map`);
+const factorOf = (nm) => exagMap ? (exagMap[groupOf(nm)] ?? 1) : exag;
+const scaleKey = (k) => (!exagMap && exag === 1) ? k : {
   ...k,
-  joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => [nm, {
-    ...(ch.rot != null ? { rot: +(ch.rot * exag).toFixed(3) } : {}),
-    ...(ch.dx != null ? { dx: +(ch.dx * exag).toFixed(4) } : {}),
-    ...(ch.dy != null ? { dy: +(ch.dy * exag).toFixed(4) } : {}),
-  }])),
+  joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => {
+    const f = factorOf(nm);
+    return [nm, {
+      ...(ch.rot != null ? { rot: +(ch.rot * f).toFixed(3) } : {}),
+      ...(ch.dx != null ? { dx: +(ch.dx * f).toFixed(4) } : {}),
+      ...(ch.dy != null ? { dy: +(ch.dy * f).toFixed(4) } : {}),
+    }];
+  })),
 };
 const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offset + k.phase / 2).toFixed(5) }));
 const table = {
@@ -90,7 +109,7 @@ const table = {
   provenance: {
     halves: files.map((f) => path.basename(f)),
     mode: flag("mirror") ? "L + mirror(L)" : "L + aligned real R",
-    exaggerate: exag,
+    exaggerate: exagMap ?? exag,
     L: L.provenance ?? null,
     pipeline: "tools/mocap/stitch.mjs",
   },

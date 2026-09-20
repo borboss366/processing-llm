@@ -218,5 +218,12 @@
   "toe": 0.8,
   "hip": 0.9
  },
- "dominantSide": "R"
+ "dominantSide": "R",
+ "captureExag": {
+  "feet": 1.45,
+  "legs": 1.25,
+  "arms": 1.35,
+  "head": 1.15,
+  "spine": 1.15
+ }
 }

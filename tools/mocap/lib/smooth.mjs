@@ -58,6 +58,20 @@ export function savgolSmooth(vals, window = 9, order = 3) {
   return out;
 }
 
+// hold-last-valid gating (16.2 foot gate): where mask[i] is true the value
+// is untrustworthy — replace with the last valid sample (or the first valid
+// ahead, for a masked prefix). Returns the count held.
+export function holdWhere(values, mask) {
+  let held = 0;
+  let firstValid = mask.findIndex((m) => !m);
+  if (firstValid < 0) return 0;                 // nothing valid — leave as-is
+  for (let i = 0; i < firstValid; i++) { values[i] = values[firstValid]; held++; }
+  for (let i = firstValid + 1; i < values.length; i++) {
+    if (mask[i]) { values[i] = values[i - 1]; held++; }
+  }
+  return held;
+}
+
 // same shape contract as oneeuro's filterLandmarks: frames[i][lm] = [x,y,z?]
 export function sgLandmarks(frames, { window = 9, order = 3 } = {}) {
   if (!frames.length) return frames;

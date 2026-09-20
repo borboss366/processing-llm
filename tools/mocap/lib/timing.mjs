@@ -51,6 +51,21 @@ export function detectPeriod(signal, fs, { minLag = 0.25, maxLag = 4, peakTol = 
       break;                                   // smallest qualifying peak
     }
   }
+  // subharmonic descent: a periodic signal peaks equally at P, 2P, 3P and a
+  // near-tie can land on 2P (observed when 16.2's cleaner landmarks shifted
+  // the tie). Halving errors are SAFE — decideLoop's ×2 test corrects them —
+  // doubling errors are not, so bias down: while a local peak near lag/2
+  // holds ≥ half the strength, descend.
+  for (;;) {
+    const half = Math.round(lag / 2);
+    if (half < lo + 2) break;
+    let bestK = half, bestV = -Infinity;
+    for (let k = half - 2; k <= half + 2; k++) {
+      const v = acAt(k);
+      if (v > bestV) { bestV = v; bestK = k; }
+    }
+    if (bestV >= 0.5 * acAt(lag)) lag = bestK; else break;
+  }
   // parabolic refinement
   const y0 = acAt(lag - 1), y1 = acAt(lag), y2 = acAt(lag + 1);
   const off = (y0 - y2) / (2 * (y0 - 2 * y1 + y2) || 1);

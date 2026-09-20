@@ -25,17 +25,21 @@ verdict moves to the report and gets a ✓ + date here.
    finger-draw, submit, approve, perform. Photo-of-phone + stage
    screenshot → reports/. → ____
 
-2. **Captured T-step (brief 16 done-bar)** — with `tstep-captured`
-   playing (rotation or forced via puppet.html): recognizably the
-   instructor's move (vs corpus/tstep-L.qa.mp4)? Legible as a T-step
-   from 3 m? MORE natural than the authored placeholder it replaces
-   (A/B: tstep-placeholder, now hip-led too)? Also pick plain vs
-   `tstep-captured-x` (×1.35 stage-read exaggeration). Promotion =
-   captured replaces placeholder, on your word only. → ____
-   (economics note lands after move #2)
+2. **Captured T-step (brief 16 done-bar)** → **VERDICT 2026-09-20:
+   BLOCKED ON DEPTH.** The foot fan is a floor-plane rotation the 2D
+   rig can't show — toes freeze and heels over-press on stage; that is
+   the PROJECTION, not the pipeline (pipeline cleared: lag fixed,
+   ankles re-centered, traces clean). `tstep-captured` PARKED as a
+   table (out of rotation); the clip is kept and becomes the DEPTH
+   CHANNEL'S ACCEPTANCE TEST when brief 17 lands. No further T-step
+   polishing. No promotion; economics note still lands after move #2.
 
 ## Standing re-check triggers
 
+- **Captured T-step = depth-channel acceptance test** — when brief 17
+  (axial-rotation/pseudo-depth) lands, re-run tstep-captured with the
+  footYaw channel driving the depth mechanism; the 2026-09-20 BLOCKED
+  verdict is the baseline it must beat.
 - **Tstep fan + arm-raise legibility** — re-judge after the
   axial-rotation/pseudo-depth brief lands (the session's wall: floor-
   plane foot fan and humeral-rotation elbow flip are depth phenomena).

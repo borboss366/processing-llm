@@ -52,6 +52,28 @@ export function deYaw(world, yaw) {
   return world.map(([x, y, z]) => [x * c - z * s, y]);
 }
 
+// same rotation, z kept — for the depth channels (16.2)
+export function deYaw3(world, yaw) {
+  const c = Math.cos(-yaw), s = Math.sin(-yaw);
+  return world.map(([x, y, z]) => [x * c - z * s, y, x * s + z * c]);
+}
+
+// Per-bone out-of-plane TWIST (brief 16.2, consumed by the depth channel in
+// brief 17): for each observed segment, the signed angle between the 3D bone
+// and the projection (xy) plane of the de-yawed frame — atan2(Δz, planar
+// length). 0 = bone lies in the plane the 2D rig renders; ±π/2 = bone points
+// at/away from the viewer (exactly what the 2D projection cannot show).
+export function boneTwists(frame3, rig, mirror) {
+  const p3 = (key) => point(frame3, key);
+  const out = {};
+  for (const [name, , a, b] of rig.defs(mirror)) {
+    const A = p3(a), B = p3(b);
+    const dz = (B[2] ?? 0) - (A[2] ?? 0);
+    out[name] = Math.atan2(dz, Math.hypot(B[0] - A[0], B[1] - A[1]));
+  }
+  return out;
+}
+
 // Build the retarget map from a rig sidecar (shapes/<name>.json). Each entry:
 // which rig joint, its parent joint (for accRot subtraction), the observed
 // segment (MP indices or 'mid' pseudo-points), and the rig rest bone.
