@@ -204,6 +204,15 @@ Rules:
   joint-speed spike metric); `linear` is linear.
 - The table layers UNDER the procedural bounce/lean/Perlin/simmer: those
   stay on, scaled by the move's `overlay`.
+- `view` (per table, brief 17 A3): `front` (default) | `profile`. The
+  creature holds one CANONICAL VIEW at a time (`front` renders
+  params.shape, `profile` renders params.profileShape); activating a
+  table whose view differs — or forcing `/creature/view` — triggers a
+  bar-quantized SQUEEZE-THROUGH-ZERO switch (≤1 bar, torso-axis width
+  → 0, shape swaps at the zero instant, declared to the spike metric).
+  Sidecars carry `view` too; on a profile sidecar `dominantSide` means
+  the NEAR side and far limbs render dimmer on their own density
+  channel. profileL/R are the existing facing mirror.
 - `travel` (per key, brief 15 D): shape-units per BEAT, signed (+right),
   interpolated like the joint channels — glides the creature's WORLD
   position while the move plays (the t-step/running-man/glide family

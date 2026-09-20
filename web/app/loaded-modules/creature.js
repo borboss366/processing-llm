@@ -477,25 +477,33 @@ function buildFromShape(state, params, shape) {
     palette: json.palette ?? {},
     eyes: json.eyes ?? [],
     bbox: { minX, maxX, minY, maxY, h: maxY - minY, w: maxX - minX, cx: (minX + maxX) / 2 },
-    freePhase: 0, perfMs: 0, sprites: null, spriteKey: '',
-    world: null, feet: null,
+    // continuity across rebuilds (17 A4): a view switch swaps the shape
+    // mid-song — world position, FSM and clock must survive, only tissue
+    // and geometry are rebuilt (also improves operator shape swaps)
+    freePhase: state.freePhase ?? 0, perfMs: 0, sprites: null, spriteKey: '',
+    world: state.world ?? null, feet: null,
     eye: { nextBlinkMs: 0, blinkUntilMs: 0, saccade: 0, prevLook: 0 },
-    beh: { state: 'walk', lastBar: 0, lowBars: 0, em: 0.2, ev: 0.01 },
+    beh: state.beh ?? { state: 'walk', lastBar: 0, lowBars: 0, em: 0.2, ev: 0.01 },
     slidePx: 0,
-    builtShape: params.shape, builtCount: params.nodeCount,
+    viewCur: state.viewCur ?? (json.view === 'profile' ? 'profile' : 'front'),
+    // builtShape is CLAIMED by startBuild with the actual name (which the
+    // view may have overridden) — re-claiming params.shape here caused an
+    // infinite rebuild loop on view switches (17 A4)
+    builtCount: params.nodeCount,
   });
 }
 
-function startBuild(state, params) {
+function startBuild(state, params, shapeName = null) {
+  const name = shapeName ?? params.shape;
   const token = (state.buildToken = (state.buildToken ?? 0) + 1);
   const prevN = state.n ?? 0;
   state.n = 0;                       // not ready; draw() waits
-  state.builtShape = params.shape;   // claim now so draw() doesn't re-trigger
+  state.builtShape = name;           // claim now so draw() doesn't re-trigger
   state.builtCount = params.nodeCount;
-  loadShape(params.shape)
+  loadShape(name)
     .then((shape) => { if (state.buildToken === token) buildFromShape(state, params, shape); })
     .catch((e) => {
-      console.error(`[creature] shape "${params.shape}" failed to load:`, e);
+      console.error(`[creature] shape "${name}" failed to load:`, e);
       // live-path degrade (found by moves-x-shapes): a bad shape name from
       // the controller must not wedge the creature at n=0 forever — resume
       // the previous body; the claimed name prevents a refetch storm
@@ -768,6 +776,8 @@ function ensureMove(state, name) {
       if (!Array.isArray(j.keys) || !j.keys.length) throw new Error('no keys');
       j.keys.sort((k1, k2) => k1.phase - k2.phase);
       state.moveCache[name].data = j;
+      // view tag (17 A3): untagged tables are front
+      (state.moveViews ??= {})[name] = j.view === 'profile' ? 'profile' : 'front';
     })
     .catch((err) => console.error(`[creature] move "${name}" failed to load:`, err));
   return null;
@@ -882,6 +892,8 @@ export default {
     behavior: 'auto',          // 'auto' | 'idle' | 'walk' | 'groove' | 'hop'
     move: '',                  // force a moves/<name>.json table ('' = auto by state)
     moveHoldBars: 4,           // bars between repertoire rotations (brief 12.6)
+    view: 'auto',              // 17 A3/A4: 'auto' (follow the move's view) | 'front' | 'profile'
+    profileShape: 'biped-profile',   // shape used while the profile view is active
     clockMode: 'live',         // 'live' | 'manual' — workbench phase scrub (brief 12)
     phaseScrub: 0,             // 0..1 of the current move loop, in manual mode
     speed: 0.35,               // body-heights per second when walking
@@ -950,12 +962,19 @@ export default {
     // swapEnv before rebuilding, then fade the new one in — the audience
     // Perform button re-uses this instead of a reload
     state.swapEnv ??= 1;
-    const shapeChanged = state.builtShape !== params.shape || state.builtCount !== params.nodeCount;
-    if (shapeChanged && state.n && state.swapEnv > 0.02) {
+    // effective shape (17 A3/A4): the active VIEW picks the body — front
+    // uses params.shape, profile uses the profile shape. A view switch
+    // flips state.viewCur at the squeeze's zero-width instant and this
+    // resolution triggers the rebuild; the squeeze hides it, so the
+    // swapEnv fade is skipped during a switch.
+    const wantShapeName = state.viewCur === 'profile'
+      ? String(params.profileShape || 'biped-profile') : params.shape;
+    const shapeChanged = state.builtShape !== wantShapeName || state.builtCount !== params.nodeCount;
+    if (shapeChanged && state.n && state.swapEnv > 0.02 && !state.viewSw) {
       state.swapEnv = Math.max(0, state.swapEnv - dt / 0.9);
     } else if (shapeChanged) {
-      startBuild(state, params);
-    } else {
+      startBuild(state, params, wantShapeName);
+    } else if (!state.viewSw) {
       state.swapEnv = Math.min(1, state.swapEnv + dt / 0.9);
     }
     if (!state.n) return;               // shape still loading
@@ -1244,6 +1263,36 @@ export default {
       }
     }
     const move = moveName ? ensureMove(state, moveName) : null;
+
+    // ── view resolution + switch (brief 17 A3/A4) ───────────────────────
+    // Wanted view: forced param, else the active move's tag (tables load
+    // async — until known, hold the current view). Switch = bar-quantized
+    // squeeze-through-zero on the torso axis over 1 bar; the shape swaps
+    // at the zero-width instant (declared to the spike metric). profileL/R
+    // are the existing facing mirror on the profile shape.
+    state.viewCur ??= 'front';
+    const forcedView = params.view && params.view !== 'auto'
+      ? (params.view === 'profile' ? 'profile' : 'front') : null;
+    const moveView = moveName ? state.moveViews?.[moveName] ?? null : null;
+    const wantView = forcedView ?? moveView ?? state.viewCur;
+    if (!state.viewSw && wantView !== state.viewCur && (wrapped || forcedView)) {
+      state.viewSw = { acc0: accW, to: wantView, swapped: false };
+      state.declaredSnapUntil = Math.max(state.declaredSnapUntil ?? 0,
+        t0 + (60 / Math.max(60, bpmUsed)) * 4 * 1000 + 400);
+      try { window.__ws?.send({ type: 'creature-view', from: state.viewCur, to: wantView }); } catch {}
+    }
+    if (state.viewSw) {
+      const u = (accW - state.viewSw.acc0) / 4;
+      state.viewSwU = u;
+      state.viewWidth = u < 0.5 ? Math.max(0, 1 - 2 * u) : Math.min(1, 2 * (u - 0.5));
+      if (u >= 0.5 && !state.viewSw.swapped) {
+        state.viewSw.swapped = true;
+        state.viewCur = state.viewSw.to;    // draw's shape resolution rebuilds
+      }
+      if (u >= 1) { state.viewSw = null; state.viewWidth = 1; }
+    } else {
+      state.viewWidth = 1;
+    }
     if ((state.activeMove ?? null) !== (move?.name ?? null)) {
       state.prevMove = state.activeMoveObj ?? null;   // outgoing table (2.1)
       state.xfadeStart = state.moveAcc;
@@ -1831,6 +1880,8 @@ export default {
     // bench observer (brief 12.6): creature strip values, all pre-computed
     window.__creatureBench = {
       st, move: state.activeMove ?? null,
+      view: state.viewCur ?? 'front', viewSwitching: !!state.viewSw,   // 17 A4
+      viewU: state.viewSw ? +(state.viewSwU ?? -1).toFixed(3) : null,
       moveBpl: state.activeMoveBpl ?? 1,
       loopPhase: +((((state.moveAcc % (state.activeMoveBpl ?? 1)) + (state.activeMoveBpl ?? 1)) % (state.activeMoveBpl ?? 1)) / (state.activeMoveBpl ?? 1)).toFixed(3),
       blend: !!state.blend,
@@ -1856,7 +1907,7 @@ export default {
       return;
     }
     const breath = 0.02 * Math.sin(2 * Math.PI * 0.2 * tSec) * (st === 'idle' ? 1 : 0.4);
-    const sx = world.facingVis * (1 - (st === 'walk' ? 0 : sq));
+    const sx = world.facingVis * (1 - (st === 'walk' ? 0 : sq)) * (state.viewWidth ?? 1);
     const sy = (1 + sq) * (1 + (state.hasFeet ? breath : 0));
     const rootX = joints[0].x;
     const yOff = world.yOff ?? 0;   // vertical float offset (ungrounded shapes)
