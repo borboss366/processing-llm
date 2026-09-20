@@ -6,6 +6,7 @@ SHUFFLE t step tutorial https://www.youtube.com/shorts/FkSHGFpO010
 SHUFFLE t step tutorial https://www.youtube.com/shorts/zhrYIBa-DZw corpus/shuffle-h264.mp4 loopL: 0:02.300–0:04.767; turnaround: 0:04.767; loopR: 0:04.767–0:06.967; mirror: no
 SHUFFLE running man tutorial https://www.youtube.com/shorts/sXJjlPXOSj8
 SHUFFLE running man tutorial https://youtube.com/shorts/INnPyV5uAO0?si=en6Qlq9n-JPsWLvy
+SHUFFLE running man tutorial https://www.youtube.com/shorts/Eayz8OHtTcA corpus/runningman.mp4 loop: 0:15.749–0:18.452; mirror: yes; travel: none (in place)
 SHUFFLE glide tutorial https://www.youtube.com/shorts/MSxiAj25mgA
 SHUFFLE glide tutorial https://youtube.com/shorts/njGnRFaO1fk?si=VKTKn-uUA4CjAEia
 SHUFFLE slide tutorial https://youtube.com/shorts/GvEK4mw8hsI?si=8sovlttQ53q7NXzI

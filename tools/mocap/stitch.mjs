@@ -49,6 +49,45 @@ const mirrorKey = (k) => ({
   travel: -(k.travel ?? 0),
 });
 
+const exag = +opt("exaggerate", 1);
+// joint → sidecar captureExag group (16.2): per-part scaling — a stage read
+// wants big feet and calm head, which one global factor can't express
+const groupOf = (nm) =>
+  /^ankle/.test(nm) ? "feet"
+  : /^(hip|knee)/.test(nm) ? "legs"
+  : /^(shoulder|elbow|hand)/.test(nm) ? "arms"
+  : nm === "neck" ? "head"
+  : "spine";                                   // chest, pelvis dx
+const exagMapPath = opt("exag-map", null);
+const exagMap = exagMapPath ? (JSON.parse(fs.readFileSync(exagMapPath, "utf8")).captureExag ?? null) : null;
+if (exagMapPath && !exagMap) throw new Error(`${exagMapPath} has no captureExag map`);
+const factorOf = (nm) => exagMap ? (exagMap[groupOf(nm)] ?? 1) : exag;
+const scaleKey = (k) => (!exagMap && exag === 1) ? k : {
+  ...k,
+  joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => {
+    const f = factorOf(nm);
+    return [nm, {
+      ...(ch.rot != null ? { rot: +(ch.rot * f).toFixed(3) } : {}),
+      ...(ch.dx != null ? { dx: +(ch.dx * f).toFixed(4) } : {}),
+      ...(ch.dy != null ? { dy: +(ch.dy * f).toFixed(4) } : {}),
+    }];
+  })),
+};
+// single-table mode (16.2 move #2): one input, no --mirror — the clip's
+// window already covers the full alternating loop; just rename/scale
+if (files.length === 1 && !flag("mirror")) {
+  const table = {
+    ...L, name,
+    keys: L.keys.map((k) => scaleKey(k)),
+    provenance: { ...(L.provenance ?? {}), mode: "single full loop",
+                  exaggerate: exagMap ?? exag, pipeline: "tools/mocap/stitch.mjs" },
+  };
+  fs.writeFileSync(outPath, JSON.stringify(table, null, 2));
+  const net1 = table.keys.reduce((s, k) => s + (k.travel ?? 0), 0) / table.keys.length;
+  console.log(`[stitch] wrote ${outPath}: bpl ${table.beatsPerLoop}, ${table.keys.length} keys, mean travel ${net1.toFixed(4)} u/beat (single-table mode)`);
+  process.exit(0);
+}
+
 let Rkeys;
 if (flag("mirror")) {
   Rkeys = L.keys.map(mirrorKey);
@@ -75,30 +114,6 @@ if (flag("mirror")) {
   console.log(`[stitch] aligned R half: rotated by ${shift} (key ${best}, dist ${bestD.toFixed(3)})`);
 }
 
-const exag = +opt("exaggerate", 1);
-// joint → sidecar captureExag group (16.2): per-part scaling — a stage read
-// wants big feet and calm head, which one global factor can't express
-const groupOf = (nm) =>
-  /^ankle/.test(nm) ? "feet"
-  : /^(hip|knee)/.test(nm) ? "legs"
-  : /^(shoulder|elbow|hand)/.test(nm) ? "arms"
-  : nm === "neck" ? "head"
-  : "spine";                                   // chest, pelvis dx
-const exagMapPath = opt("exag-map", null);
-const exagMap = exagMapPath ? (JSON.parse(fs.readFileSync(exagMapPath, "utf8")).captureExag ?? null) : null;
-if (exagMapPath && !exagMap) throw new Error(`${exagMapPath} has no captureExag map`);
-const factorOf = (nm) => exagMap ? (exagMap[groupOf(nm)] ?? 1) : exag;
-const scaleKey = (k) => (!exagMap && exag === 1) ? k : {
-  ...k,
-  joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => {
-    const f = factorOf(nm);
-    return [nm, {
-      ...(ch.rot != null ? { rot: +(ch.rot * f).toFixed(3) } : {}),
-      ...(ch.dx != null ? { dx: +(ch.dx * f).toFixed(4) } : {}),
-      ...(ch.dy != null ? { dy: +(ch.dy * f).toFixed(4) } : {}),
-    }];
-  })),
-};
 const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offset + k.phase / 2).toFixed(5) }));
 const table = {
   name,

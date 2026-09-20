@@ -17,8 +17,9 @@ const MIX = "/music/Y2Mate.is - Boris Brejcha Style Minimal Techno Mix 2025 - Mi
 // biped-front is the submit-service TEMPLATE (joints only, no PNG) — not a
 // loadable stage shape; including it here is how we found the n=0 wedge
 const SHAPES = ["biped-1", "biped-2"];
-const MOVES = ["tstep-captured", "tstep-placeholder", "armwave-placeholder",
-               "sidepunch-placeholder", "elbowcircles-placeholder", "armpump-placeholder"];
+const MOVES = ["runningman-captured", "tstep-captured", "tstep-placeholder",
+               "armwave-placeholder", "sidepunch-placeholder", "elbowcircles-placeholder",
+               "armpump-placeholder"];
 const post = (p, body) => fetch(`http://localhost:3000${p}`, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
 }).then((r) => r.json());

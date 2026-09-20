@@ -34,6 +34,16 @@ verdict moves to the report and gets a ✓ + date here.
    CHANNEL'S ACCEPTANCE TEST when brief 17 lands. No further T-step
    polishing. No promotion; economics note still lands after move #2.
 
+3. **Captured running man (brief 16 move #2)** — `runningman-captured`
+   forced on stage (in rotation at 0.05): does anything of the move
+   survive the projection? Known going in (reports/2026-09-20-
+   runningman.md): near-side-view source, knee-lift mostly lost to
+   de-yaw (hip spans 0.09/0.16 rad), head carries a +0.85 rad tilt
+   artifact. Judge what's there vs corpus/runningman.qa.mp4; verdict
+   may simply be "depth-blocked like the T-step" — that plus the
+   plane-select finding feeds brief 17. Economics number: ~15 min/move.
+   → ____
+
 ## Standing re-check triggers
 
 - **Captured T-step = depth-channel acceptance test** — when brief 17

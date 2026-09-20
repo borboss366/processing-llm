@@ -48,6 +48,7 @@ creature rig). Full guide in `README.md`.
 | Zero-phase smoothing (lag fix) | retarget lag 47–60 ms drifting (One Euro) → −0.7/+1.6 ms constant (Savitzky–Golay) | extract.mjs lag diagnostic |
 | Ankle stance re-centering | −1.6/+1.1 rad profile-vs-frontal offsets removed; 0 wrap jumps, 0 foreshortened frames; footYaw channel recorded | ankle-diag + extract.mjs |
 | Extraction hardening (16.2) | foot gate holds 9+8 noise frames; jitter 3.75→3.37 px (fixed-crop VIDEO ×2 TTA); depth channels footYaw+twist emitted; determinism byte-identical | extract.mjs + self-test 9/9 |
+| Move #2 running man (economics) | ~15 min/move wall time; 2/2 cycles, lag 0.9 ms; fk + moves-x-shapes PASS; knee-lift lost to de-yaw (side-view source) — plane-select finding for 17 | extract + harnesses |
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
 | Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
 | Moves × shapes matrix (brief 16 T2) | 6 moves × 2 stage shapes: 0 spikes, components 1, hips articulate (0.47/0.53) | moves-x-shapes |
@@ -83,12 +84,11 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-BRIEF 16 Task 2 CLOSED at the gate: BLOCKED ON DEPTH (2026-09-20) —
-the T-step foot fan is floor-plane rotation the 2D rig can't show;
-projection limit, not pipeline. tstep-captured PARKED (out of
-rotation); the clip is brief 17's depth-channel acceptance test.
-BRIEF 16.2 COMPLETE (foot gate, footYaw+twist depth channels,
-fixed-crop TTA worker, QA ground marker, per-part captureExag).
-Remaining in 16: Task 3 anatomy stats + lint; move #2 (body roll)
-still owed for the economics number — order per user/reviewer. Depth
-channel (brief 17) is the unblocking workstream.
+BRIEF 16.2 CONFIRMED by user. Move #2 (running man, user-picked over
+body roll) EXTRACTED and staged: ~15 min/move economics number,
+harnesses green, in rotation at 0.05 — WAITING on the user's gate
+(USER_GATES item 3). Known going in: knee-lift mostly lost to de-yaw
+(near-side-view source) — the plane-select finding for brief 17 is in
+reports/2026-09-20-runningman.md. Remaining in 16: Task 3 anatomy
+stats + lint. Depth channel (brief 17) is the unblocking workstream;
+tstep-captured stays parked as its acceptance test.

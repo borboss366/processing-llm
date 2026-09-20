@@ -156,7 +156,8 @@ try {
   await osc("/creature/amplitude", 1);
   const rec = await page.screencast({ path: path.join(ROOT, "reports/fk-moves.webm") });
   for (const mv of ["armwave-placeholder", "armpump-placeholder", "sidepunch-placeholder",
-                    "elbowcircles-placeholder", "tstep-placeholder", "groove"]) {
+                    "elbowcircles-placeholder", "tstep-placeholder", "runningman-captured",
+                    "groove"]) {
     await osc("/creature/move", mv);
     await new Promise((r) => setTimeout(r, 7000));
   }
