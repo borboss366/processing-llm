@@ -12,6 +12,10 @@
  *     --mirror                  instructor mirrors for teaching (swaps sides)
  *     --rig <shapes/x.json>     rest pose (default web/app/shapes/biped-1.json)
  *     --name <move-name>        output table name (default <clip>-captured)
+ *     --filter savgol|oneeuro|none   landmark smoothing (default savgol —
+ *                               zero-phase; oneeuro is CAUSAL and lags ~2-3
+ *                               frames, kept only for future live capture)
+ *     --sg-window N --sg-order N  Savitzky–Golay tuning (default 9 / 3)
  *     --min-cutoff F --beta F   One Euro tuning (default 1.2 / 0.35)
  *     --anchor F                extra phase shift 0..1 after auto-anchor
  *     --keep-drift              keep net pelvis drift in `travel` (single-side
@@ -31,6 +35,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { filterLandmarks, oneEuro } from "./lib/oneeuro.mjs";
+import { sgLandmarks, savgolSmooth } from "./lib/smooth.mjs";
 import { MP, buildRig, detectYSign, frameYaw, deYaw, retargetFrame, fkPose } from "./lib/retarget.mjs";
 import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove } from "./lib/distill.mjs";
@@ -56,7 +61,8 @@ const parseTime = (s) => {
 if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
-                            "min-cutoff", "beta", "anchor", "max-keys", "out"]);
+                            "min-cutoff", "beta", "anchor", "max-keys", "out",
+                            "filter", "sg-window", "sg-order"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -112,11 +118,22 @@ const missed = raw.frames.length - detected.length;
 console.log(`[mocap] frames: ${raw.frames.length} in window, ${detected.length} with pose (${missed} missed) @ ${raw.meta.fps.toFixed(2)} fps`);
 if (detected.length < 30) { console.error("[mocap] too few pose frames — check the loop window / clip"); process.exit(1); }
 
-// ── stage 2: One Euro on LANDMARK POSITIONS (world + image), then angles ──
+// ── stage 2: smoothing on LANDMARK POSITIONS (world + image), then angles.
+// Default savgol = ZERO-PHASE (offline luxury); oneeuro is causal and lags —
+// live-capture only; none = raw (diagnostics).
 const times = detected.map((f) => f.t);
-const world = filterLandmarks(detected.map((f) => f.world), times, euro);
-const img = filterLandmarks(detected.map((f) => f.img.map((l) => l.slice(0, 2))), times, euro);
+const filterMode = opt("filter", "savgol");
+const sg = { window: +opt("sg-window", 9), order: +opt("sg-order", 3) };
+const rawWorld = detected.map((f) => f.world);
+const rawImg = detected.map((f) => f.img.map((l) => l.slice(0, 2)));
+const smooth = (frames) =>
+  filterMode === "oneeuro" ? filterLandmarks(frames, times, euro)
+  : filterMode === "none" ? frames
+  : sgLandmarks(frames, sg);
+const world = smooth(rawWorld);
+const img = smooth(rawImg);
 const conf = detected.map((f) => f.img.reduce((a, l) => a + l[2], 0) / f.img.length);
+console.log(`[mocap] filter: ${filterMode}${filterMode === "savgol" ? ` (window ${sg.window}, order ${sg.order})` : ""}`);
 
 // ── stage 3: de-yaw ───────────────────────────────────────────────────────
 const ySign = detectYSign(world);
@@ -127,6 +144,46 @@ console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"}
 
 // ── stage 4: retarget to rig rotations ────────────────────────────────────
 const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror));
+
+// ── lag diagnostic: filtered pipeline vs a RAW parallel path ─────────────
+// Cross-correlate joint-angle signals; peak at lag>0 = rig lags source.
+// Reported whole-window + per-third (constant vs drifting).
+{
+  const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
+  const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, frameYaw(f)), rig, mirror));
+  const fps = raw.meta.fps;
+  const xlag = (i0, i1) => {
+    const seg = (frames2) => ARTICULATED.map((nm) => {
+      const v = [];
+      for (let i = i0; i < i1; i++) v.push(frames2[i][nm] ?? 0);
+      const mean = v.reduce((a, b) => a + b, 0) / v.length;
+      return v.map((x) => x - mean);
+    });
+    const F = seg(thetaFrames), R = seg(rawTheta);
+    const maxL = Math.min(10, Math.floor((i1 - i0) / 3));
+    const score = (l) => {
+      let s = 0;
+      for (let j = 0; j < F.length; j++) {
+        for (let i = Math.max(0, l); i < F[j].length && i - l < F[j].length; i++) {
+          if (i - l >= 0) s += F[j][i] * R[j][i - l];
+        }
+      }
+      return s;
+    };
+    let best = 0, bestS = -Infinity;
+    const sc = {};
+    for (let l = -maxL; l <= maxL; l++) { sc[l] = score(l); if (sc[l] > bestS) { bestS = sc[l]; best = l; } }
+    // parabolic sub-frame refinement
+    const y0 = sc[best - 1] ?? bestS, y2 = sc[best + 1] ?? bestS;
+    const off = (y0 - y2) / (2 * (y0 - 2 * bestS + y2) || 1);
+    return (best + Math.max(-0.5, Math.min(0.5, off))) / fps * 1000;
+  };
+  const n = thetaFrames.length;
+  const whole = xlag(0, n);
+  const thirds = [0, 1, 2].map((k) => xlag(Math.floor(n * k / 3), Math.floor(n * (k + 1) / 3)));
+  const spread = Math.max(...thirds) - Math.min(...thirds);
+  console.log(`[mocap] lag vs raw: ${whole.toFixed(1)} ms (thirds ${thirds.map((v) => v.toFixed(1)).join("/")} ms → ${spread < 1000 / fps ? "constant" : "DRIFTING"})`);
+}
 
 // image-space channels: pelvis drift + foot heights (shape units)
 const bodyH = median(img.map((f) => {
@@ -223,7 +280,8 @@ const clipHash = createHash("sha256").update(fs.readFileSync(video)).digest("hex
 const poses = {
   source: path.basename(video), clipSha: clipHash,
   window: [winA, winB], mirror, rig: path.basename(rigPath),
-  filter: euro, fps: raw.meta.fps,
+  filter: filterMode === "oneeuro" ? { mode: "oneeuro", ...euro } : { mode: filterMode, ...sg },
+  fps: raw.meta.fps,
   timing: { route: timingRoute, period: +period.toFixed(4), bpl,
             bpm: beatSec ? +(60 / beatSec).toFixed(2) : null,
             anchorSec: +anchorSec.toFixed(4), acStrength: +per.strength.toFixed(3),
@@ -291,6 +349,36 @@ function selfTest() {
     }
     if (lag / 2 > 0.06) fails.push(`oneEuro ramp lag ${(lag / 2 * 1000).toFixed(0)} ms > 60`);
     console.log(`[self-test] oneEuro: hold err ${(Math.abs(last - 1)).toFixed(4)}, ramp lag ${(lag / 2 * 1000).toFixed(1)} ms`);
+  }
+  // 1b) Savitzky–Golay: zero phase on a noisy sine (xcorr lag < 2 ms) AND
+  //     denoises; One Euro on the same signal must show its known lag —
+  //     that contrast is the reason savgol is the offline default
+  {
+    const fs2 = 30, f0 = 1.2, n = 300;
+    const t = (i) => i / fs2;
+    const clean = Array.from({ length: n }, (_, i) => Math.sin(2 * Math.PI * f0 * t(i)));
+    const noisy = clean.map((v, i) => v + 0.08 * Math.sin(i * 7919 + 1.3));
+    const sgOut = savgolSmooth(noisy, 9, 3);
+    const lagOf = (sig) => {
+      const score = (l) => {
+        let s = 0;
+        for (let i = Math.max(0, l); i < n; i++) if (i - l >= 0 && i - l < n) s += sig[i] * clean[i - l];
+        return s;
+      };
+      let best = 0, bestS = -Infinity;
+      for (let l = -6; l <= 6; l++) { const s = score(l); if (s > bestS) { bestS = s; best = l; } }
+      const y0 = score(best - 1), y2 = score(best + 1);
+      const off = (y0 - y2) / (2 * (y0 - 2 * bestS + y2) || 1);
+      return (best + Math.max(-0.5, Math.min(0.5, off))) / fs2 * 1000;
+    };
+    const rms = (sig) => Math.sqrt(sig.reduce((a, v, i) => a + (v - clean[i]) ** 2, 0) / n);
+    const oe = oneEuro({ minCutoff: 1.2, beta: 0.35 });
+    const oeOut = noisy.map((v, i) => oe(v, t(i)));
+    const sgLag = lagOf(sgOut), oeLag = lagOf(oeOut);
+    console.log(`[self-test] savgol: lag ${sgLag.toFixed(1)} ms (oneEuro ${oeLag.toFixed(1)} ms), residual ${rms(sgOut).toFixed(3)} vs noisy ${rms(noisy).toFixed(3)}`);
+    if (Math.abs(sgLag) > 2) fails.push(`savgol lag ${sgLag.toFixed(1)} ms > 2`);
+    if (rms(sgOut) > 0.6 * rms(noisy)) fails.push("savgol does not denoise");
+    if (oeLag < 10) fails.push(`oneEuro lag ${oeLag.toFixed(1)} ms — expected its known causal lag; contrast check broken`);
   }
   // 2) period + loop-multiple: (a) symmetric move — base period IS the loop;
   //    (b) L/R-alternating move — |speed| has half-loop period, the SIGNED

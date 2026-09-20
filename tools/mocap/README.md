@@ -15,7 +15,10 @@ gitignored). Run: `node tools/mocap/extract.mjs corpus/<clip>.mp4
 of `extract.mjs` for all options. Outputs land next to the clip:
 `.poses.json` (per-frame rig rotations + yaw + confidence), `.move.json`
 (distilled table, MODULE_ABI format), `.qa.mp4` (source landmarks vs
-retargeted rig, beat ticks, dropped cycles tinted). Math self-checks:
+per-frame retargeted rig, beat ticks, dropped cycles tinted). Smoothing
+is zero-phase Savitzky–Golay by default (measured: One Euro's causal lag
+was 47–60 ms and velocity-drifting — reports/2026-09-20-mocap-lag.md);
+`--filter oneeuro` remains for future live capture. Math self-checks:
 `node tools/mocap/extract.mjs --self-test` (VERIFY line).
 
 Known DOF projection: the rig has no hip joint (thigh is rigid
