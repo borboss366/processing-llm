@@ -470,6 +470,9 @@ function buildFromShape(state, params, shape) {
       ...(json.rotLimits ?? {}),
     },
     dominantSide: json.dominantSide === 'L' ? 'L' : 'R',   // baked asymmetry (15 A2)
+    // canonical view (brief 17 A1): 'front' (default) or 'profile'. In
+    // profile, dominantSide means the NEAR side; far limbs dim (A2)
+    view: json.view === 'profile' ? 'profile' : 'front',
     gaitName: json.archetype ?? 'biped',
     palette: json.palette ?? {},
     eyes: json.eyes ?? [],
@@ -723,8 +726,30 @@ function ensureDensSprites(state) {
 }
 
 // group → density channel: arms get their own channels so a crossing arm
-// unions by max instead of stacking; everything else shares R
-const densChannel = (lab) => (lab === 'limb2' ? 'g' : lab === 'limb3' ? 'b' : 'r');
+// unions by max instead of stacking; everything else shares R.
+// PROFILE view (brief 17 A2): far limbs (leg+arm of the off side) share G,
+// near limbs share B, body+head keep R — the near/far pairs union-by-max
+// against each other and the body instead of flashing where they overlap
+// (which in profile is almost always). Residual risk, accepted + reported:
+// far-arm×far-leg share a channel, so a hand passing the thigh stacks.
+const densChannel = (lab, st) => {
+  if (st?.view === 'profile') {
+    const farLeg = st.dominantSide === 'R' ? 'limb0' : 'limb1';
+    const farArm = st.dominantSide === 'R' ? 'limb2' : 'limb3';
+    if (lab === farLeg || lab === farArm) return 'g';
+    if (/^limb/.test(lab)) return 'b';
+    return 'r';
+  }
+  return lab === 'limb2' ? 'g' : lab === 'limb3' ? 'b' : 'r';
+};
+// far-limb dim (A2): profile far limbs draw slightly dimmer so the scissor
+// reads; 1 everywhere else
+const farDim = (lab, st) => {
+  if (st?.view !== 'profile') return 1;
+  const farLeg = st.dominantSide === 'R' ? 'limb0' : 'limb1';
+  const farArm = st.dominantSide === 'R' ? 'limb2' : 'limb3';
+  return (lab === farLeg || lab === farArm) ? 0.8 : 1;
+};
 
 // ── Move tables (brief 9 Task 1) ──────────────────────────────────────────
 // moves/<name>.json: { name, beatsPerLoop, overlay, keys: [{ phase, joints:
@@ -1948,10 +1973,10 @@ export default {
         const sp = lab === 'head' ? sprites.head : lab === 'body' ? sprites.body : sprites.limb;
         const wob = 1 + 0.06 * simmer * (p.noise(i * 0.37, tSec * 0.22) * 2 - 1);
         const r = state.spriteR[i] * S * wob * 0.5;
-        g.globalAlpha = (lab === 'body' || lab === 'head') ? aBody : aLimb;
+        g.globalAlpha = ((lab === 'body' || lab === 'head') ? aBody : aLimb) * farDim(lab, state);
         g.drawImage(sp, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
         dg.globalAlpha = g.globalAlpha;
-        dg.drawImage(dens[densChannel(lab)], X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
+        dg.drawImage(dens[densChannel(lab, state)], X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
       }
       // bone splats (brief 8.1): sprites lerped along every bone so a limb
       // can NEVER sever, whatever the spring state. Splat COUNT scales with
@@ -1963,7 +1988,7 @@ export default {
         for (const B of state.bones) {
           const J = joints[B.j], P = joints[B.p];
           const sp = B.label === 'head' ? sprites.head : B.label === 'body' ? sprites.body : sprites.limb;
-          const dsp = dens[densChannel(B.label)];
+          const dsp = dens[densChannel(B.label, state)];
           // 2× alpha + 1.2× radius: a single-chain splat peaks ~0.25-0.30
           // after gradient/downsample losses — measured dipping below the
           // 0.18 threshold at the wrist. The guarantee must not be marginal.
@@ -1971,7 +1996,7 @@ export default {
           const r = rU * S * 0.5;
           const len = Math.hypot(J.ax - P.ax, J.ay - P.ay);
           const N = Math.max(5, Math.ceil(len / (rU * 0.5)));
-          g.globalAlpha = Math.min(1, ((B.label === 'body' || B.label === 'head') ? aBody : aLimb) * 2);
+          g.globalAlpha = Math.min(1, ((B.label === 'body' || B.label === 'head') ? aBody : aLimb) * 2) * farDim(B.label, state);
           dg.globalAlpha = g.globalAlpha;
           for (let k = 0; k <= N; k++) {
             const t = k / N;
