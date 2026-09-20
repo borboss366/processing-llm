@@ -50,6 +50,7 @@ creature rig). Full guide in `README.md`.
 | Extraction hardening (16.2) | foot gate holds 9+8 noise frames; jitter 3.75→3.37 px (fixed-crop VIDEO ×2 TTA); depth channels footYaw+twist emitted; determinism byte-identical | extract.mjs + self-test 9/9 |
 | Move #2 running man (economics) | ~15 min/move wall time; 2/2 cycles, lag 0.9 ms; fk + moves-x-shapes PASS; knee-lift lost to de-yaw (side-view source) — plane-select finding for 17 | extract + harnesses |
 | --view as-filmed experiment | hip span ×3–5, knee ×3; thigh twist 0.40→0.16 (collapsed as predicted); foot gate 90→0 held; stickman tracks the lift | asfilmed report |
+| Mirror-rest bug (fixed) | --mirror chains were off by rest(L)−rest(R) (worst 132° real-data); roots verified spine-based (chest sd 1.7° in profile); mirror round-trip now 4.4e-16 | root-diag + self-test |
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
 | Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
 | Moves × shapes matrix (brief 16 T2) | 6 moves × 2 stage shapes: 0 spikes, components 1, hips articulate (0.47/0.53) | moves-x-shapes |

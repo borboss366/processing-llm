@@ -42,7 +42,9 @@ verdict moves to the report and gets a ✓ + date here.
    artifact. Judge what's there vs corpus/runningman.qa.mp4; verdict
    may simply be "depth-blocked like the T-step" — that plus the
    plane-select finding feeds brief 17. Economics number: ~15 min/move.
-   → ____
+   **HOLD (2026-09-20): the staged tables were built before the
+   mirror-rest fix (reports/2026-09-20-mirror-rest-bug.md) and carry
+   wrong chain angles — rebuild before judging.** → ____
 
 ## Standing re-check triggers
 

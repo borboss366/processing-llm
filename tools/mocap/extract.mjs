@@ -544,6 +544,27 @@ function selfTest() {
     }
     console.log(`[self-test] retarget round-trip: worst chain-accRot err ${worst.toExponential(2)} rad (${worstName})`);
     if (worst > 1e-9) fails.push(`round-trip err ${worst} rad`);
+    // MIRROR round-trip (2026-09-20 regression): with mirror the rendered
+    // rig-R bones must reproduce the observed person-L segment angles
+    // exactly — the hardcoded-rest bug made every mirrored chain off by
+    // rest(L)−rest(R)
+    const recM = retargetFrame(fake, rg, true);
+    const poseM = fkPose(rg, recM);
+    const a2 = (p, q) => Math.atan2(q[1] - p[1], q[0] - p[0]);
+    let worstM = 0, worstMB = "";
+    for (const [rigA, rigB, obsA, obsB] of [
+      ["shoulderR", "elbowR", pose.shoulderL, pose.elbowL],
+      ["elbowR", "handR", pose.elbowL, pose.handL],
+      ["hipR", "kneeR", pose.hipL, pose.kneeL],
+      ["kneeR", "ankleR", pose.kneeL, pose.ankleL],
+    ]) {
+      const d = Math.abs(Math.atan2(
+        Math.sin(a2(poseM[rigA], poseM[rigB]) - a2(obsA, obsB)),
+        Math.cos(a2(poseM[rigA], poseM[rigB]) - a2(obsA, obsB))));
+      if (d > worstM) { worstM = d; worstMB = `${rigA}→${rigB}`; }
+    }
+    console.log(`[self-test] mirror round-trip: worst rendered-vs-observed ${worstM.toExponential(2)} rad (${worstMB})`);
+    if (worstM > 1e-9) fails.push(`mirror round-trip err ${worstM} rad (${worstMB})`);
   }
   // 4) outlier cycles dropped: 6 clean + 2 scaled
   {

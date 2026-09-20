@@ -84,23 +84,29 @@ export function buildRig(sidecar) {
   // person side S → rig side: canonical de-yawed frame has the person's
   // left→right vector along +x; tutorials teach mirrored, so default maps
   // person L → rig L ("as your mirror image"); --mirror swaps.
+  // rest angles MUST reference the ASSIGNED rig joint's own chain (template
+  // side `pl`/`pr`), never a hardcoded side: with --mirror the assigned name
+  // flips but a hardcoded rest would stay left — theta then carries
+  // rest(L)−rest(R) and FK renders every mirrored chain coherently wrong
+  // (the 2026-09-20 "legs splayed, arm raised" screenshot; found by the
+  // round-trip check in root-diag, worst 132° on an arm bone)
   const defs = (pl, pr) => [
     // name, parent-chain name (null = root-level), obsA, obsB, restAngle
     ['chest', null, 'hipMid', 'shoulderMid', rest('pelvis', 'chest')],
     ['neck', 'chest', 'shoulderMid', 'headMid', rest('chest', 'neck')],
-    [`shoulder${pl}`, 'chest', MP.shoulderL, MP.elbowL, rest('shoulderL', 'elbowL')],
-    [`elbow${pl}`, `shoulder${pl}`, MP.elbowL, MP.wristL, rest('elbowL', 'handL')],
-    [`shoulder${pr}`, 'chest', MP.shoulderR, MP.elbowR, rest('shoulderR', 'elbowR')],
-    [`elbow${pr}`, `shoulder${pr}`, MP.elbowR, MP.wristR, rest('elbowR', 'handR')],
+    [`shoulder${pl}`, 'chest', MP.shoulderL, MP.elbowL, rest(`shoulder${pl}`, `elbow${pl}`)],
+    [`elbow${pl}`, `shoulder${pl}`, MP.elbowL, MP.wristL, rest(`elbow${pl}`, `hand${pl}`)],
+    [`shoulder${pr}`, 'chest', MP.shoulderR, MP.elbowR, rest(`shoulder${pr}`, `elbow${pr}`)],
+    [`elbow${pr}`, `shoulder${pr}`, MP.elbowR, MP.wristR, rest(`elbow${pr}`, `hand${pr}`)],
     // femur decomposition (16.1): hip absorbs the whole-leg swing, knee is
     // the RELATIVE femur–tibia angle, ankle relative tibia–foot — same
     // discipline as the arm chain
-    [`hip${pl}`, null, MP.hipL, MP.kneeL, rest('hipL', 'kneeL')],
-    [`knee${pl}`, `hip${pl}`, MP.kneeL, MP.ankleL, rest('kneeL', 'ankleL')],
-    [`ankle${pl}`, `knee${pl}`, MP.ankleL, MP.toeL, rest('ankleL', 'footL')],
-    [`hip${pr}`, null, MP.hipR, MP.kneeR, rest('hipR', 'kneeR')],
-    [`knee${pr}`, `hip${pr}`, MP.kneeR, MP.ankleR, rest('kneeR', 'ankleR')],
-    [`ankle${pr}`, `knee${pr}`, MP.ankleR, MP.toeR, rest('ankleR', 'footR')],
+    [`hip${pl}`, null, MP.hipL, MP.kneeL, rest(`hip${pl}`, `knee${pl}`)],
+    [`knee${pl}`, `hip${pl}`, MP.kneeL, MP.ankleL, rest(`knee${pl}`, `ankle${pl}`)],
+    [`ankle${pl}`, `knee${pl}`, MP.ankleL, MP.toeL, rest(`ankle${pl}`, `foot${pl}`)],
+    [`hip${pr}`, null, MP.hipR, MP.kneeR, rest(`hip${pr}`, `knee${pr}`)],
+    [`knee${pr}`, `hip${pr}`, MP.kneeR, MP.ankleR, rest(`knee${pr}`, `ankle${pr}`)],
+    [`ankle${pr}`, `knee${pr}`, MP.ankleR, MP.toeR, rest(`ankle${pr}`, `foot${pr}`)],
   ];
   return {
     joints: J,
