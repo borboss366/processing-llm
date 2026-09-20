@@ -15,11 +15,15 @@ import { assertStackRunning, launchBrowser, openRenderWithFile } from "./render-
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MIX = "/music/Y2Mate.is - Boris Brejcha Style Minimal Techno Mix 2025 - Mixed by Granada.mp3";
 // biped-front is the submit-service TEMPLATE (joints only, no PNG) — not a
-// loadable stage shape; including it here is how we found the n=0 wedge
+// loadable stage shape; including it here is how we found the n=0 wedge.
+// PROFILE-tagged moves are excluded from the front matrix: picking one
+// triggers the view switch and the cell would silently test biped-profile
+// (brief 17 A3) — they get their own section below.
 const SHAPES = ["biped-1", "biped-2"];
-const MOVES = ["runningman-captured", "tstep-captured", "tstep-placeholder",
+const MOVES = ["tstep-captured", "tstep-placeholder",
                "armwave-placeholder", "sidepunch-placeholder", "elbowcircles-placeholder",
                "armpump-placeholder"];
+const PROFILE_MOVES = ["runningman-captured", "runningman-captured-x"];
 const post = (p, body) => fetch(`http://localhost:3000${p}`, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
 }).then((r) => r.json());
@@ -108,6 +112,32 @@ try {
   }
   await osc("/creature/shape", "biped-1");
   await osc("/creature/move", "none");
+
+  // ── profile section (brief 17 A7): profile-tagged moves on the profile
+  // shape, entered through the real view switch
+  for (const mv of PROFILE_MOVES) {
+    await osc("/creature/move", mv);
+    await sleep(6000);                       // bar-quantized switch + blend
+    const s0 = await page.evaluate(() => window.__creatureBench?.spikesFlagged ?? -1);
+    let view = null;
+    for (let t = 0; t < 10; t++) {
+      await sleep(550);
+      const m = await page.evaluate(() => ({
+        nan: (window.__creatureJoints ?? []).some((j) => !Number.isFinite(j.sx + j.sy + j.theta)),
+        view: window.__creatureBench?.view,
+      }));
+      if (m.nan) failures.push(`NaN: ${mv} (profile)`);
+      view = m.view;
+    }
+    const s1 = await page.evaluate(() => window.__creatureBench?.spikesFlagged ?? -1);
+    const comps = await page.evaluate(componentsSnippet);
+    console.log(`[mxs] biped-profile × ${mv}: view=${view}, spikes +${s1 - s0}, components ${comps}`);
+    if (view !== "profile") failures.push(`${mv}: view is ${view}, wanted profile`);
+    if (s1 - s0 !== 0) failures.push(`spikes +${s1 - s0}: ${mv} (profile)`);
+    if (comps !== 1) failures.push(`components=${comps}: ${mv} (profile)`);
+  }
+  await osc("/creature/move", "none");
+  await osc("/creature/view", "auto");
 } catch (e) {
   failures.push(String(e));
 } finally {

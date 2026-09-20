@@ -822,11 +822,12 @@ GAITS.biped.repertoire = {
   // tstep-captured parked too (gate 2026-09-20: BLOCKED ON DEPTH — the
   // foot fan is floor-plane rotation 2D can't show); it is the depth
   // channel's acceptance test when brief 17 lands
-  // runningman-captured (16.2 move #2): mocap, behind a small weight
-  // pending the user's gate
+  // runningman-captured (brief 17): PROFILE-tagged mocap table — picking it
+  // triggers the front→profile view switch (A3/A4); back when a front move
+  // rotates in. Weight pending the user's A7 gate.
   groove: [['groove', 0.4], ['tstep-placeholder', 0.2], ['armwave-placeholder', 0.15],
-           ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.1],
-           ['runningman-captured', 0.05]],
+           ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.05],
+           ['runningman-captured', 0.1]],
   hop: [['sidepunch-placeholder', 1.0]],
 };
 GAITS.trot.repertoire = GAITS.biped.repertoire;

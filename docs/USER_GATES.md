@@ -34,17 +34,18 @@ verdict moves to the report and gets a ✓ + date here.
    CHANNEL'S ACCEPTANCE TEST when brief 17 lands. No further T-step
    polishing. No promotion; economics note still lands after move #2.
 
-3. **Captured running man (brief 16 move #2)** — `runningman-captured`
-   forced on stage (in rotation at 0.05): does anything of the move
-   survive the projection? Known going in (reports/2026-09-20-
-   runningman.md): near-side-view source, knee-lift mostly lost to
-   de-yaw (hip spans 0.09/0.16 rad), head carries a +0.85 rad tilt
-   artifact. Judge what's there vs corpus/runningman.qa.mp4; verdict
-   may simply be "depth-blocked like the T-step" — that plus the
-   plane-select finding feeds brief 17. Economics number: ~15 min/move.
-   **HOLD (2026-09-20): the staged tables were built before the
-   mirror-rest fix (reports/2026-09-20-mirror-rest-bug.md) and carry
-   wrong chain angles — rebuild before judging.** → ____
+3. **Running man in PROFILE (brief 17 A7 — supersedes the 2026-09-20
+   HOLD; the first Route B stage verdict)** — `runningman-captured`
+   (profile-tagged, rebuilt through the full 2026-09-21 pipeline:
+   measured rest, heel→toe feet, per-side sign, plane-select) is in the
+   groove rotation at 0.1; picking it switches the stage to the PROFILE
+   view (squeeze-through-zero, ≤1 bar) and back when a front move
+   rotates in. Judge: recognizably him, legible at 3 m? Profile
+   (`runningman-captured`) vs front (`runningman-captured-front`) —
+   which is the rotation default? Plain vs `runningman-captured-x`
+   (per-part exag)? Also: does the view SWITCH read as intentional?
+   Note the profile body is PLACEHOLDER ART — judge the motion, redraw
+   comes after mechanics are accepted. → ____
 
 ## Standing re-check triggers
 

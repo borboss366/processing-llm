@@ -1,0 +1,793 @@
+{
+  "name": "runningman-captured-front",
+  "beatsPerLoop": 2,
+  "overlay": 0.3,
+  "verticalContent": 0.7,
+  "keys": [
+    {
+      "phase": 0,
+      "joints": {
+        "chest": {
+          "rot": 0.002
+        },
+        "neck": {
+          "rot": -0.097
+        },
+        "shoulderL": {
+          "rot": -0.107
+        },
+        "elbowL": {
+          "rot": -0.698
+        },
+        "shoulderR": {
+          "rot": 0.049
+        },
+        "elbowR": {
+          "rot": 0.246
+        },
+        "hipL": {
+          "rot": 0.027
+        },
+        "kneeL": {
+          "rot": -0.116
+        },
+        "ankleL": {
+          "rot": 0.52
+        },
+        "hipR": {
+          "rot": 0.027
+        },
+        "kneeR": {
+          "rot": 0.017
+        },
+        "ankleR": {
+          "rot": -0.554
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": 0.0083
+    },
+    {
+      "phase": 0.01563,
+      "joints": {
+        "chest": {
+          "rot": 0.002
+        },
+        "neck": {
+          "rot": -0.097
+        },
+        "shoulderL": {
+          "rot": -0.107
+        },
+        "elbowL": {
+          "rot": -0.698
+        },
+        "shoulderR": {
+          "rot": 0.049
+        },
+        "elbowR": {
+          "rot": 0.246
+        },
+        "hipL": {
+          "rot": 0.027
+        },
+        "kneeL": {
+          "rot": -0.116
+        },
+        "ankleL": {
+          "rot": 0.52
+        },
+        "hipR": {
+          "rot": 0.027
+        },
+        "kneeR": {
+          "rot": 0.017
+        },
+        "ankleR": {
+          "rot": -0.554
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth",
+      "travel": 0.019
+    },
+    {
+      "phase": 0.03125,
+      "joints": {
+        "chest": {
+          "rot": -0.003
+        },
+        "neck": {
+          "rot": -0.105
+        },
+        "shoulderL": {
+          "rot": -0.069
+        },
+        "elbowL": {
+          "rot": -0.647
+        },
+        "shoulderR": {
+          "rot": 0.055
+        },
+        "elbowR": {
+          "rot": 0.282
+        },
+        "hipL": {
+          "rot": 0.023
+        },
+        "kneeL": {
+          "rot": -0.117
+        },
+        "ankleL": {
+          "rot": -0.015
+        },
+        "hipR": {
+          "rot": 0.023
+        },
+        "kneeR": {
+          "rot": 0.021
+        },
+        "ankleR": {
+          "rot": -0.554
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": 0.0085
+    },
+    {
+      "phase": 0.0625,
+      "joints": {
+        "chest": {
+          "rot": -0.014
+        },
+        "neck": {
+          "rot": -0.103
+        },
+        "shoulderL": {
+          "rot": -0.045
+        },
+        "elbowL": {
+          "rot": -0.64
+        },
+        "shoulderR": {
+          "rot": 0.03
+        },
+        "elbowR": {
+          "rot": 0.224
+        },
+        "hipL": {
+          "rot": 0.019
+        },
+        "kneeL": {
+          "rot": -0.115
+        },
+        "ankleL": {
+          "rot": 0.001
+        },
+        "hipR": {
+          "rot": 0.022
+        },
+        "kneeR": {
+          "rot": 0.012
+        },
+        "ankleR": {
+          "rot": -0.554
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth",
+      "travel": 0.0301
+    },
+    {
+      "phase": 0.07813,
+      "joints": {
+        "chest": {
+          "rot": -0.018
+        },
+        "neck": {
+          "rot": -0.109
+        },
+        "shoulderL": {
+          "rot": -0.012
+        },
+        "elbowL": {
+          "rot": 0.206
+        },
+        "shoulderR": {
+          "rot": 0.048
+        },
+        "elbowR": {
+          "rot": 0.247
+        },
+        "hipL": {
+          "rot": 0.012
+        },
+        "kneeL": {
+          "rot": -0.12
+        },
+        "ankleL": {
+          "rot": 0.056
+        },
+        "hipR": {
+          "rot": 0.018
+        },
+        "kneeR": {
+          "rot": 0.026
+        },
+        "ankleR": {
+          "rot": -0.555
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": 0.0191
+    },
+    {
+      "phase": 0.125,
+      "joints": {
+        "chest": {
+          "rot": -0.039
+        },
+        "neck": {
+          "rot": -0.109
+        },
+        "shoulderL": {
+          "rot": 0.065
+        },
+        "elbowL": {
+          "rot": 0.355
+        },
+        "shoulderR": {
+          "rot": 0.038
+        },
+        "elbowR": {
+          "rot": 0.158
+        },
+        "hipL": {
+          "rot": -0.004
+        },
+        "kneeL": {
+          "rot": -0.112
+        },
+        "ankleL": {
+          "rot": 0.2
+        },
+        "hipR": {
+          "rot": 0.015
+        },
+        "kneeR": {
+          "rot": 0.043
+        },
+        "ankleR": {
+          "rot": -0.696
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": 0.0472
+    },
+    {
+      "phase": 0.23438,
+      "joints": {
+        "chest": {
+          "rot": -0.08
+        },
+        "neck": {
+          "rot": -0.086
+        },
+        "shoulderL": {
+          "rot": 0.239
+        },
+        "elbowL": {
+          "rot": 0.314
+        },
+        "shoulderR": {
+          "rot": 0.049
+        },
+        "elbowR": {
+          "rot": 0.021
+        },
+        "hipL": {
+          "rot": -0.024
+        },
+        "kneeL": {
+          "rot": -0.032
+        },
+        "ankleL": {
+          "rot": 0.709
+        },
+        "hipR": {
+          "rot": 0.025
+        },
+        "kneeR": {
+          "rot": 0.154
+        },
+        "ankleR": {
+          "rot": -0.7
+        },
+        "pelvis": {
+          "dx": 0.0096
+        }
+      },
+      "contacts": [],
+      "ease": "snap",
+      "travel": 0.0775
+    },
+    {
+      "phase": 0.39063,
+      "joints": {
+        "chest": {
+          "rot": -0.014
+        },
+        "neck": {
+          "rot": -0.075
+        },
+        "shoulderL": {
+          "rot": 0.19
+        },
+        "elbowL": {
+          "rot": 0.358
+        },
+        "shoulderR": {
+          "rot": 0.118
+        },
+        "elbowR": {
+          "rot": -0.2
+        },
+        "hipL": {
+          "rot": 0.03
+        },
+        "kneeL": {
+          "rot": 0.156
+        },
+        "ankleL": {
+          "rot": 0.722
+        },
+        "hipR": {
+          "rot": 0.135
+        },
+        "kneeR": {
+          "rot": 0.232
+        },
+        "ankleR": {
+          "rot": -0.663
+        },
+        "pelvis": {
+          "dx": 0.0242
+        }
+      },
+      "contacts": [],
+      "ease": "smooth",
+      "travel": 0.0141
+    },
+    {
+      "phase": 0.42188,
+      "joints": {
+        "chest": {
+          "rot": 0.007
+        },
+        "neck": {
+          "rot": -0.082
+        },
+        "shoulderL": {
+          "rot": 0.164
+        },
+        "elbowL": {
+          "rot": 0.393
+        },
+        "shoulderR": {
+          "rot": 0.146
+        },
+        "elbowR": {
+          "rot": -0.065
+        },
+        "hipL": {
+          "rot": 0.039
+        },
+        "kneeL": {
+          "rot": 0.173
+        },
+        "ankleL": {
+          "rot": 0.646
+        },
+        "hipR": {
+          "rot": 0.171
+        },
+        "kneeR": {
+          "rot": 0.165
+        },
+        "ankleR": {
+          "rot": -0.597
+        },
+        "pelvis": {
+          "dx": 0.0261
+        }
+      },
+      "contacts": [],
+      "ease": "smooth",
+      "travel": 0.0488
+    },
+    {
+      "phase": 0.59375,
+      "joints": {
+        "chest": {
+          "rot": -0.014
+        },
+        "neck": {
+          "rot": -0.069
+        },
+        "shoulderL": {
+          "rot": 0.093
+        },
+        "elbowL": {
+          "rot": 0.247
+        },
+        "shoulderR": {
+          "rot": 0.056
+        },
+        "elbowR": {
+          "rot": -0.174
+        },
+        "hipL": {
+          "rot": -0.035
+        },
+        "kneeL": {
+          "rot": 0.093
+        },
+        "ankleL": {
+          "rot": 0.429
+        },
+        "hipR": {
+          "rot": 0.081
+        },
+        "kneeR": {
+          "rot": -0.027
+        },
+        "ankleR": {
+          "rot": -0.456
+        },
+        "pelvis": {
+          "dx": 0.0135
+        }
+      },
+      "contacts": [
+        "footR"
+      ],
+      "ease": "smooth",
+      "travel": -0.1112
+    },
+    {
+      "phase": 0.60938,
+      "joints": {
+        "chest": {
+          "rot": -0.015
+        },
+        "neck": {
+          "rot": -0.059
+        },
+        "shoulderL": {
+          "rot": 0.087
+        },
+        "elbowL": {
+          "rot": 0.061
+        },
+        "shoulderR": {
+          "rot": 0.038
+        },
+        "elbowR": {
+          "rot": -0.152
+        },
+        "hipL": {
+          "rot": -0.044
+        },
+        "kneeL": {
+          "rot": 0.065
+        },
+        "ankleL": {
+          "rot": 0.268
+        },
+        "hipR": {
+          "rot": 0.077
+        },
+        "kneeR": {
+          "rot": -0.039
+        },
+        "ankleR": {
+          "rot": -0.456
+        },
+        "pelvis": {
+          "dx": 0.0099
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": -0.0421
+    },
+    {
+      "phase": 0.64063,
+      "joints": {
+        "chest": {
+          "rot": -0.015
+        },
+        "neck": {
+          "rot": -0.059
+        },
+        "shoulderL": {
+          "rot": 0.087
+        },
+        "elbowL": {
+          "rot": 0.061
+        },
+        "shoulderR": {
+          "rot": 0.038
+        },
+        "elbowR": {
+          "rot": -0.152
+        },
+        "hipL": {
+          "rot": -0.044
+        },
+        "kneeL": {
+          "rot": 0.065
+        },
+        "ankleL": {
+          "rot": 0.268
+        },
+        "hipR": {
+          "rot": 0.077
+        },
+        "kneeR": {
+          "rot": -0.039
+        },
+        "ankleR": {
+          "rot": -0.456
+        },
+        "pelvis": {
+          "dx": 0.0099
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth",
+      "travel": -0.1466
+    },
+    {
+      "phase": 0.65625,
+      "joints": {
+        "chest": {
+          "rot": -0.029
+        },
+        "neck": {
+          "rot": -0.04
+        },
+        "shoulderL": {
+          "rot": 0.064
+        },
+        "elbowL": {
+          "rot": -0.164
+        },
+        "shoulderR": {
+          "rot": 0.028
+        },
+        "elbowR": {
+          "rot": -0.008
+        },
+        "hipL": {
+          "rot": -0.049
+        },
+        "kneeL": {
+          "rot": 0.028
+        },
+        "ankleL": {
+          "rot": 0.268
+        },
+        "hipR": {
+          "rot": 0.042
+        },
+        "kneeR": {
+          "rot": -0.044
+        },
+        "ankleR": {
+          "rot": -0.456
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": -0.1466
+    },
+    {
+      "phase": 0.70313,
+      "joints": {
+        "chest": {
+          "rot": -0.033
+        },
+        "neck": {
+          "rot": -0.023
+        },
+        "shoulderL": {
+          "rot": 0.025
+        },
+        "elbowL": {
+          "rot": -0.302
+        },
+        "shoulderR": {
+          "rot": 0.022
+        },
+        "elbowR": {
+          "rot": 0.141
+        },
+        "hipL": {
+          "rot": -0.046
+        },
+        "kneeL": {
+          "rot": -0.016
+        },
+        "ankleL": {
+          "rot": 0.268
+        },
+        "hipR": {
+          "rot": 0.024
+        },
+        "kneeR": {
+          "rot": -0.039
+        },
+        "ankleR": {
+          "rot": -0.456
+        },
+        "pelvis": {
+          "dx": -0.0109
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "snap",
+      "travel": -0.1522
+    },
+    {
+      "phase": 0.82813,
+      "joints": {
+        "chest": {
+          "rot": -0.011
+        },
+        "neck": {
+          "rot": -0.009
+        },
+        "shoulderL": {
+          "rot": -0.08
+        },
+        "elbowL": {
+          "rot": -0.343
+        },
+        "shoulderR": {
+          "rot": 0.048
+        },
+        "elbowR": {
+          "rot": 0.299
+        },
+        "hipL": {
+          "rot": -0.019
+        },
+        "kneeL": {
+          "rot": -0.077
+        },
+        "ankleL": {
+          "rot": 0.268
+        },
+        "hipR": {
+          "rot": 0.024
+        },
+        "kneeR": {
+          "rot": -0.026
+        },
+        "ankleR": {
+          "rot": -0.456
+        },
+        "pelvis": {
+          "dx": -0.0274
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth",
+      "travel": -0.0513
+    },
+    {
+      "phase": 0.98438,
+      "joints": {
+        "chest": {
+          "rot": -0.011
+        },
+        "neck": {
+          "rot": -0.036
+        },
+        "shoulderL": {
+          "rot": -0.024
+        },
+        "elbowL": {
+          "rot": -0.47
+        },
+        "shoulderR": {
+          "rot": -0.165
+        },
+        "elbowR": {
+          "rot": -0.001
+        },
+        "hipL": {
+          "rot": 0.014
+        },
+        "kneeL": {
+          "rot": -0.1
+        },
+        "ankleL": {
+          "rot": 0.266
+        },
+        "hipR": {
+          "rot": 0.033
+        },
+        "kneeR": {
+          "rot": -0.033
+        },
+        "ankleR": {
+          "rot": -0.456
+        },
+        "pelvis": {
+          "dx": -0.0341
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "ease": "smooth",
+      "travel": 0.0206
+    }
+  ],
+  "view": "front",
+  "provenance": {
+    "clip": "runningman.mp4",
+    "clipSha": "38ad402a6009",
+    "window": [
+      15.749,
+      18.452
+    ],
+    "mirror": true,
+    "cyclesKept": 2,
+    "cyclesDropped": 0,
+    "netDriftUnits": -0.0333,
+    "pipeline": "tools/mocap/stitch.mjs",
+    "mode": "single full loop",
+    "exaggerate": 1
+  }
+}

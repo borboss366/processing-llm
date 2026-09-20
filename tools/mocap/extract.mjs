@@ -72,7 +72,7 @@ if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
                             "min-cutoff", "beta", "anchor", "max-keys", "out",
-                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view"]);
+                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -161,303 +161,335 @@ const img = smooth(rawImg);
 const conf = detected.map((f) => f.img.reduce((a, l) => a + l[2], 0) / f.img.length);
 console.log(`[mocap] filter: ${filterMode}${filterMode === "savgol" ? ` (window ${sg.window}, order ${sg.order})` : ""}`);
 
-// ── stage 3: de-yaw ───────────────────────────────────────────────────────
+// ── view-independent normalization ───────────────────────────────────────
 const ySign = detectYSign(world);
 const worldN = ySign === 1 ? world : world.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-const viewMode = opt("view", "frontal");
 const yawsRaw = worldN.map((f) => frameYaw(f));
-// as-filmed: no rotation — the camera plane IS the projection plane (the
-// yaw trace is still recorded in poses.json for provenance)
-const yaws = viewMode === "as-filmed" ? yawsRaw.map(() => 0) : yawsRaw;
-const frontal = worldN.map((f, i) => deYaw(f, yaws[i]));
-console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"} · yaw median ${median(yawsRaw.map((y) => y * 180 / Math.PI)).toFixed(0)}° · view=${viewMode}`);
+const yawMedDeg = median(yawsRaw.map((y) => y * 180 / Math.PI));
+// frontness: distance to the nearest of {0°, 180°} — facing the camera reads
+// |yaw| ≈ 180 (the left→right vector flips), facing away ≈ 0; both are the
+// FRONT projection. Profile is ±90°. Median of per-frame distances (wrap-safe).
+const frontDeg = median(yawsRaw.map((y) => {
+  const a = Math.abs(y * 180 / Math.PI);
+  return Math.min(a, 180 - a);
+}));
+console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"} · yaw median ${yawMedDeg.toFixed(0)}° (frontness ${frontDeg.toFixed(0)}°)`);
 
-// ── stage 4: retarget to rig rotations ────────────────────────────────────
-// as-filmed = profile-family view: estimate the dancer's facing (median
-// heel→toe x over both feet) and swap in the profile rest set (both feet
-// forward, arms hanging) — measuring a profile pose against FRONT rests
-// parked ~π on one ankle (the "palsy foot": clamps at rotLimits.ankle)
-let view = null;
-if (viewMode === "as-filmed") {
-  let s = 0;
-  for (const f of frontal) {
-    s += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
+// ── canonical view selection (brief 17 A5) ───────────────────────────────
+// --view auto picks the NEAREST canonical view by yaw (front if |yaw| < 45°,
+// else profile) — never blindly front; --emit-views profile,front runs the
+// whole projection→table pipeline once per view from ONE capture (first
+// listed = primary: unsuffixed outputs + the QA video).
+const normView = (v) => (v === "as-filmed" || v === "profile") ? "profile" : "front";
+const emitV = opt("emit-views", null);
+let views;
+if (emitV) {
+  views = emitV.split(",").map((s) => normView(s.trim()));
+} else {
+  const v = opt("view", "auto");
+  views = [v === "auto" ? (frontDeg < 45 ? "front" : "profile") : normView(v)];
+}
+console.log(`[mocap] views: ${views.join(" + ")}${opt("view", "auto") === "auto" && !emitV ? " (auto by yaw)" : ""}`);
+
+for (let vi = 0; vi < views.length; vi++) await processView(views[vi], vi === 0);
+
+async function processView(vk, primary) {
+  const vBase = primary ? clipBase : `${clipBase}-${vk}`;
+  const vName = primary ? moveName : `${moveName}-${vk}`;
+  // ── stage 3: projection for this view ────────────────────────────────────
+  // profile: camera-plane projection, no rotation (yaw recorded in provenance)
+  const yaws = vk === "profile" ? yawsRaw.map(() => 0) : yawsRaw;
+  const frontal = worldN.map((f, i) => deYaw(f, yaws[i]));
+
+  // ── stage 4: retarget to rig rotations ────────────────────────────────────
+  // as-filmed = profile-family view: estimate the dancer's facing (median
+  // heel→toe x over both feet) and swap in the profile rest set (both feet
+  // forward, arms hanging) — measuring a profile pose against FRONT rests
+  // parked ~π on one ankle (the "palsy foot": clamps at rotLimits.ankle)
+  let view = null;
+  if (vk === "profile") {
+    let s = 0;
+    for (const f of frontal) {
+      s += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
+    }
+    view = { profileFacing: s < 0 ? -1 : 1 };
+    console.log(`[mocap] profile rest set: facing ${view.profileFacing < 0 ? "left" : "right"} (heel→toe median)`);
   }
-  view = { profileFacing: s < 0 ? -1 : 1 };
-  console.log(`[mocap] profile rest set: facing ${view.profileFacing < 0 ? "left" : "right"} (heel→toe median)`);
-}
-// measured-rest calibration (2026-09-21): the human's own neutral from
-// planted low-velocity frames; declared/view rests only as fallback
-const masks = calibMasks(frontal);
-const cal = measureRest(frontal, rig, mirror, view, masks);
-{
-  const declared = Object.fromEntries(rig.defs(mirror, view).map((d) => [d[0], d[4]]));
-  const deltas = Object.fromEntries(Object.entries(cal.rests)
-    .map(([nm, v]) => [nm, +((((v - declared[nm]) + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI).toFixed(2)]));
-  console.log(`[mocap] measured rest: calib frames global=${masks.global.filter(Boolean).length} legL=${masks.legL.filter(Boolean).length} legR=${masks.legR.filter(Boolean).length}` +
-    `${cal.fallbacks.length ? ` · fallback declared: [${cal.fallbacks}]` : ""}`);
-  console.log(`[mocap] measured−declared rest deltas (rad): ${JSON.stringify(deltas)}`);
-}
-const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror, view, cal.rests));
-
-// foot-length gating (16.2 item 1): where the projected heel→toe length
-// collapses (foot pointing at the camera), the 2D ankle angle is atan2 of
-// noise — hold the last valid sample instead. Ratio = projected/full-3D.
-const FOOT_GATE = +opt("foot-gate", 0.35);
-{
-  const gateLog = {};
-  for (const rigSide of ["L", "R"]) {
-    const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
-    const mask = frontal.map((f2, i) => {
-      const h2 = f2[MP[`heel${p}`]], t2 = f2[MP[`toe${p}`]];
-      const h3 = worldN[i][MP[`heel${p}`]], t3 = worldN[i][MP[`toe${p}`]];
-      const proj = Math.hypot(t2[0] - h2[0], t2[1] - h2[1]);
-      const full = Math.hypot(t3[0] - h3[0], t3[1] - h3[1], t3[2] - h3[2]);
-      return proj / (full || 1) < FOOT_GATE;
-    });
-    const series = thetaFrames.map((f2) => f2[`ankle${rigSide}`]);
-    const held = holdWhere(series, mask);
-    thetaFrames.forEach((f2, i) => { f2[`ankle${rigSide}`] = series[i]; });
-    gateLog[`ankle${rigSide}`] = held;
+  // measured-rest calibration (2026-09-21): the human's own neutral from
+  // planted low-velocity frames; declared/view rests only as fallback
+  const masks = calibMasks(frontal);
+  const cal = measureRest(frontal, rig, mirror, view, masks);
+  {
+    const declared = Object.fromEntries(rig.defs(mirror, view).map((d) => [d[0], d[4]]));
+    const deltas = Object.fromEntries(Object.entries(cal.rests)
+      .map(([nm, v]) => [nm, +((((v - declared[nm]) + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI).toFixed(2)]));
+    console.log(`[mocap] measured rest: calib frames global=${masks.global.filter(Boolean).length} legL=${masks.legL.filter(Boolean).length} legR=${masks.legR.filter(Boolean).length}` +
+      `${cal.fallbacks.length ? ` · fallback declared: [${cal.fallbacks}]` : ""}`);
+    console.log(`[mocap] measured−declared rest deltas (rad): ${JSON.stringify(deltas)}`);
   }
-  console.log(`[mocap] foot gate (<${FOOT_GATE}): held ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
-}
+  const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror, view, cal.rests));
 
-// (the 2026-09-20 ankle re-centering is gone: measured-rest calibration
-// subsumes it — the ankle's planted median IS the stance neutral)
+  // foot-length gating (16.2 item 1): where the projected heel→toe length
+  // collapses (foot pointing at the camera), the 2D ankle angle is atan2 of
+  // noise — hold the last valid sample instead. Ratio = projected/full-3D.
+  const FOOT_GATE = +opt("foot-gate", 0.35);
+  {
+    const gateLog = {};
+    for (const rigSide of ["L", "R"]) {
+      const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
+      const mask = frontal.map((f2, i) => {
+        const h2 = f2[MP[`heel${p}`]], t2 = f2[MP[`toe${p}`]];
+        const h3 = worldN[i][MP[`heel${p}`]], t3 = worldN[i][MP[`toe${p}`]];
+        const proj = Math.hypot(t2[0] - h2[0], t2[1] - h2[1]);
+        const full = Math.hypot(t3[0] - h3[0], t3[1] - h3[1], t3[2] - h3[2]);
+        return proj / (full || 1) < FOOT_GATE;
+      });
+      const series = thetaFrames.map((f2) => f2[`ankle${rigSide}`]);
+      const held = holdWhere(series, mask);
+      thetaFrames.forEach((f2, i) => { f2[`ankle${rigSide}`] = series[i]; });
+      gateLog[`ankle${rigSide}`] = held;
+    }
+    console.log(`[mocap] foot gate (<${FOOT_GATE}): held ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
+  }
 
-// rotLimit clamp report (2026-09-20): a retargeted theta past the engine's
-// clamp is a REST-REFERENCE SMELL, not a data property — captured human
-// motion lives well inside anatomical limits when measured against the
-// right neutral
-{
-  const lim = { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0,
-                ...(sidecar.rotLimits ?? {}) };
-  const limitOf = (nm) => lim[nm.replace(/[LR]$/, "")] ?? null;
-  const hits = {};
-  for (const f of thetaFrames) {
-    for (const [nm, v] of Object.entries(f)) {
-      const l = limitOf(nm);
-      if (l && Math.abs(v) > l) hits[nm] = (hits[nm] ?? 0) + 1;
+  // (the 2026-09-20 ankle re-centering is gone: measured-rest calibration
+  // subsumes it — the ankle's planted median IS the stance neutral)
+
+  // rotLimit clamp report (2026-09-20): a retargeted theta past the engine's
+  // clamp is a REST-REFERENCE SMELL, not a data property — captured human
+  // motion lives well inside anatomical limits when measured against the
+  // right neutral
+  {
+    const lim = { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0,
+                  ...(sidecar.rotLimits ?? {}) };
+    const limitOf = (nm) => lim[nm.replace(/[LR]$/, "")] ?? null;
+    const hits = {};
+    for (const f of thetaFrames) {
+      for (const [nm, v] of Object.entries(f)) {
+        const l = limitOf(nm);
+        if (l && Math.abs(v) > l) hits[nm] = (hits[nm] ?? 0) + 1;
+      }
+    }
+    if (Object.keys(hits).length) {
+      console.log(`[mocap] CLAMP SMELL: thetas past rotLimits ${JSON.stringify(hits)} of ${thetaFrames.length} frames — check rest references`);
+    } else {
+      console.log(`[mocap] rotLimit clamp check: 0 hits across ${thetaFrames.length} frames`);
     }
   }
-  if (Object.keys(hits).length) {
-    console.log(`[mocap] CLAMP SMELL: thetas past rotLimits ${JSON.stringify(hits)} of ${thetaFrames.length} frames — check rest references`);
-  } else {
-    console.log(`[mocap] rotLimit clamp check: 0 hits across ${thetaFrames.length} frames`);
-  }
-}
 
-// depth channels (16.2 item 2 — emitted now, consumed by brief 17's depth
-// mechanism): per-frame de-yawed 3D pose → footYaw (floor-plane heel→toe
-// angle) + per-bone out-of-plane twist
-const frontal3 = worldN.map((f, i) => deYaw3(f, yaws[i]));
-const footYawOf = (i, rigSide) => {
-  const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
-  const h = frontal3[i][MP[`heel${p}`]], t = frontal3[i][MP[`toe${p}`]];
-  return Math.atan2(t[2] - h[2], t[0] - h[0]);
-};
-const twistFrames = frontal3.map((f) => boneTwists(f, rig, mirror));
+  // depth channels (16.2 item 2 — emitted now, consumed by brief 17's depth
+  // mechanism): per-frame de-yawed 3D pose → footYaw (floor-plane heel→toe
+  // angle) + per-bone out-of-plane twist
+  const frontal3 = worldN.map((f, i) => deYaw3(f, yaws[i]));
+  const footYawOf = (i, rigSide) => {
+    const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
+    const h = frontal3[i][MP[`heel${p}`]], t = frontal3[i][MP[`toe${p}`]];
+    return Math.atan2(t[2] - h[2], t[0] - h[0]);
+  };
+  const twistFrames = frontal3.map((f) => boneTwists(f, rig, mirror));
 
-// ── lag diagnostic: filtered pipeline vs a RAW parallel path ─────────────
-// Cross-correlate joint-angle signals; peak at lag>0 = rig lags source.
-// Reported whole-window + per-third (constant vs drifting).
-{
-  const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-  const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, viewMode === "as-filmed" ? 0 : frameYaw(f)), rig, mirror, view));
-  const fps = raw.meta.fps;
-  const xlag = (i0, i1) => {
-    const seg = (frames2) => ARTICULATED.map((nm) => {
-      const v = [];
-      for (let i = i0; i < i1; i++) v.push(frames2[i][nm] ?? 0);
-      const mean = v.reduce((a, b) => a + b, 0) / v.length;
-      return v.map((x) => x - mean);
-    });
-    const F = seg(thetaFrames), R = seg(rawTheta);
-    const maxL = Math.min(10, Math.floor((i1 - i0) / 3));
-    const score = (l) => {
-      let s = 0;
-      for (let j = 0; j < F.length; j++) {
-        for (let i = Math.max(0, l); i < F[j].length && i - l < F[j].length; i++) {
-          if (i - l >= 0) s += F[j][i] * R[j][i - l];
+  // ── lag diagnostic: filtered pipeline vs a RAW parallel path ─────────────
+  // Cross-correlate joint-angle signals; peak at lag>0 = rig lags source.
+  // Reported whole-window + per-third (constant vs drifting).
+  {
+    const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
+    const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, vk === "profile" ? 0 : frameYaw(f)), rig, mirror, view));
+    const fps = raw.meta.fps;
+    const xlag = (i0, i1) => {
+      const seg = (frames2) => ARTICULATED.map((nm) => {
+        const v = [];
+        for (let i = i0; i < i1; i++) v.push(frames2[i][nm] ?? 0);
+        const mean = v.reduce((a, b) => a + b, 0) / v.length;
+        return v.map((x) => x - mean);
+      });
+      const F = seg(thetaFrames), R = seg(rawTheta);
+      const maxL = Math.min(10, Math.floor((i1 - i0) / 3));
+      const score = (l) => {
+        let s = 0;
+        for (let j = 0; j < F.length; j++) {
+          for (let i = Math.max(0, l); i < F[j].length && i - l < F[j].length; i++) {
+            if (i - l >= 0) s += F[j][i] * R[j][i - l];
+          }
         }
-      }
-      return s;
-    };
-    let best = 0, bestS = -Infinity;
-    const sc = {};
-    for (let l = -maxL; l <= maxL; l++) { sc[l] = score(l); if (sc[l] > bestS) { bestS = sc[l]; best = l; } }
-    // parabolic sub-frame refinement
-    const y0 = sc[best - 1] ?? bestS, y2 = sc[best + 1] ?? bestS;
-    const off = (y0 - y2) / (2 * (y0 - 2 * bestS + y2) || 1);
-    return (best + Math.max(-0.5, Math.min(0.5, off))) / fps * 1000;
-  };
-  const n = thetaFrames.length;
-  const whole = xlag(0, n);
-  const thirds = [0, 1, 2].map((k) => xlag(Math.floor(n * k / 3), Math.floor(n * (k + 1) / 3)));
-  const spread = Math.max(...thirds) - Math.min(...thirds);
-  console.log(`[mocap] lag vs raw: ${whole.toFixed(1)} ms (thirds ${thirds.map((v) => v.toFixed(1)).join("/")} ms → ${spread < 1000 / fps ? "constant" : "DRIFTING"})`);
-}
-
-// image-space channels: pelvis drift + foot heights (shape units)
-const bodyH = median(img.map((f) => {
-  const feet = Math.max(f[MP.heelL][1], f[MP.heelR][1], f[MP.toeL][1], f[MP.toeR][1]);
-  const head = Math.min(f[MP.nose][1], f[MP.earL][1], f[MP.earR][1]);
-  return feet - head;
-}));
-const toUnits = RIG_HEIGHT_UNITS / bodyH;
-const sideIdx = (s) => (mirror ? (s === "L" ? "R" : "L") : s);
-const pelvisU = detected.map((_, i) => (img[i][MP.hipL][0] + img[i][MP.hipR][0]) / 2 * toUnits * (mirror ? -1 : 1));
-const footY = {}, footX = {};
-for (const rigSide of ["L", "R"]) {
-  const p = sideIdx(rigSide);                 // person side feeding this rig side
-  footY[rigSide] = detected.map((_, i) => Math.max(img[i][MP[`heel${p}`]][1], img[i][MP[`toe${p}`]][1]));
-  footX[rigSide] = detected.map((_, i) => img[i][MP[`toe${p}`]][0] * (mirror ? -1 : 1));
-}
-
-// ── stage 5: timing ───────────────────────────────────────────────────────
-const fsHz = 1 / median(times.slice(1).map((t, i) => t - times[i]));
-// resample everything onto a uniform grid (worker frames can jitter)
-const uni = (vals) => {
-  const out = new Float64Array(Math.floor((times.at(-1) - times[0]) * fsHz));
-  let j = 0;
-  for (let i = 0; i < out.length; i++) {
-    const t = times[0] + i / fsHz;
-    while (j < times.length - 2 && times[j + 1] < t) j++;
-    const u = Math.min(1, Math.max(0, (t - times[j]) / Math.max(1e-9, times[j + 1] - times[j])));
-    out[i] = vals[j] + (vals[j + 1] - vals[j]) * u;
-  }
-  return out;
-};
-const channels = {};
-for (const nm of ARTICULATED) channels[`th:${nm}`] = uni(thetaFrames.map((f) => f[nm] ?? 0));
-channels.pelvisU = uni(pelvisU);
-for (const s of ["L", "R"]) {
-  channels[`footY${s}`] = uni(footY[s]);
-  const fx = uni(footX[s]);
-  channels[`footVX${s}`] = fx.map((v, i) => i ? (v - fx[i - 1]) * fsHz : 0);
-}
-
-const speed = angularSpeed(thetaFrames, times, ARTICULATED);
-const per = detectPeriod(speed, fsHz);
-const signedCh = Object.fromEntries(ARTICULATED.map((nm) => [nm, channels[`th:${nm}`]]));
-const loop = decideLoop(signedCh, fsHz, per.period);
-let period = per.period * loop.mult;
-let bpl = +opt("bpl", 4);
-if (beatSec) {
-  const beats = period / beatSec;
-  bpl = [1, 2, 3, 4, 6, 8].reduce((a, b) => Math.abs(b - beats) < Math.abs(a - beats) ? b : a);
-  period = bpl * beatSec;                     // lock the loop to the music exactly
-}
-console.log(`[mocap] base period ${per.period.toFixed(3)}s (ac ${per.strength.toFixed(2)}) ×${loop.mult}${loop.mult === 2 ? " (L/R halves differ)" : ""} route=${timingRoute} → bpl ${bpl}${beatSec ? ` @ ${(60 / beatSec).toFixed(1)} BPM, locked ${period.toFixed(3)}s` : ""}`);
-
-// auto-anchor: phase 0 at the calmest bin of the folded speed signal, plus
-// any user shift — deterministic, and holds usually start a move key
-const BINS = 64;
-const fold = new Float64Array(BINS);
-const foldN = new Float64Array(BINS);
-for (let i = 0; i < speed.length; i++) {
-  const b = Math.floor((((times[i] - times[0]) / period) % 1) * BINS) % BINS;
-  fold[b] += speed[i]; foldN[b]++;
-}
-let calmBin = 0;
-for (let b = 0; b < BINS; b++) if (foldN[b] && fold[b] / foldN[b] < fold[calmBin] / Math.max(1, foldN[calmBin])) calmBin = b;
-const anchorSec = ((calmBin / BINS) + (+opt("anchor", 0))) % 1 * period;
-
-// ── stage 6: cycle average with outlier drop ─────────────────────────────
-const cycles = binCycles(channels, fsHz, period, anchorSec, BINS);
-const { mean, kept, dropped } = averageCycles(cycles);
-console.log(`[mocap] cycles: ${cycles.length} → kept ${kept.length}, dropped [${dropped.join(",")}]`);
-if (kept.length < 2) { console.error("[mocap] fewer than 2 clean cycles — widen the loop window"); process.exit(1); }
-
-// ── stage 7: distill to the standard table ────────────────────────────────
-const thetasAvg = {};
-for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
-const pelvisAvg = mean.pelvisU;
-const pelvisMean = pelvisAvg.reduce((a, b) => a + b, 0) / BINS;
-const table = distillMove({
-  thetas: thetasAvg,
-  pelvisU: pelvisAvg,
-  footY: { L: mean.footYL, R: mean.footYR },
-  footVX: { L: mean.footVXL, R: mean.footVXR },
-}, { bins: BINS, bpl, maxKeys: +opt("max-keys", 16), name: moveName, keepDrift: flag("keep-drift") });
-// pelvis lateral sway rides as dx (shape units around the loop mean)
-for (const k of table.keys) {
-  const b = Math.round(k.phase * BINS) % BINS;
-  const dx = +(pelvisAvg[b] - pelvisMean).toFixed(4);
-  if (Math.abs(dx) >= 0.004) (k.joints.pelvis ??= {}).dx = dx;
-}
-console.log(`[mocap] table: ${table.keys.length} keys, joints ${Object.keys(table.keys[0].joints).length}+, net drift ${table._netDriftUnits} u/loop (${flag("keep-drift") ? "KEPT in travel" : "removed from travel"})`);
-
-// ── stage 8: outputs ──────────────────────────────────────────────────────
-const clipHash = createHash("sha256").update(fs.readFileSync(video)).digest("hex").slice(0, 12);
-const poses = {
-  source: path.basename(video), clipSha: clipHash,
-  window: [winA, winB], mirror, rig: path.basename(rigPath),
-  filter: filterMode === "oneeuro" ? { mode: "oneeuro", ...euro } : { mode: filterMode, ...sg },
-  fps: raw.meta.fps,
-  timing: { route: timingRoute, period: +period.toFixed(4), bpl,
-            bpm: beatSec ? +(60 / beatSec).toFixed(2) : null,
-            anchorSec: +anchorSec.toFixed(4), acStrength: +per.strength.toFixed(3),
-            cycles: cycles.length, kept: kept.length, dropped },
-  restCalibration: {
-    rests: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, +v.toFixed(4)])),
-    counts: cal.counts, fallbacks: cal.fallbacks,
-  },
-  frames: detected.map((f, i) => ({
-    t: +times[i].toFixed(4),
-    yaw: +yawsRaw[i].toFixed(4),
-    conf: +conf[i].toFixed(3),
-    thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
-    pelvisU: +pelvisU[i].toFixed(4),
-    footYaw: { L: +footYawOf(i, "L").toFixed(4), R: +footYawOf(i, "R").toFixed(4) },
-    twist: Object.fromEntries(Object.entries(twistFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])),
-  })),
-};
-fs.writeFileSync(`${clipBase}.poses.json`, JSON.stringify(poses));
-const { _netDriftUnits, ...moveOut } = table;
-moveOut.provenance = { clip: path.basename(video), clipSha: clipHash, window: [winA, winB],
-                       mirror, cyclesKept: kept.length, cyclesDropped: dropped.length,
-                       netDriftUnits: _netDriftUnits, pipeline: "tools/mocap/extract.mjs" };
-fs.writeFileSync(`${clipBase}.move.json`, JSON.stringify(moveOut, null, 2));
-console.log(`[mocap] wrote ${path.basename(clipBase)}.poses.json + .move.json (clip sha ${clipHash})`);
-
-// ── stage 9: QA video ─────────────────────────────────────────────────────
-if (!flag("no-qa")) {
-  const bones = sidecar.joints.filter((j) => j.parent).map((j) => [j.name, j.parent]);
-  const spec = {
-    video: path.resolve(video), out: `${clipBase}.qa.mp4`,
-    w: raw.meta.w, h: raw.meta.h, fps: raw.meta.fps,
-    period, anchorSec, t0: times[0], bpl, beatSec,
-    droppedCycles: dropped, bones,
-    ground: sidecar.ground ?? 0.905,
-    // extracted pelvis drift about the window mean, shape units — the QA
-    // ground marker (16.2 item 4) makes travel capture visible
-    pelvisDrift: (() => {
-      const m = pelvisU.reduce((a, b) => a + b, 0) / pelvisU.length;
-      return pelvisU.map((v) => +(v - m).toFixed(4));
-    })(),
-    frames: detected.map((f, i) => {
-      // rig-anchored render: theta = obs − measured human rest, so the
-      // calibration pose draws AS the rig's rest pose — this is what the
-      // stage will do, no view correction needed
-      const pose = fkPose(rig, thetaFrames[i]);
-      return {
-        i: f.i, k: i, t: +times[i].toFixed(4),
-        img: img[i].map(([x, y]) => [+(x).toFixed(4), +(y).toFixed(4)]),
-        rig: Object.fromEntries(Object.entries(pose).map(([nm, [x, y]]) => [nm, [+x.toFixed(4), +y.toFixed(4)]])),
+        return s;
       };
-    }),
+      let best = 0, bestS = -Infinity;
+      const sc = {};
+      for (let l = -maxL; l <= maxL; l++) { sc[l] = score(l); if (sc[l] > bestS) { bestS = sc[l]; best = l; } }
+      // parabolic sub-frame refinement
+      const y0 = sc[best - 1] ?? bestS, y2 = sc[best + 1] ?? bestS;
+      const off = (y0 - y2) / (2 * (y0 - 2 * bestS + y2) || 1);
+      return (best + Math.max(-0.5, Math.min(0.5, off))) / fps * 1000;
+    };
+    const n = thetaFrames.length;
+    const whole = xlag(0, n);
+    const thirds = [0, 1, 2].map((k) => xlag(Math.floor(n * k / 3), Math.floor(n * (k + 1) / 3)));
+    const spread = Math.max(...thirds) - Math.min(...thirds);
+    console.log(`[mocap] lag vs raw: ${whole.toFixed(1)} ms (thirds ${thirds.map((v) => v.toFixed(1)).join("/")} ms → ${spread < 1000 / fps ? "constant" : "DRIFTING"})`);
+  }
+
+  // image-space channels: pelvis drift + foot heights (shape units)
+  const bodyH = median(img.map((f) => {
+    const feet = Math.max(f[MP.heelL][1], f[MP.heelR][1], f[MP.toeL][1], f[MP.toeR][1]);
+    const head = Math.min(f[MP.nose][1], f[MP.earL][1], f[MP.earR][1]);
+    return feet - head;
+  }));
+  const toUnits = RIG_HEIGHT_UNITS / bodyH;
+  const sideIdx = (s) => (mirror ? (s === "L" ? "R" : "L") : s);
+  const pelvisU = detected.map((_, i) => (img[i][MP.hipL][0] + img[i][MP.hipR][0]) / 2 * toUnits * (mirror ? -1 : 1));
+  const footY = {}, footX = {};
+  for (const rigSide of ["L", "R"]) {
+    const p = sideIdx(rigSide);                 // person side feeding this rig side
+    footY[rigSide] = detected.map((_, i) => Math.max(img[i][MP[`heel${p}`]][1], img[i][MP[`toe${p}`]][1]));
+    footX[rigSide] = detected.map((_, i) => img[i][MP[`toe${p}`]][0] * (mirror ? -1 : 1));
+  }
+
+  // ── stage 5: timing ───────────────────────────────────────────────────────
+  const fsHz = 1 / median(times.slice(1).map((t, i) => t - times[i]));
+  // resample everything onto a uniform grid (worker frames can jitter)
+  const uni = (vals) => {
+    const out = new Float64Array(Math.floor((times.at(-1) - times[0]) * fsHz));
+    let j = 0;
+    for (let i = 0; i < out.length; i++) {
+      const t = times[0] + i / fsHz;
+      while (j < times.length - 2 && times[j + 1] < t) j++;
+      const u = Math.min(1, Math.max(0, (t - times[j]) / Math.max(1e-9, times[j + 1] - times[j])));
+      out[i] = vals[j] + (vals[j + 1] - vals[j]) * u;
+    }
+    return out;
   };
-  const specPath = `${clipBase}.qa-spec.json`;
-  fs.writeFileSync(specPath, JSON.stringify(spec));
-  console.log("[mocap] rendering QA video…");
-  await new Promise((resolve, reject) => {
-    const p = spawn(py, [path.join(HERE, "qa_render.py"), specPath], { stdio: "inherit" });
-    p.on("close", (c) => c === 0 ? resolve() : reject(new Error(`qa_render exit ${c}`)));
-  });
-  fs.unlinkSync(specPath);
-  console.log(`[mocap] wrote ${path.basename(clipBase)}.qa.mp4`);
+  const channels = {};
+  for (const nm of ARTICULATED) channels[`th:${nm}`] = uni(thetaFrames.map((f) => f[nm] ?? 0));
+  channels.pelvisU = uni(pelvisU);
+  for (const s of ["L", "R"]) {
+    channels[`footY${s}`] = uni(footY[s]);
+    const fx = uni(footX[s]);
+    channels[`footVX${s}`] = fx.map((v, i) => i ? (v - fx[i - 1]) * fsHz : 0);
+  }
+
+  const speed = angularSpeed(thetaFrames, times, ARTICULATED);
+  const per = detectPeriod(speed, fsHz);
+  const signedCh = Object.fromEntries(ARTICULATED.map((nm) => [nm, channels[`th:${nm}`]]));
+  const loop = decideLoop(signedCh, fsHz, per.period);
+  let period = per.period * loop.mult;
+  let bpl = +opt("bpl", 4);
+  if (beatSec) {
+    const beats = period / beatSec;
+    bpl = [1, 2, 3, 4, 6, 8].reduce((a, b) => Math.abs(b - beats) < Math.abs(a - beats) ? b : a);
+    period = bpl * beatSec;                     // lock the loop to the music exactly
+  }
+  console.log(`[mocap] base period ${per.period.toFixed(3)}s (ac ${per.strength.toFixed(2)}) ×${loop.mult}${loop.mult === 2 ? " (L/R halves differ)" : ""} route=${timingRoute} view=${vk} → bpl ${bpl}${beatSec ? ` @ ${(60 / beatSec).toFixed(1)} BPM, locked ${period.toFixed(3)}s` : ""}`);
+
+  // auto-anchor: phase 0 at the calmest bin of the folded speed signal, plus
+  // any user shift — deterministic, and holds usually start a move key
+  const BINS = 64;
+  const fold = new Float64Array(BINS);
+  const foldN = new Float64Array(BINS);
+  for (let i = 0; i < speed.length; i++) {
+    const b = Math.floor((((times[i] - times[0]) / period) % 1) * BINS) % BINS;
+    fold[b] += speed[i]; foldN[b]++;
+  }
+  let calmBin = 0;
+  for (let b = 0; b < BINS; b++) if (foldN[b] && fold[b] / foldN[b] < fold[calmBin] / Math.max(1, foldN[calmBin])) calmBin = b;
+  const anchorSec = ((calmBin / BINS) + (+opt("anchor", 0))) % 1 * period;
+
+  // ── stage 6: cycle average with outlier drop ─────────────────────────────
+  const cycles = binCycles(channels, fsHz, period, anchorSec, BINS);
+  const { mean, kept, dropped } = averageCycles(cycles);
+  console.log(`[mocap] cycles: ${cycles.length} → kept ${kept.length}, dropped [${dropped.join(",")}]`);
+  if (kept.length < 2) { console.error("[mocap] fewer than 2 clean cycles — widen the loop window"); process.exit(1); }
+
+  // ── stage 7: distill to the standard table ────────────────────────────────
+  const thetasAvg = {};
+  for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
+  const pelvisAvg = mean.pelvisU;
+  const pelvisMean = pelvisAvg.reduce((a, b) => a + b, 0) / BINS;
+  const table = distillMove({
+    thetas: thetasAvg,
+    pelvisU: pelvisAvg,
+    footY: { L: mean.footYL, R: mean.footYR },
+    footVX: { L: mean.footVXL, R: mean.footVXR },
+  }, { bins: BINS, bpl, maxKeys: +opt("max-keys", 16), name: vName, keepDrift: flag("keep-drift") });
+  // pelvis lateral sway rides as dx (shape units around the loop mean)
+  for (const k of table.keys) {
+    const b = Math.round(k.phase * BINS) % BINS;
+    const dx = +(pelvisAvg[b] - pelvisMean).toFixed(4);
+    if (Math.abs(dx) >= 0.004) (k.joints.pelvis ??= {}).dx = dx;
+  }
+  console.log(`[mocap] table: ${table.keys.length} keys, joints ${Object.keys(table.keys[0].joints).length}+, net drift ${table._netDriftUnits} u/loop (${flag("keep-drift") ? "KEPT in travel" : "removed from travel"})`);
+
+  // ── stage 8: outputs ──────────────────────────────────────────────────────
+  const clipHash = createHash("sha256").update(fs.readFileSync(video)).digest("hex").slice(0, 12);
+  const poses = {
+    source: path.basename(video), clipSha: clipHash, view: vk,
+    window: [winA, winB], mirror, rig: path.basename(rigPath),
+    filter: filterMode === "oneeuro" ? { mode: "oneeuro", ...euro } : { mode: filterMode, ...sg },
+    fps: raw.meta.fps,
+    timing: { route: timingRoute, period: +period.toFixed(4), bpl,
+              bpm: beatSec ? +(60 / beatSec).toFixed(2) : null,
+              anchorSec: +anchorSec.toFixed(4), acStrength: +per.strength.toFixed(3),
+              cycles: cycles.length, kept: kept.length, dropped },
+    restCalibration: {
+      rests: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, +v.toFixed(4)])),
+      counts: cal.counts, fallbacks: cal.fallbacks,
+    },
+    frames: detected.map((f, i) => ({
+      t: +times[i].toFixed(4),
+      yaw: +yawsRaw[i].toFixed(4),
+      conf: +conf[i].toFixed(3),
+      thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
+      pelvisU: +pelvisU[i].toFixed(4),
+      footYaw: { L: +footYawOf(i, "L").toFixed(4), R: +footYawOf(i, "R").toFixed(4) },
+      twist: Object.fromEntries(Object.entries(twistFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])),
+    })),
+  };
+  fs.writeFileSync(`${vBase}.poses.json`, JSON.stringify(poses));
+  const { _netDriftUnits, ...moveOut } = table;
+  moveOut.view = vk;
+  moveOut.provenance = { clip: path.basename(video), clipSha: clipHash, window: [winA, winB],
+                         mirror, cyclesKept: kept.length, cyclesDropped: dropped.length,
+                         netDriftUnits: _netDriftUnits, pipeline: "tools/mocap/extract.mjs" };
+  fs.writeFileSync(`${vBase}.move.json`, JSON.stringify(moveOut, null, 2));
+  console.log(`[mocap] wrote ${path.basename(vBase)}.poses.json + .move.json (clip sha ${clipHash})`);
+
+  // ── stage 9: QA video ─────────────────────────────────────────────────────
+  if (primary && !flag("no-qa")) {
+    const bones = sidecar.joints.filter((j) => j.parent).map((j) => [j.name, j.parent]);
+    const spec = {
+      video: path.resolve(video), out: `${vBase}.qa.mp4`,
+      w: raw.meta.w, h: raw.meta.h, fps: raw.meta.fps,
+      period, anchorSec, t0: times[0], bpl, beatSec,
+      droppedCycles: dropped, bones,
+      ground: sidecar.ground ?? 0.905,
+      // extracted pelvis drift about the window mean, shape units — the QA
+      // ground marker (16.2 item 4) makes travel capture visible
+      pelvisDrift: (() => {
+        const m = pelvisU.reduce((a, b) => a + b, 0) / pelvisU.length;
+        return pelvisU.map((v) => +(v - m).toFixed(4));
+      })(),
+      frames: detected.map((f, i) => {
+        // rig-anchored render: theta = obs − measured human rest, so the
+        // calibration pose draws AS the rig's rest pose — this is what the
+        // stage will do, no view correction needed
+        const pose = fkPose(rig, thetaFrames[i]);
+        return {
+          i: f.i, k: i, t: +times[i].toFixed(4),
+          img: img[i].map(([x, y]) => [+(x).toFixed(4), +(y).toFixed(4)]),
+          rig: Object.fromEntries(Object.entries(pose).map(([nm, [x, y]]) => [nm, [+x.toFixed(4), +y.toFixed(4)]])),
+        };
+      }),
+    };
+    const specPath = `${vBase}.qa-spec.json`;
+    fs.writeFileSync(specPath, JSON.stringify(spec));
+    console.log("[mocap] rendering QA video…");
+    await new Promise((resolve, reject) => {
+      const p = spawn(py, [path.join(HERE, "qa_render.py"), specPath], { stdio: "inherit" });
+      p.on("close", (c) => c === 0 ? resolve() : reject(new Error(`qa_render exit ${c}`)));
+    });
+    fs.unlinkSync(specPath);
+    console.log(`[mocap] wrote ${path.basename(vBase)}.qa.mp4`);
+  }
+
 }
 
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
