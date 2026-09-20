@@ -21,6 +21,12 @@
  *                               ankle angle holds last valid (default 0.35)
  *     --enhance on|off          bbox crop + flip-TTA pose inference (default
  *                               on; off = legacy full-frame single-pass)
+ *     --view frontal|as-filmed  projection plane (default frontal = de-yaw to
+ *                               front view). as-filmed projects onto the
+ *                               CAMERA plane with no rotation — for clips
+ *                               filmed in the plane of the motion (profile
+ *                               running man: de-yaw rotates the sagittal
+ *                               knee lift into z and the projection drops it)
  *     --anchor F                extra phase shift 0..1 after auto-anchor
  *     --keep-drift              keep net pelvis drift in `travel` (single-side
  *                               captures of travelling moves; default removes it)
@@ -66,7 +72,7 @@ if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
                             "min-cutoff", "beta", "anchor", "max-keys", "out",
-                            "filter", "sg-window", "sg-order", "foot-gate", "enhance"]);
+                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -158,9 +164,13 @@ console.log(`[mocap] filter: ${filterMode}${filterMode === "savgol" ? ` (window 
 // ── stage 3: de-yaw ───────────────────────────────────────────────────────
 const ySign = detectYSign(world);
 const worldN = ySign === 1 ? world : world.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-const yaws = worldN.map((f) => frameYaw(f));
+const viewMode = opt("view", "frontal");
+const yawsRaw = worldN.map((f) => frameYaw(f));
+// as-filmed: no rotation — the camera plane IS the projection plane (the
+// yaw trace is still recorded in poses.json for provenance)
+const yaws = viewMode === "as-filmed" ? yawsRaw.map(() => 0) : yawsRaw;
 const frontal = worldN.map((f, i) => deYaw(f, yaws[i]));
-console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"} · yaw median ${median(yaws.map((y) => y * 180 / Math.PI)).toFixed(0)}°`);
+console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"} · yaw median ${median(yawsRaw.map((y) => y * 180 / Math.PI)).toFixed(0)}° · view=${viewMode}`);
 
 // ── stage 4: retarget to rig rotations ────────────────────────────────────
 const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror));
@@ -222,7 +232,7 @@ const twistFrames = frontal3.map((f) => boneTwists(f, rig, mirror));
 // Reported whole-window + per-third (constant vs drifting).
 {
   const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-  const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, frameYaw(f)), rig, mirror));
+  const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, viewMode === "as-filmed" ? 0 : frameYaw(f)), rig, mirror));
   const fps = raw.meta.fps;
   const xlag = (i0, i1) => {
     const seg = (frames2) => ARTICULATED.map((nm) => {
@@ -361,7 +371,7 @@ const poses = {
   ankleStanceOffsets: ankleOffsets,
   frames: detected.map((f, i) => ({
     t: +times[i].toFixed(4),
-    yaw: +yaws[i].toFixed(4),
+    yaw: +yawsRaw[i].toFixed(4),
     conf: +conf[i].toFixed(3),
     thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
     pelvisU: +pelvisU[i].toFixed(4),
