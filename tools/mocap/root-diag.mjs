@@ -18,7 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sgLandmarks } from "./lib/smooth.mjs";
-import { MP, buildRig, detectYSign, frameYaw, deYaw, retargetFrame, fkPose } from "./lib/retarget.mjs";
+import { MP, buildRig, detectYSign, frameYaw, deYaw, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -78,34 +78,59 @@ const rows = frontal.map((f, i) => {
   };
 });
 
-// round-trip on real data: rendered stickman bone angles vs observed
+// profile-view rest set (same estimation as extract.mjs)
+let view = null;
+if (viewMode === "as-filmed") {
+  let s = 0;
+  for (const f of frontal) s += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
+  view = { profileFacing: s < 0 ? -1 : 1 };
+  console.log(`[root-diag] profile rest set: facing ${view.profileFacing < 0 ? "left" : "right"}`);
+}
+
+// measured-rest calibration (same mechanism as extract.mjs)
+const masks = calibMasks(frontal);
+const cal = measureRest(frontal, rig, mirror, view, masks);
+if (cal.fallbacks.length) console.log(`[root-diag] rest fallback to declared: [${cal.fallbacks}]`);
+
+// round-trip on real data, RIG-ANCHORED identity (incl. FOOT bones):
+// rendered bone angle − rigRest must equal obs − measured human rest —
+// catches any rest/side/name mix-up (the mirror-rest bug class) without
+// requiring rendered == observed (they differ by humanRest − rigRest by
+// design: the calibration pose renders as the rig's rest pose)
+// chest is checked via chest→neck: in FK a bone rotates by its PARENT
+// joint's acc, so pelvis→chest is rest-fixed and chest's theta shows on
+// its children — checking pelvis→chest would just re-measure the
+// single-bend chest semantics as a fake error
 const CHECK = [["shoulderL", "elbowL"], ["elbowL", "handL"], ["hipL", "kneeL"], ["kneeL", "ankleL"],
-               ["hipR", "kneeR"], ["kneeR", "ankleR"], ["pelvis", "chest"]];
-const obsOf = {
-  "shoulderL,elbowL": [MP.shoulderL, MP.elbowL], "elbowL,handL": [MP.elbowL, MP.wristL],
-  "hipL,kneeL": [MP.hipL, MP.kneeL], "kneeL,ankleL": [MP.kneeL, MP.ankleL],
-  "hipR,kneeR": [MP.hipR, MP.kneeR], "kneeR,ankleR": [MP.kneeR, MP.ankleR],
-};
+               ["hipR", "kneeR"], ["kneeR", "ankleR"], ["ankleL", "footL"], ["ankleR", "footR"],
+               ["chest", "neck"]];
+const defNameOf = (pa, ch) => pa;
+// observed endpoints straight from the def rows (mirror/view already applied)
+const defRows = Object.fromEntries(rig.defs(mirror, view).map((d) => [d[0], d]));
+// rotLimit clamp count on the final thetas
+const lim = { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0,
+              ...(sidecar.rotLimits ?? {}) };
+const clampHits = {};
 let worstRT = 0, worstBone = "";
+const point2 = (f, key) => typeof key === "number" ? f[key]
+  : key === "hipMid" ? mid(f[MP.hipL], f[MP.hipR])
+  : key === "shoulderMid" ? mid(f[MP.shoulderL], f[MP.shoulderR])
+  : mid(f[MP.earL], f[MP.earR]);
 for (let i = 0; i < frontal.length; i++) {
-  const th = retargetFrame(frontal[i], rig, mirror);
+  const th = retargetFrame(frontal[i], rig, mirror, view, cal.rests);
+  for (const [nm, v] of Object.entries(th)) {
+    const l = lim[nm.replace(/[LR]$/, "")];
+    if (l && Math.abs(v) > l) clampHits[nm] = (clampHits[nm] ?? 0) + 1;
+  }
   const pose = fkPose(rig, th);
   for (const [pa, ch] of CHECK) {
+    const nm = defNameOf(pa, ch);
+    const [, , a, b] = defRows[nm];
+    const observed = ang(point2(frontal[i], a), point2(frontal[i], b));
     const rendered = ang(pose[pa], pose[ch]);
-    let observed;
-    if (pa === "pelvis") observed = ang(mid(frontal[i][MP.hipL], frontal[i][MP.hipR]),
-                                        mid(frontal[i][MP.shoulderL], frontal[i][MP.shoulderR]));
-    else {
-      // mirror swaps which person side feeds this rig chain
-      const key = `${pa},${ch}`;
-      const [a, b] = obsOf[key];
-      const swap = (idx) => mirror ? ({ [MP.shoulderL]: MP.shoulderR, [MP.shoulderR]: MP.shoulderL,
-        [MP.elbowL]: MP.elbowR, [MP.elbowR]: MP.elbowL, [MP.wristL]: MP.wristR, [MP.wristR]: MP.wristL,
-        [MP.hipL]: MP.hipR, [MP.hipR]: MP.hipL, [MP.kneeL]: MP.kneeR, [MP.kneeR]: MP.kneeL,
-        [MP.ankleL]: MP.ankleR, [MP.ankleR]: MP.ankleL }[idx] ?? idx) : idx;
-      observed = ang(frontal[i][swap(a)], frontal[i][swap(b)]);
-    }
-    const d = Math.abs(Math.atan2(Math.sin(rendered - observed), Math.cos(rendered - observed)));
+    const rigRest = ang([rig.joints[pa].x, rig.joints[pa].y], [rig.joints[ch].x, rig.joints[ch].y]);
+    const lhs = rendered - rigRest, rhs = observed - cal.rests[nm];
+    const d = Math.abs(Math.atan2(Math.sin(lhs - rhs), Math.cos(lhs - rhs)));
     if (d > worstRT) { worstRT = d; worstBone = `${pa}→${ch}@${times[i].toFixed(2)}s`; }
   }
 }
@@ -125,4 +150,5 @@ console.log(`[root-diag] lateral |shL→shR|  / spine: ${stats(rows.map((r) => r
 console.log(`[root-diag] chest angle SPINE-derived (actual): ${stats(rows.map((r) => r.chestSpine))}° sd ${sd(rows.map((r) => r.chestSpine)).toFixed(1)}°`);
 console.log(`[root-diag] pelvis angle LATERAL-derived (hypothetical): sd ${sd(rows.map((r) => r.pelvisLat)).toFixed(1)}°`);
 console.log(`[root-diag] chest angle LATERAL-derived (hypothetical): sd ${sd(rows.map((r) => r.chestLat)).toFixed(1)}°`);
-console.log(`[root-diag] round-trip rendered-vs-observed (non-ankle bones): worst ${(worstRT * 180 / Math.PI).toFixed(2)}° (${worstBone})`);
+console.log(`[root-diag] round-trip rendered-vs-observed (incl. feet): worst ${(worstRT * 180 / Math.PI).toFixed(2)}° (${worstBone})`);
+console.log(`[root-diag] rotLimit clamp hits: ${Object.keys(clampHits).length ? JSON.stringify(clampHits) + " — REST-REFERENCE SMELL" : "0"}`);

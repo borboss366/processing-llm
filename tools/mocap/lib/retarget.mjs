@@ -103,16 +103,99 @@ export function buildRig(sidecar) {
     // discipline as the arm chain
     [`hip${pl}`, null, MP.hipL, MP.kneeL, rest(`hip${pl}`, `knee${pl}`)],
     [`knee${pl}`, `hip${pl}`, MP.kneeL, MP.ankleL, rest(`knee${pl}`, `ankle${pl}`)],
-    [`ankle${pl}`, `knee${pl}`, MP.ankleL, MP.toeL, rest(`ankle${pl}`, `foot${pl}`)],
+    // foot observed as HEEL→TOE (2026-09-21): ankle→toe slopes ~25–30°
+    // down-forward even when the foot is flat (the ankle sits above the
+    // foot), so planted frames read as plantarflexion and the stickman
+    // tiptoes; heel→toe is horizontal when flat
+    [`ankle${pl}`, `knee${pl}`, MP.heelL, MP.toeL, rest(`ankle${pl}`, `foot${pl}`)],
     [`hip${pr}`, null, MP.hipR, MP.kneeR, rest(`hip${pr}`, `knee${pr}`)],
     [`knee${pr}`, `hip${pr}`, MP.kneeR, MP.ankleR, rest(`knee${pr}`, `ankle${pr}`)],
-    [`ankle${pr}`, `knee${pr}`, MP.ankleR, MP.toeR, rest(`ankle${pr}`, `foot${pr}`)],
+    [`ankle${pr}`, `knee${pr}`, MP.heelR, MP.toeR, rest(`ankle${pr}`, `foot${pr}`)],
   ];
+  // view-specific rest overrides (2026-09-20 "palsy foot"): the sidecar is
+  // a FRONT view — feet point outward on opposite sides, arms slope outward.
+  // In a PROFILE clip both feet point the facing direction and arms hang
+  // along the body; measuring against front rests parks ~π on one ankle
+  // (clamps at the rotLimit) and a constant on the shoulders. view =
+  // { profileFacing: -1 | +1 } swaps in profile rests: one shared forward
+  // foot neutral (the facing side's own rest) and straight-down arms.
+  const applyView = (rows, view) => {
+    if (!view?.profileFacing) return rows;
+    // heel→toe observation: a flat profile foot is HORIZONTAL in the facing
+    // direction (was: the rig foot's own sloped rest — the tiptoe bias)
+    const footNeutral = view.profileFacing < 0 ? Math.PI : 0;
+    const DOWN = Math.PI / 2;                          // y-down screen: hanging arm
+    return rows.map(([name, parent, a, b, r]) => {
+      if (/^ankle/.test(name)) return [name, parent, a, b, footNeutral];
+      if (/^(shoulder|elbow)/.test(name)) return [name, parent, a, b, DOWN];
+      return [name, parent, a, b, r];
+    });
+  };
   return {
     joints: J,
     order: sidecar.joints.map((j) => j.name),
-    defs: (mirror) => (mirror ? defs('R', 'L') : defs('L', 'R')),
+    rest,
+    defs: (mirror, view) => applyView(mirror ? defs('R', 'L') : defs('L', 'R'), view),
   };
+}
+
+// ── Measured-rest calibration (2026-09-21) ─────────────────────────────────
+// Declared rest sets (front sidecar geometry, profile overrides) are GUESSES
+// about the human's neutral; every guess so far shipped a bias (opposing
+// feet, sloped arms, ankle→toe tiptoes). Measure instead: the median
+// observed bone angle over PLANTED, LOW-VELOCITY frames is the human's own
+// rest in this clip and view; thetas are deviations from it, applied onto
+// the rig's rest by FK. Declared rests remain only the fallback when a bone
+// never qualifies. QA/engine semantics: rendered = rigRest + (obs −
+// humanRest) — the calibration pose renders AS the rig's rest pose.
+
+// frame masks: global = lowest-30% whole-body velocity; legL/legR = frames
+// where that PERSON side's foot is planted (within 10% of its lowest point)
+export function calibMasks(frontalFrames) {
+  const n = frontalFrames.length;
+  const vel = new Float64Array(n);
+  for (let i = 1; i < n; i++) {
+    let s = 0;
+    for (let l = 0; l < frontalFrames[i].length; l++) {
+      if (!frontalFrames[i][l] || !frontalFrames[i - 1][l]) continue;   // sparse test frames
+      s += Math.hypot(frontalFrames[i][l][0] - frontalFrames[i - 1][l][0],
+                      frontalFrames[i][l][1] - frontalFrames[i - 1][l][1]);
+    }
+    vel[i] = s;
+  }
+  vel[0] = vel[1] ?? 0;
+  const thresh = [...vel].sort((a, b) => a - b)[Math.floor(n * 0.3)];
+  const global = Array.from(vel, (v) => v <= thresh);
+  const planted = (heel, toe) => {
+    const fy = frontalFrames.map((f) => Math.max(f[heel][1], f[toe][1]));
+    const hi = Math.max(...fy), lo = Math.min(...fy);
+    return fy.map((y) => y >= hi - 0.1 * (hi - lo || 1));
+  };
+  return { global, legL: planted(MP.heelL, MP.toeL), legR: planted(MP.heelR, MP.toeR) };
+}
+
+const LEG_L = new Set([MP.hipL, MP.kneeL, MP.ankleL, MP.heelL, MP.toeL]);
+const LEG_R = new Set([MP.hipR, MP.kneeR, MP.ankleR, MP.heelR, MP.toeR]);
+
+// median observed angle per def bone over its calibration mask → human rest.
+// Leg bones calibrate on their own side's planted frames; everything else on
+// the global quiet mask. < 5 qualifying frames → declared rest (fallback).
+export function measureRest(frontalFrames, rig, mirror, view, masks) {
+  const rests = {}, counts = {}, fallbacks = [];
+  for (const [name, , a, b, declared] of rig.defs(mirror, view)) {
+    const mask = (typeof a === "number" && LEG_L.has(a)) ? masks.legL
+      : (typeof a === "number" && LEG_R.has(a)) ? masks.legR
+      : masks.global;
+    let cs = 0, sn = 0, k = 0;
+    for (let i = 0; i < frontalFrames.length; i++) {
+      if (!mask[i]) continue;
+      const o = ang(point(frontalFrames[i], a), point(frontalFrames[i], b));
+      cs += Math.cos(o); sn += Math.sin(o); k++;
+    }
+    if (k >= 5) { rests[name] = Math.atan2(sn, cs); counts[name] = k; }
+    else { rests[name] = declared; counts[name] = k; fallbacks.push(name); }
+  }
+  return { rests, counts, fallbacks };
 }
 
 // pseudo-points on a de-yawed 2D frame
@@ -126,11 +209,11 @@ function point(frame2d, key) {
 
 // One de-yawed 2D frame → { jointName: theta } for the 10 articulated joints
 // (pelvis is root, leaves stay 0). accRot chains through parent entries.
-export function retargetFrame(frame2d, rig, mirror) {
+export function retargetFrame(frame2d, rig, mirror, view = null, humanRest = null) {
   const thetas = {}, acc = {};
-  for (const [name, parent, a, b, restAngle] of rig.defs(mirror)) {
+  for (const [name, parent, a, b, restAngle] of rig.defs(mirror, view)) {
     const obs = ang(point(frame2d, a), point(frame2d, b));
-    const accHere = wrap(obs - restAngle);
+    const accHere = wrap(obs - (humanRest?.[name] ?? restAngle));
     acc[name] = accHere;
     thetas[name] = wrap(accHere - (parent ? acc[parent] : 0));
   }

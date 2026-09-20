@@ -46,7 +46,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { filterLandmarks, oneEuro } from "./lib/oneeuro.mjs";
 import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
-import { MP, buildRig, detectYSign, frameYaw, deYaw, deYaw3, boneTwists, retargetFrame, fkPose } from "./lib/retarget.mjs";
+import { MP, buildRig, detectYSign, frameYaw, deYaw, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove } from "./lib/distill.mjs";
 
@@ -173,7 +173,32 @@ const frontal = worldN.map((f, i) => deYaw(f, yaws[i]));
 console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"} · yaw median ${median(yawsRaw.map((y) => y * 180 / Math.PI)).toFixed(0)}° · view=${viewMode}`);
 
 // ── stage 4: retarget to rig rotations ────────────────────────────────────
-const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror));
+// as-filmed = profile-family view: estimate the dancer's facing (median
+// heel→toe x over both feet) and swap in the profile rest set (both feet
+// forward, arms hanging) — measuring a profile pose against FRONT rests
+// parked ~π on one ankle (the "palsy foot": clamps at rotLimits.ankle)
+let view = null;
+if (viewMode === "as-filmed") {
+  let s = 0;
+  for (const f of frontal) {
+    s += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
+  }
+  view = { profileFacing: s < 0 ? -1 : 1 };
+  console.log(`[mocap] profile rest set: facing ${view.profileFacing < 0 ? "left" : "right"} (heel→toe median)`);
+}
+// measured-rest calibration (2026-09-21): the human's own neutral from
+// planted low-velocity frames; declared/view rests only as fallback
+const masks = calibMasks(frontal);
+const cal = measureRest(frontal, rig, mirror, view, masks);
+{
+  const declared = Object.fromEntries(rig.defs(mirror, view).map((d) => [d[0], d[4]]));
+  const deltas = Object.fromEntries(Object.entries(cal.rests)
+    .map(([nm, v]) => [nm, +((((v - declared[nm]) + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI).toFixed(2)]));
+  console.log(`[mocap] measured rest: calib frames global=${masks.global.filter(Boolean).length} legL=${masks.legL.filter(Boolean).length} legR=${masks.legR.filter(Boolean).length}` +
+    `${cal.fallbacks.length ? ` · fallback declared: [${cal.fallbacks}]` : ""}`);
+  console.log(`[mocap] measured−declared rest deltas (rad): ${JSON.stringify(deltas)}`);
+}
+const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror, view, cal.rests));
 
 // foot-length gating (16.2 item 1): where the projected heel→toe length
 // collapses (foot pointing at the camera), the 2D ankle angle is atan2 of
@@ -198,23 +223,30 @@ const FOOT_GATE = +opt("foot-gate", 0.35);
   console.log(`[mocap] foot gate (<${FOOT_GATE}): held ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
 }
 
-// ankle re-centering (2026-09-20 "ankles reversed" — ankle-diag): the rig's
-// PROFILE feet point sideways, a frontal source's feet point at the camera,
-// so absolute retarget parks a ~rad-scale constant offset on the ankle
-// channel (measured mean −1.5 rad on ankleL) that flips the stage foot.
-// 2D can only fake the foot's yaw fan as DEVIATION, so ankles are
-// re-expressed relative to the clip's own stance (circular mean over the
-// window); the rig's rest foot stays neutral. The true 3D heel→toe yaw is
-// kept per frame below for the future yaw-fake channel.
-const ankleOffsets = {};
-for (const nm of ["ankleL", "ankleR"]) {
-  let cs = 0, sn = 0;
-  for (const f of thetaFrames) { cs += Math.cos(f[nm]); sn += Math.sin(f[nm]); }
-  const mean = Math.atan2(sn, cs);
-  ankleOffsets[nm] = +mean.toFixed(3);
-  for (const f of thetaFrames) f[nm] = Math.atan2(Math.sin(f[nm] - mean), Math.cos(f[nm] - mean));
+// (the 2026-09-20 ankle re-centering is gone: measured-rest calibration
+// subsumes it — the ankle's planted median IS the stance neutral)
+
+// rotLimit clamp report (2026-09-20): a retargeted theta past the engine's
+// clamp is a REST-REFERENCE SMELL, not a data property — captured human
+// motion lives well inside anatomical limits when measured against the
+// right neutral
+{
+  const lim = { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0,
+                ...(sidecar.rotLimits ?? {}) };
+  const limitOf = (nm) => lim[nm.replace(/[LR]$/, "")] ?? null;
+  const hits = {};
+  for (const f of thetaFrames) {
+    for (const [nm, v] of Object.entries(f)) {
+      const l = limitOf(nm);
+      if (l && Math.abs(v) > l) hits[nm] = (hits[nm] ?? 0) + 1;
+    }
+  }
+  if (Object.keys(hits).length) {
+    console.log(`[mocap] CLAMP SMELL: thetas past rotLimits ${JSON.stringify(hits)} of ${thetaFrames.length} frames — check rest references`);
+  } else {
+    console.log(`[mocap] rotLimit clamp check: 0 hits across ${thetaFrames.length} frames`);
+  }
 }
-console.log(`[mocap] ankle stance offsets removed: ${JSON.stringify(ankleOffsets)} rad (profile rig vs frontal source)`);
 
 // depth channels (16.2 item 2 — emitted now, consumed by brief 17's depth
 // mechanism): per-frame de-yawed 3D pose → footYaw (floor-plane heel→toe
@@ -232,7 +264,7 @@ const twistFrames = frontal3.map((f) => boneTwists(f, rig, mirror));
 // Reported whole-window + per-third (constant vs drifting).
 {
   const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-  const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, viewMode === "as-filmed" ? 0 : frameYaw(f)), rig, mirror));
+  const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, viewMode === "as-filmed" ? 0 : frameYaw(f)), rig, mirror, view));
   const fps = raw.meta.fps;
   const xlag = (i0, i1) => {
     const seg = (frames2) => ARTICULATED.map((nm) => {
@@ -368,7 +400,10 @@ const poses = {
             bpm: beatSec ? +(60 / beatSec).toFixed(2) : null,
             anchorSec: +anchorSec.toFixed(4), acStrength: +per.strength.toFixed(3),
             cycles: cycles.length, kept: kept.length, dropped },
-  ankleStanceOffsets: ankleOffsets,
+  restCalibration: {
+    rests: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, +v.toFixed(4)])),
+    counts: cal.counts, fallbacks: cal.fallbacks,
+  },
   frames: detected.map((f, i) => ({
     t: +times[i].toFixed(4),
     yaw: +yawsRaw[i].toFixed(4),
@@ -403,6 +438,9 @@ if (!flag("no-qa")) {
       return pelvisU.map((v) => +(v - m).toFixed(4));
     })(),
     frames: detected.map((f, i) => {
+      // rig-anchored render: theta = obs − measured human rest, so the
+      // calibration pose draws AS the rig's rest pose — this is what the
+      // stage will do, no view correction needed
       const pose = fkPose(rig, thetaFrames[i]);
       return {
         i: f.i, k: i, t: +times[i].toFixed(4),
@@ -522,6 +560,8 @@ function selfTest() {
     fake[MP.kneeL] = pose.kneeL; fake[MP.kneeR] = pose.kneeR;
     fake[MP.ankleL] = pose.ankleL; fake[MP.ankleR] = pose.ankleR;
     fake[MP.toeL] = pose.footL; fake[MP.toeR] = pose.footR;
+    // heel→toe ankle defs: heel at the ankle keeps obs == ankle→foot angle
+    fake[MP.heelL] = pose.ankleL; fake[MP.heelR] = pose.ankleR;
     fake[MP.earL] = pose.neck; fake[MP.earR] = pose.neck;
     // chest observation is hipMid→shoulderMid, which the rig bends at chest —
     // it cannot round-trip exactly (documented DOF projection); check the
@@ -565,6 +605,32 @@ function selfTest() {
     }
     console.log(`[self-test] mirror round-trip: worst rendered-vs-observed ${worstM.toExponential(2)} rad (${worstMB})`);
     if (worstM > 1e-9) fails.push(`mirror round-trip err ${worstM} rad (${worstMB})`);
+    // profile rest set (2026-09-20 palsy foot): both observed feet forward
+    // (left) → ankle thetas small under view rests; against FRONT rests the
+    // off-side foot reads ~π (the clamp-smell case)
+    const fake2 = fake.map((p) => p && [...p]);
+    fake2[MP.toeL] = [pose.ankleL[0] - 0.1, pose.ankleL[1] + 0.02];
+    fake2[MP.toeR] = [pose.ankleR[0] - 0.1, pose.ankleR[1] + 0.02];
+    fake2[MP.heelL] = [pose.ankleL[0] + 0.02, pose.ankleL[1] + 0.02];
+    fake2[MP.heelR] = [pose.ankleR[0] + 0.02, pose.ankleR[1] + 0.02];
+    const thProf = retargetFrame(fake2, rg, false, { profileFacing: -1 });
+    const thFront = retargetFrame(fake2, rg, false);
+    const maxProf = Math.max(Math.abs(thProf.ankleL), Math.abs(thProf.ankleR));
+    const maxFront = Math.max(Math.abs(thFront.ankleL), Math.abs(thFront.ankleR));
+    console.log(`[self-test] profile foot rests: max |ankle| ${maxProf.toFixed(2)} rad under view (front rests read ${maxFront.toFixed(2)})`);
+    if (maxProf > 0.5) fails.push(`profile ankle theta ${maxProf.toFixed(2)} rad — view rests not applied`);
+    if (maxFront < 2) fails.push("front-rest control did not show the ~π off-side foot");
+    // measured-rest self-calibration (2026-09-21 tiptoes): a static clip
+    // calibrated on itself is its own rest — every theta must be ~0
+    // regardless of how the pose disagrees with any declared rest
+    const staticClip = Array.from({ length: 12 }, () => fake2);
+    const m = calibMasks(staticClip);
+    const c = measureRest(staticClip, rg, false, null, m);
+    const thCal = retargetFrame(fake2, rg, false, null, c.rests);
+    const maxCal = Math.max(...Object.values(thCal).map(Math.abs));
+    console.log(`[self-test] measured-rest self-calibration: max |theta| ${maxCal.toExponential(2)} rad, fallbacks [${c.fallbacks}]`);
+    if (maxCal > 1e-9) fails.push(`self-calibration theta ${maxCal} — measured rest broken`);
+    if (c.fallbacks.length) fails.push(`self-calibration fell back on [${c.fallbacks}]`);
   }
   // 4) outlier cycles dropped: 6 clean + 2 scaled
   {
