@@ -46,6 +46,7 @@ creature rig). Full guide in `README.md`.
 | Feet (brief 15C) | heel-pivot swing 7.3→14.8 px, toe 0.0; components 1; walk stretch 62→38% | fk-check + capture |
 | Mocap pipeline math (brief 16 T1) | round-trip 6.1e-16 rad incl. hips; period ×1/×2 both correct; distill err 0.044 rad | mocap self-test |
 | Zero-phase smoothing (lag fix) | retarget lag 47–60 ms drifting (One Euro) → −0.7/+1.6 ms constant (Savitzky–Golay) | extract.mjs lag diagnostic |
+| Ankle stance re-centering | −1.6/+1.1 rad profile-vs-frontal offsets removed; 0 wrap jumps, 0 foreshortened frames; footYaw channel recorded | ankle-diag + extract.mjs |
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
 | Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
 | Moves × shapes matrix (brief 16 T2) | 6 moves × 2 stage shapes: 0 spikes, components 1, hips articulate (0.47/0.53) | moves-x-shapes |

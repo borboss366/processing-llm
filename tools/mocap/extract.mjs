@@ -145,6 +145,30 @@ console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"}
 // ── stage 4: retarget to rig rotations ────────────────────────────────────
 const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror));
 
+// ankle re-centering (2026-09-20 "ankles reversed" — ankle-diag): the rig's
+// PROFILE feet point sideways, a frontal source's feet point at the camera,
+// so absolute retarget parks a ~rad-scale constant offset on the ankle
+// channel (measured mean −1.5 rad on ankleL) that flips the stage foot.
+// 2D can only fake the foot's yaw fan as DEVIATION, so ankles are
+// re-expressed relative to the clip's own stance (circular mean over the
+// window); the rig's rest foot stays neutral. The true 3D heel→toe yaw is
+// kept per frame below for the future yaw-fake channel.
+const ankleOffsets = {};
+for (const nm of ["ankleL", "ankleR"]) {
+  let cs = 0, sn = 0;
+  for (const f of thetaFrames) { cs += Math.cos(f[nm]); sn += Math.sin(f[nm]); }
+  const mean = Math.atan2(sn, cs);
+  ankleOffsets[nm] = +mean.toFixed(3);
+  for (const f of thetaFrames) f[nm] = Math.atan2(Math.sin(f[nm] - mean), Math.cos(f[nm] - mean));
+}
+console.log(`[mocap] ankle stance offsets removed: ${JSON.stringify(ankleOffsets)} rad (profile rig vs frontal source)`);
+// 3D heel→toe yaw per rig side (mirror swaps which person foot feeds which)
+const footYawOf = (f, rigSide) => {
+  const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
+  const h = f[MP[`heel${p}`]], t = f[MP[`toe${p}`]];
+  return Math.atan2(t[2] - h[2], t[0] - h[0]);
+};
+
 // ── lag diagnostic: filtered pipeline vs a RAW parallel path ─────────────
 // Cross-correlate joint-angle signals; peak at lag>0 = rig lags source.
 // Reported whole-window + per-third (constant vs drifting).
@@ -286,12 +310,14 @@ const poses = {
             bpm: beatSec ? +(60 / beatSec).toFixed(2) : null,
             anchorSec: +anchorSec.toFixed(4), acStrength: +per.strength.toFixed(3),
             cycles: cycles.length, kept: kept.length, dropped },
+  ankleStanceOffsets: ankleOffsets,
   frames: detected.map((f, i) => ({
     t: +times[i].toFixed(4),
     yaw: +yaws[i].toFixed(4),
     conf: +conf[i].toFixed(3),
     thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
     pelvisU: +pelvisU[i].toFixed(4),
+    footYaw: { L: +footYawOf(worldN[i], "L").toFixed(4), R: +footYawOf(worldN[i], "R").toFixed(4) },
   })),
 };
 fs.writeFileSync(`${clipBase}.poses.json`, JSON.stringify(poses));
