@@ -29,7 +29,13 @@ export function angularSpeed(frames, times, jointNames) {
 // Whether the true LOOP is 2× the base is decided by decideLoop() on the
 // SIGNED theta channels: summed |angular speed| erases L/R asymmetry, so an
 // alternating move's speed genuinely has half-loop period.
-export function detectPeriod(signal, fs, { minLag = 0.25, maxLag = 4, peakTol = 0.85 } = {}) {
+// `target` (2026-09-23, body roll): a logged cycle count gives period ≈
+// window/N — search only ±43% around it and skip the subharmonic descent.
+// The unconstrained search latched a 0.22 s micro-bounce harmonic on a
+// 1.5 s body roll and cycle-averaged the whole move away; a cycle count in
+// MOTION_SOURCES.md is cheap ground truth the log already wants to carry.
+export function detectPeriod(signal, fs, { minLag = 0.25, maxLag = 4, peakTol = 0.85, target = null } = {}) {
+  if (target) { minLag = target * 0.7; maxLag = target * 1.43; }
   const n = signal.length;
   const mean = signal.reduce((a, b) => a + b, 0) / n;
   const x = Array.from(signal, (v) => v - mean);
@@ -57,6 +63,7 @@ export function detectPeriod(signal, fs, { minLag = 0.25, maxLag = 4, peakTol = 
   // doubling errors are not, so bias down: while a local peak near lag/2
   // holds ≥ half the strength, descend.
   for (;;) {
+    if (target) break;                         // cycle-count prior owns the octave
     const half = Math.round(lag / 2);
     if (half < lo + 2) break;
     let bestK = half, bestV = -Infinity;

@@ -72,7 +72,7 @@ if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
                             "min-cutoff", "beta", "anchor", "max-keys", "out",
-                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views"]);
+                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views", "cycles"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -368,7 +368,9 @@ async function processView(vk, primary) {
   }
 
   const speed = angularSpeed(thetaFrames, times, ARTICULATED);
-  const per = detectPeriod(speed, fsHz);
+  const cyclesPrior = opt("cycles", null);   // logged cycle count for this window
+  const per = detectPeriod(speed, fsHz,
+    cyclesPrior ? { target: (winB - winA) / +cyclesPrior } : {});
   const signedCh = Object.fromEntries(ARTICULATED.map((nm) => [nm, channels[`th:${nm}`]]));
   const loop = decideLoop(signedCh, fsHz, per.period);
   let period = per.period * loop.mult;

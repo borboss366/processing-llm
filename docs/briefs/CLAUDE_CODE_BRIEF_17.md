@@ -90,7 +90,10 @@ A7b. **Rig inspector (added 2026-09-21, after A1–A7 landed; build
     table); one-click export of the composite as webm into reports/.
     Every Route B gate verdict from A7 on is given in this view and its
     export is the committed evidence. The 45° panel is the honest gap
-    until B lands.
+    until B lands. Controls: symmetrize (off / from near / from far — live 
+    stitch-mirror on the loaded table; default "from near" for symmetric-tagged moves),
+    mirror rig L↔R, facing flip; per-limb estimator visibility shown as confidence bars; 
+    the chosen variant is recorded in the export filename and report line.
 
 A8. **Body roll capture** (after A7, before B): `corpus/bodyroll-h264.mp4`
     is logged; extract with --emit-views profile,front. It is a
