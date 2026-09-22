@@ -1636,7 +1636,14 @@ export default {
       for (const T of state.tips) {
         if (!T.ground) continue;
         const s2 = (cw[T.name] ??= { x: 0, v: 0 });
-        const target = mvPose?.contacts.has(T.name) ? 1 : 0;
+        // yield (brief 17 A7 fix): contacts flags can be wrong (2026-09-23:
+        // profile capture flagged the occluded foot planted through its
+        // whole swing and the lock killed the lift on stage) — when the
+        // TABLE POSE itself lifts this foot well above its rest, the lock
+        // must not fight the table. Pre-lock FK position is authoritative:
+        // y-down, so rest minus current > threshold = lifted.
+        const tableLifts = (T.y - T.ay) > 0.025;
+        const target = (mvPose?.contacts.has(T.name) && !tableLifts) ? 1 : 0;
         const w = Math.max(0, Math.min(1, springStep(s2, target, MV_WN, dt)));
         if (w <= 0.001) continue;
         T.ax += (T.x - T.ax) * w;

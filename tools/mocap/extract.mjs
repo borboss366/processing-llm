@@ -404,11 +404,30 @@ async function processView(vk, primary) {
   for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
   const pelvisAvg = mean.pelvisU;
   const pelvisMean = pelvisAvg.reduce((a, b) => a + b, 0) / BINS;
+  // contacts from the RIG'S OWN FK (2026-09-23): image-space foot height is
+  // unreliable for the OCCLUDED far foot in profile — the runningman's
+  // footL read planted through its whole swing and the stage stance lock
+  // then killed the lift. The averaged thetas demonstrably carry the lift
+  // (QA stickman), so contact is judged where the rig itself puts each foot.
+  const fkFY = { L: new Float64Array(BINS), R: new Float64Array(BINS) };
+  const fkFX = { L: new Float64Array(BINS), R: new Float64Array(BINS) };
+  for (let b = 0; b < BINS; b++) {
+    const pose = fkPose(rig, Object.fromEntries(ARTICULATED.map((nm) => [nm, thetasAvg[nm][b]])));
+    fkFY.L[b] = pose.footL[1]; fkFY.R[b] = pose.footR[1];
+    fkFX.L[b] = pose.footL[0]; fkFX.R[b] = pose.footR[0];
+  }
+  const circD = (arr) => Float64Array.from(arr, (_, b) =>
+    (arr[(b + 1) % BINS] - arr[(b - 1 + BINS) % BINS]) / 2);
+  for (const s of ["L", "R"]) {
+    const range = Math.max(...fkFY[s]) - Math.min(...fkFY[s]);
+    const band = range < 0.04 ? range : Math.max(0.02, 0.25 * range);   // mirror of distill's rule
+    console.log(`[mocap] fk foot${s}: y-range ${range.toFixed(3)} u (contact band ${band.toFixed(3)}${range < 0.04 ? ", pivot foot: all planted" : ""})`);
+  }
   const table = distillMove({
     thetas: thetasAvg,
     pelvisU: pelvisAvg,
-    footY: { L: mean.footYL, R: mean.footYR },
-    footVX: { L: mean.footVXL, R: mean.footVXR },
+    footY: { L: fkFY.L, R: fkFY.R },
+    footVX: { L: circD(fkFX.L), R: circD(fkFX.R) },
   }, { bins: BINS, bpl, maxKeys: +opt("max-keys", 16), name: vName, keepDrift: flag("keep-drift") });
   // pelvis lateral sway rides as dx (shape units around the loop mean)
   for (const k of table.keys) {

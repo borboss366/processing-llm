@@ -54,6 +54,7 @@ creature rig). Full guide in `README.md`.
 | Measured-rest calibration | planted/quiet-frame medians replace declared rests (elbow guess was off −1.2 rad); round-trip 0.00°, clamp hits 16→0; feet heel→toe (tiptoes gone); self-test 11/11 | root-diag + self-test |
 | Per-side sign (far-side flip) | flipped side erred at exactly 2× deviation (worst 128.6°) → 0.0° all bones both sides; profile lift self-test L/R 0.00°; self-test 13/13 | root-diag + self-test |
 | Canonical views (brief 17 A) | front↔profile switch ≈1 bar, 0 spikes, components 1 forced+move-driven; profile walk 899 px / 9 turns / 0 spikes; --view auto frontness 2°/82° correct | view-switch-check + moves-x-shapes |
+| FK contacts + stance-lock yield | occluded-foot contacts were image-derived garbage (planted all 16 keys) → FK-derived, alternating; lock yields at 0.025 u table lift; both legs track at every scrub | scrub probe + view-switch-check |
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
 | Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
 | Moves × shapes matrix (brief 16 T2) | 6 moves × 2 stage shapes: 0 spikes, components 1, hips articulate (0.47/0.53) | moves-x-shapes |

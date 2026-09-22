@@ -44,10 +44,7 @@
           "rot": -0.554
         }
       },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
+      "contacts": [],
       "ease": "snap",
       "travel": 0.0083
     },
@@ -91,10 +88,7 @@
           "rot": -0.554
         }
       },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
+      "contacts": [],
       "ease": "smooth",
       "travel": 0.019
     },
@@ -138,10 +132,7 @@
           "rot": -0.554
         }
       },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
+      "contacts": [],
       "ease": "snap",
       "travel": 0.0085
     },
@@ -186,8 +177,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "ease": "smooth",
       "travel": 0.0301
@@ -233,8 +223,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "ease": "snap",
       "travel": 0.0191
@@ -280,8 +269,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "ease": "snap",
       "travel": 0.0472
@@ -376,7 +364,9 @@
           "dx": 0.0242
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
       "ease": "smooth",
       "travel": 0.0141
     },
@@ -423,7 +413,9 @@
           "dx": 0.0261
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
       "ease": "smooth",
       "travel": 0.0488
     },
@@ -470,9 +462,7 @@
           "dx": 0.0135
         }
       },
-      "contacts": [
-        "footR"
-      ],
+      "contacts": [],
       "ease": "smooth",
       "travel": -0.1112
     },
@@ -520,7 +510,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "ease": "snap",
@@ -570,7 +559,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "ease": "smooth",
@@ -616,10 +604,7 @@
           "rot": -0.456
         }
       },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
+      "contacts": [],
       "ease": "snap",
       "travel": -0.1466
     },
@@ -666,10 +651,7 @@
           "dx": -0.0109
         }
       },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
+      "contacts": [],
       "ease": "snap",
       "travel": -0.1522
     },
@@ -717,8 +699,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "ease": "smooth",
       "travel": -0.0513
@@ -766,10 +747,7 @@
           "dx": -0.0341
         }
       },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
+      "contacts": [],
       "ease": "smooth",
       "travel": 0.0206
     }

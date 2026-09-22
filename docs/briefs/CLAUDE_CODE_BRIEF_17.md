@@ -65,6 +65,33 @@ A7. Acceptance: running man performing on stage in profile (rebuilt
     table — which is the rotation default?" — the first Route B stage
     verdict. STOP here.
 
+A7b. **Rig inspector (added 2026-09-21, after A1–A7 landed; build
+    BEFORE the user judges A7).** The goo hides mechanics and the 2D
+    rig cannot be orbited, so the puppet page gains three synchronized
+    panels driven by one yaw/pitch control (sliders + drag-orbit) and
+    the move-phase scrub:
+    (1) the captured 3D skeleton from the move's poses.json, rotated to
+        that angle — ground truth, any perspective;
+    (2) the rig's presentation at that yaw: nearest canonical view +
+        the yaw-fake/twist as implemented so far, WIRE mode;
+    (3) the goo render of the same.
+    Wire is the default; frame-step and phase-scrub apply to all three;
+    for authored (non-captured) moves panel 1 is empty with a label.
+    The gap between panels 1 and 2 at intermediate yaw is the
+    documented cost of the 2D rig and the spec for any future
+    volumetric renderer ("make 2 look like 1"). Then re-arm A7 and hand
+    the gate to the user.
+
+    **Judgment view (extension, 2026-09-23):** the inspector doubles as
+    the gate tool. Panel 0 = the source clip with landmark overlay;
+    rig panels at yaw 0°, 45°, 90° (wire/goo toggle each), all
+    phase-locked to the clip and playing at its frame rate with
+    scrub/pause; variant dropdown (plain / exag / front table / profile
+    table); one-click export of the composite as webm into reports/.
+    Every Route B gate verdict from A7 on is given in this view and its
+    export is the committed evidence. The 45° panel is the honest gap
+    until B lands.
+
 A8. **Body roll capture** (after A7, before B): `corpus/bodyroll-h264.mp4`
     is logged; extract with --emit-views profile,front. It is a
     sagittal wave and the first real move through the spine/chest

@@ -74,11 +74,21 @@ export function distillMove(avg, opts) {
   // its horizontal speed is low (image space carries the ground truth)
   const contactMask = { L: new Array(bins).fill(false), R: new Array(bins).fill(false) };
   for (const side of ['L', 'R']) {
+    // footY/footVX are the RIG-FK foot channels (2026-09-23): planted =
+    // near the cycle's lowest point (y-down: max) AND slow horizontally.
+    // Absolute floor band: a pivoting weighted foot barely changes height,
+    // so a purely relative band collapses to nothing; 0.3×range releases a
+    // genuinely swinging foot early enough that the stance lock can't eat
+    // its lift.
     const y = avg.footY[side], vx = avg.footVX[side];
     const yMax = Math.max(...y), yMin = Math.min(...y);
-    // absolute floor band: a pivoting weighted foot barely changes height, so
-    // a purely relative band collapses to nothing and reports zero contacts
-    const band = Math.max(0.02, 0.15 * (yMax - yMin));
+    // range < 0.04 u = a pivot foot (t-step): never leaves the ground, all
+    // planted. A real swing releases above 25% of its own range — an
+    // occluded-leg capture can swing at HALF the other side's amplitude
+    // (runningman footL 0.051 vs footR 0.058 was already borderline) and a
+    // fat absolute band re-plants it mid-lift.
+    const range = yMax - yMin;
+    const band = range < 0.04 ? range + 1e-6 : Math.max(0.02, 0.25 * range);
     const vLim = 2.5 * (vx.reduce((a, b) => a + Math.abs(b), 0) / bins);
     for (let b = 0; b < bins; b++) {
       contactMask[side][b] = y[b] >= yMax - band && Math.abs(vx[b]) <= vLim;
