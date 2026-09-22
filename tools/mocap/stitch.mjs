@@ -29,7 +29,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(`--${n}`);
 const opt = (n, d) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
-const VALUED = new Set(["--name", "--out", "--exaggerate", "--exag-map"]);
+const VALUED = new Set(["--name", "--out", "--exaggerate", "--exag-map", "--symmetrize"]);
 const files = argv.filter((a, i) => !a.startsWith("--") && !VALUED.has(argv[i - 1]));
 
 const name = opt("name", "stitched");
@@ -73,12 +73,47 @@ const scaleKey = (k) => (!exagMap && exag === 1) ? k : {
     }];
   })),
 };
+// symmetrize (17 A7, user option b): an occluded-side capture can carry a
+// weak half (runningman kneeL 0.35 vs kneeR 1.49) — rebuild the loop as
+// strongHalf + side-swapped strongHalf. PROFILE semantics: both legs swing
+// with the SAME screen sign (the per-side sign is baked in at retarget),
+// so the swap does NOT negate; a front table would need the negating
+// mirror — refuse rather than silently produce garbage.
+const symmetrize = opt("symmetrize", null);   // 'L' | 'R' | 'auto'
+function symmetrizeLoop(keys, view, pick) {
+  if (view !== "profile") throw new Error("--symmetrize implemented for profile tables only (front needs the negating mirror)");
+  const amp = (side) => Math.max(...keys.map((k) =>
+    Math.abs(k.joints[`knee${side}`]?.rot ?? 0) + Math.abs(k.joints[`hip${side}`]?.rot ?? 0)));
+  const strong = pick === "auto" ? (amp("R") >= amp("L") ? "R" : "L") : pick;
+  const inWin = (p, s0) => ((p - s0 + 1) % 1) < 0.5;
+  let best = 0, bestScore = -1;
+  for (const cand of keys.map((k) => k.phase)) {
+    let sc = 0;
+    for (const k of keys) {
+      if (inWin(k.phase, cand)) sc += Math.abs(k.joints[`knee${strong}`]?.rot ?? 0) + Math.abs(k.joints[`hip${strong}`]?.rot ?? 0);
+    }
+    if (sc > bestScore) { bestScore = sc; best = cand; }
+  }
+  const half = keys.filter((k) => inWin(k.phase, best))
+    .map((k) => ({ ...k, phase: +(((k.phase - best + 1) % 1)).toFixed(5) }))
+    .sort((a, b) => a.phase - b.phase);
+  const swapped = half.map((k) => ({
+    ...k,
+    phase: +(k.phase + 0.5).toFixed(5),
+    joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => [swapSide(nm), { ...ch }])),
+    contacts: (k.contacts ?? []).map(swapSide),
+  }));
+  console.log(`[stitch] symmetrized from ${strong} half @${best} (knee+hip amp L ${amp("L").toFixed(2)} / R ${amp("R").toFixed(2)})`);
+  return [...half, ...swapped];
+}
+
 // single-table mode (16.2 move #2): one input, no --mirror — the clip's
 // window already covers the full alternating loop; just rename/scale
 if (files.length === 1 && !flag("mirror")) {
+  const baseKeys = symmetrize ? symmetrizeLoop(L.keys, L.view, symmetrize) : L.keys;
   const table = {
     ...L, name,
-    keys: L.keys.map((k) => scaleKey(k)),
+    keys: baseKeys.map((k) => scaleKey(k)),
     provenance: { ...(L.provenance ?? {}), mode: "single full loop",
                   exaggerate: exagMap ?? exag, pipeline: "tools/mocap/stitch.mjs" },
   };

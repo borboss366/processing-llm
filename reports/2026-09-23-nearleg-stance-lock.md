@@ -56,3 +56,20 @@ one command to try), (c) source a cleaner profile clip. Not decided
 unilaterally — this is an aesthetics/authenticity trade.
 
 Stage re-armed in wire mode with the fixed table.
+
+## Resolution (user decision: option b)
+
+`stitch --symmetrize L|R|auto` added (single-table mode, profile tables
+only — a front table would need the negating mirror and the tool
+refuses rather than guess). Auto picked the R half (knee+hip amp R 2.16
+vs L 0.63), phase-windowed at the R-step, rebuilt the loop as
+strongHalf + side-swapped strongHalf WITHOUT negation (profile
+semantics: both legs swing with the same screen sign — the per-side
+sign is already baked in at retarget).
+
+Result: kneeL peak 0.35 → 1.488 == kneeR; scrub verification shows
+exact mirror symmetry on the rig (hip −0.70 / knee ~1.28 per side at
+its phase, both feet lifting); contacts alternate; view-switch-check
+re-run PASS. runningman-captured + -x rebuilt symmetrized; the FRONT
+table stays capture-honest (unsymmetrized) — revisit only if the user
+picks front as the rotation default at the gate.
