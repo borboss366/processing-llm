@@ -897,6 +897,7 @@ export default {
     move: '',                  // force a moves/<name>.json table ('' = auto by state)
     moveHoldBars: 4,           // bars between repertoire rotations (brief 12.6)
     view: 'auto',              // 17 A3/A4: 'auto' (follow the move's view) | 'front' | 'profile'
+    bodyYaw: 0,                // 17 B2 workbench knob: adds to the table's pelvis/chest yaw (±0.6 ≈ 3/4 view)
     profileShape: 'biped-profile',   // shape used while the profile view is active
     clockMode: 'live',         // 'live' | 'manual' — workbench phase scrub (brief 12)
     phaseScrub: 0,             // 0..1 of the current move loop, in manual mode
@@ -1540,7 +1541,7 @@ export default {
       // the brief's own bound forbids its own example (deviation, reported)
       J.twist = Math.max(-2.0, Math.min(2.0, (tk?.twist ?? 0) * accentK));
       J.yawCh = (J.role === 'root' || J.role === 'rootMid')
-        ? Math.max(-0.6, Math.min(0.6, tk?.yaw ?? 0)) : 0;
+        ? Math.max(-0.6, Math.min(0.6, (tk?.yaw ?? 0) + (Number(params.bodyYaw) || 0))) : 0;
       // cos-bend (B1): a twisted parent bone flips the child's APPARENT
       // bend — an arm raise passes through straight and re-emerges bent
       // the other way (the un-chicken mechanism)
