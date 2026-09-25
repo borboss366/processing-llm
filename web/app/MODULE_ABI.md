@@ -213,6 +213,22 @@ Rules:
   Sidecars carry `view` too; on a profile sidecar `dominantSide` means
   the NEAR side and far limbs render dimmer on their own density
   channel. profileL/R are the existing facing mirror.
+- `twist` (per key per joint, brief 17 B1): the bone LEAVING that joint
+  rotated out of the view plane, radians, ±2.0 (render mapping only, no
+  physics): the child's apparent bend scales by cos(twist) — an arm
+  raise passes through straight and re-emerges bent the other way; the
+  bone DRAWS foreshortened (cos, floored 0.25); out-of-plane limbs dim
+  up to 0.15; ankle twist widens the foot's density profile (the fan).
+  Extracted tables carry it as DEVIATION from the bone's habitual plane.
+  (The brief's ±1.2 bound would forbid the flip it promises — cos
+  crosses zero at π/2 — so the bound is ±2.0.)
+- `yaw` (per key on pelvis/chest, brief 17 B2): body yaw ±0.6 —
+  cos-squeeze of the hip/shoulder root offsets + a small parallax shift
+  + eye parallax on chest yaw. The 3/4 flavor inside a view.
+- `fillKey` (per table, brief 17 C): loop phase 0..1 of the table's
+  fill flourish. On a precomputed DROP boundary (grid tier) the loop
+  snaps to it (declared to the spike metric) alongside the immediate
+  move re-pick and accent burst.
 - `travel` (per key, brief 15 D): shape-units per BEAT, signed (+right),
   interpolated like the joint channels — glides the creature's WORLD
   position while the move plays (the t-step/running-man/glide family

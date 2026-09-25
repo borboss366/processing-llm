@@ -55,6 +55,8 @@ creature rig). Full guide in `README.md`.
 | Per-side sign (far-side flip) | flipped side erred at exactly 2× deviation (worst 128.6°) → 0.0° all bones both sides; profile lift self-test L/R 0.00°; self-test 13/13 | root-diag + self-test |
 | Canonical views (brief 17 A) | front↔profile switch ≈1 bar, 0 spikes, components 1 forced+move-driven; profile walk 899 px / 9 turns / 0 spikes; --view auto frontness 2°/82° correct | view-switch-check + moves-x-shapes |
 | Body roll A8 (spine wave) | wave TRAVELS: hip→chest +59°, chest→neck +160°, amp 0.32→0.47 rad — two torso DOFs suffice; --cycles prior fixed a ×6.9 period error | extract + phase analysis |
+| Twist channel (brief 17 B) | cos-bend exact (−0.9→−0.326 @ tw 1.2); foreshorten exact (65→24 px); stress row range 0.073 u, max step 0.021 (no popping); fk + capture green | probes + rotation-stress |
+| Drop reactivity (brief 17 C) | 4 drops precomputed on Darude; pre-arm 3.27 beats out; boundary re-pick < 1 bar; fillKey snap declared; 0 spikes | drop-check |
 | FK contacts + stance-lock yield | occluded-foot contacts were image-derived garbage (planted all 16 keys) → FK-derived, alternating; lock yields at 0.025 u table lift; both legs track at every scrub | scrub probe + view-switch-check |
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
 | Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
@@ -91,15 +93,12 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-BRIEF 17 section A COMPLETE through A7: profile shape (placeholder
-art), near/far channels, view-tagged tables, front↔profile
-squeeze-switch, --view auto + --emit-views, profile locomotion,
-runningman-captured rebuilt (profile primary + front) and in rotation
-at 0.1. A7 gate OPEN (USER_GATES item 3) — live A/B judged poor; the three
-variants are now FILES (capture-variants tool, sent to the user).
-A8 DONE: body roll captured both views; finding: the wave TRAVELS
-through the existing torso chain (hip→chest→neck +59°/+160°, amp
-growing — no new DOF needed for B). bodyroll window eyeballed, needs
-user confirm in MOTION_SOURCES. Next: B twist channel, then C drop
-reactivity. Task 3 anatomy stats now unblocked (three clips of
-corrected poses).
+BRIEF 17 COMPLETE (A views incl. A8 body roll; B twist — cos-bend /
+foreshorten / dim / foot fan / body yaw, tstep re-extracted with the
+fan, armpump v7 un-parked; C drop reactivity + fillKey). OPEN with the
+user: A7 gate (running man profile — variant videos sent), B4 re-check
+(tstep fan + armpump un-chicken — videos sent), bodyroll window
+confirm. OPEN engineering: intermittent twist-suppression (tripwired,
+unreproduced ×7 — reports/2026-09-26-brief-17-BC.md). Remaining from
+16: Task 3 anatomy stats + lint (three clips of corrected poses now
+qualify). Then: reviewer's next brief.

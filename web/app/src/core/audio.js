@@ -41,6 +41,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
   let mediaSource = null;
   let currentStream = null;
   let fileElement = null;    // set when startFromFile() drives the graph
+  let drops = null;          // 17 C: precomputed drop timestamps (ms), grid tier only
 
   const fftSize = 1024;
   const BIN_COUNT = fftSize / 2;     // 512
@@ -169,6 +170,7 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
           clock = createGridClock(grid, () => (fileElement?.currentTime ?? 0) * 1000);
           gridLoaded = true;
           console.log(`[audio] beatgrid loaded (${grid.beats?.length ?? 'bpm-form'} beats) — GridClock tier`);
+          computeDrops(url, grid);   // fire-and-forget; failure degrades to no drops
         }
       } catch { /* no sidecar — PLL tier */ }
     }
@@ -517,6 +519,54 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     return state;
   }
 
+
+  // ── drop precompute (brief 17 C) ──────────────────────────────────────
+  // One offline decode at load: per-beat RMS from the grid's beat list,
+  // bar-aggregated; a drop = bar whose energy steps ≥ z 2.2 above the
+  // trailing 8-bar window AND ≥ 1.25× its mean. Grid tier only — the list
+  // makes every drop KNOWN ≥ 1 bar ahead (the pre-arm the PLL can't give).
+  // Async, off the frame loop; any failure logs and leaves drops null.
+  async function computeDrops(url, grid) {
+    try {
+      const beats = grid.beats;
+      if (!Array.isArray(beats) || beats.length < 32) return;
+      const buf = await (await fetch(url)).arrayBuffer();
+      const audio = await audioCtx.decodeAudioData(buf);
+      const ch = audio.getChannelData(0);
+      const sr = audio.sampleRate;
+      const per = new Float32Array(beats.length - 1);
+      for (let i = 0; i < beats.length - 1; i++) {
+        const s0 = Math.max(0, Math.floor(beats[i] / 1000 * sr));
+        const s1 = Math.min(ch.length, Math.floor(beats[i + 1] / 1000 * sr));
+        let acc = 0, n2 = 0;
+        for (let s = s0; s < s1; s += 4) { acc += ch[s] * ch[s]; n2++; }
+        per[i] = Math.sqrt(acc / Math.max(1, n2));
+      }
+      const dbe = grid.downbeatEvery || 4;
+      const bars = [];
+      for (let b = 0; b + dbe <= per.length; b += dbe) {
+        let s = 0;
+        for (let k = 0; k < dbe; k++) s += per[b + k];
+        bars.push(s / dbe);
+      }
+      const found = [];
+      for (let i = 4; i < bars.length; i++) {
+        const w = bars.slice(Math.max(0, i - 8), i);
+        const m = w.reduce((a, x) => a + x, 0) / w.length;
+        const sd = Math.sqrt(w.reduce((a, x) => a + (x - m) ** 2, 0) / w.length) || 1e-6;
+        if ((bars[i] - m) / sd > 2.2 && bars[i] > m * 1.25) {
+          const ms = beats[i * dbe];
+          if (!found.length || ms - found[found.length - 1] > 8000) found.push(ms);
+        }
+      }
+      drops = found;
+      state.dropsKnown = found.length;
+      console.log(`[audio] drops precomputed: ${found.length} @ ${found.map((m) => (m / 1000).toFixed(1)).join(", ")}s`);
+    } catch (e) {
+      console.warn("[audio] drop precompute failed (non-fatal):", e);
+    }
+  }
+
   /** Per-frame entry. With an explicit timestamp (test harnesses) it runs
    *  the full analysis synchronously — byte-identical behaviour to the old
    *  rAF-driven tick. With no argument (production render loop) it only
@@ -529,6 +579,15 @@ export function createAudio({ phaseNudgeGain = 0.15, phaseNudgeWindow = 0.25 } =
     state.mediaMs = fileElement ? fileElement.currentTime * 1000 : 0;
     state.mediaWallMs = Date.now();
     clock.apply(state);
+    // 17 C: publish the next known drop (grid tier — drops null elsewhere)
+    if (drops && state.bpm > 0) {
+      const next = drops.find((ms) => ms > state.mediaMs + 40) ?? null;
+      state.nextDropMs = next;
+      state.nextDropInBeats = next != null ? (next - state.mediaMs) / (60000 / state.bpm) : null;
+    } else {
+      state.nextDropMs = null;
+      state.nextDropInBeats = null;
+    }
     const vOff2 = state.visualBeatOffsetMs ?? 0;
     if (vOff2 && state.bpm > 0) {
       const beatMs = 60000 / state.bpm;

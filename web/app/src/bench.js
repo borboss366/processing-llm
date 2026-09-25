@@ -147,6 +147,12 @@ const wsOut = createWs({
       logLine(`creature state → <span class="kv">${msg.state}</span> (z ${msg.z})`);
     } else if (msg.type === 'creature-move') {
       logLine(`move → <span class="kv">${msg.move ?? '(none)'}</span> in ${msg.state}`);
+    } else if (msg.type === 'creature-drop') {
+      logLine(msg.phase === 'prearm'
+        ? `⚡ drop in <span class="kv">${msg.inBeats}</span> beats — pre-armed`
+        : `⚡ DROP → re-pick${msg.fill ? ' + fill' : ''} (was ${msg.move ?? '(none)'})`);
+    } else if (msg.type === 'creature-view') {
+      logLine(`view switch <span class="kv">${msg.from}</span> → <span class="kv">${msg.to}</span>`);
     } else if (msg.type === 'preset-committed') {
       logLine(`preset commit: ${msg.name} (waited ${msg.waitedMs} ms${msg.lowConfidenceFallback ? ', low-conf fallback' : ''})`);
     } else if (msg.type === 'apply-pick') {

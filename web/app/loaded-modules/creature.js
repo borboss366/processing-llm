@@ -821,16 +821,15 @@ function sampleMove(move, moveAcc) {
 // its joints don't match the biped tables, it stays procedural). A sidecar
 // `repertoire` field overrides per shape.
 GAITS.biped.repertoire = {
-  // armpump parked: the arm-raise needs the axial-rotation channel
-  // (next brief — user sculpt session 2026-09-01); back in rotation then.
-  // tstep-captured parked too (gate 2026-09-20: BLOCKED ON DEPTH — the
-  // foot fan is floor-plane rotation 2D can't show); it is the depth
-  // channel's acceptance test when brief 17 lands
-  // runningman-captured (brief 17): PROFILE-tagged mocap table — picking it
-  // triggers the front→profile view switch (A3/A4); back when a front move
-  // rotates in. Weight pending the user's A7 gate.
-  groove: [['groove', 0.4], ['tstep-placeholder', 0.2], ['armwave-placeholder', 0.15],
-           ['sidepunch-placeholder', 0.1], ['elbowcircles-placeholder', 0.05],
+  // armpump UN-PARKED (17 B4): v7 carries the shoulder twist ramp — the
+  // arm raise now passes through straight via cos-bend (the un-chicken
+  // mechanism the 2026-09-01 sculpt session couldn't have). tstep-captured
+  // re-enters as the twist acceptance test (foot fan via ankle twist) —
+  // both pending the user's B4 re-judgment.
+  // runningman-captured: PROFILE-tagged — picking it drives the view switch.
+  groove: [['groove', 0.35], ['tstep-captured', 0.1], ['tstep-placeholder', 0.1],
+           ['armwave-placeholder', 0.15], ['armpump-placeholder', 0.1],
+           ['sidepunch-placeholder', 0.05], ['elbowcircles-placeholder', 0.05],
            ['runningman-captured', 0.1]],
   hop: [['sidepunch-placeholder', 1.0]],
 };
@@ -1298,6 +1297,39 @@ export default {
     } else {
       state.viewWidth = 1;
     }
+
+    // ── drop reactivity (brief 17 C, grid tier) ─────────────────────────
+    // The grid's precomputed drop list makes every drop KNOWN ahead: at
+    // ≤1 bar out, PRE-ARM (session event, bench line); at the boundary,
+    // fire — immediate move re-pick instead of waiting out moveHoldBars,
+    // an energy burst on the accent envelope, and the table's `fillKey`
+    // if it declares one (loop snaps to the fill segment, declared to the
+    // spike metric). PLL tier: nextDropInBeats is null, nothing arms.
+    {
+      const nd = a.nextDropInBeats;
+      if (nd != null && nd <= 4 && !state.dropArm && a.nextDropMs !== state.dropLastMs) {
+        state.dropArm = { at: a.nextDropMs };
+        try { window.__ws?.send({ type: 'creature-drop', phase: 'prearm', inBeats: +nd.toFixed(2) }); } catch {}
+      }
+      if (state.dropArm && (a.mediaMs >= state.dropArm.at - 40 || a.nextDropMs !== state.dropArm.at)) {
+        const hit = a.mediaMs >= state.dropArm.at - 40;
+        if (hit) {
+          state.dropLastMs = state.dropArm.at;
+          state.dropsFired = (state.dropsFired ?? 0) + 1;
+          state.dropBurst = 0.5;
+          if (state.rot) state.rot.bars = 999;      // due at this bar wrap
+          const fk2 = state.activeMoveObj?.fillKey;
+          if (fk2 != null && !manual) {
+            const bpl2 = state.activeMoveBpl ?? 1;
+            state.moveAcc = Math.floor(state.moveAcc / bpl2) * bpl2 + Math.max(0, Math.min(0.999, fk2)) * bpl2;
+            state.declaredSnapUntil = Math.max(state.declaredSnapUntil ?? 0, t0 + 700);
+            state.moveHotSwap = true;               // blend into the fill pose
+          }
+          try { window.__ws?.send({ type: 'creature-drop', phase: 'hit', move: state.activeMove ?? null, fill: fk2 != null }); } catch {}
+        }
+        state.dropArm = null;
+      }
+    }
     if ((state.activeMove ?? null) !== (move?.name ?? null)) {
       state.prevMove = state.activeMoveObj ?? null;   // outgoing table (2.1)
       state.xfadeStart = state.moveAcc;
@@ -1458,7 +1490,8 @@ export default {
     const vAmpP = liveOn ? Math.max(0, Number(params.varyAmp) || 0) * (state.phraseLift ? 2 : 1) : 0;
     const vPhP = liveOn ? Math.max(0, Number(params.varyPhase) || 0) * (state.phraseLift ? 2 : 1) : 0;
     const domS = state.dominantSide === 'L' ? 'L' : 'R';
-    const accentK = 1 + (state.accentEnv ?? 0);
+    state.dropBurst = (state.dropBurst ?? 0) * Math.exp(-dt * 3);   // 17 C decay
+    const accentK = 1 + (state.accentEnv ?? 0) + (state.dropBurst ?? 0);
     if (!liveOn) state.lagBuf = null;
     let ji = -1;
     for (const J of joints) {
@@ -1948,6 +1981,8 @@ export default {
     window.__creatureBench = {
       st, move: state.activeMove ?? null,
       view: state.viewCur ?? 'front', viewSwitching: !!state.viewSw,   // 17 A4
+      nextDropInBeats: a.nextDropInBeats != null ? +a.nextDropInBeats.toFixed(2) : null,   // 17 C
+      dropArmed: !!state.dropArm, dropsFired: state.dropsFired ?? 0,
       viewU: state.viewSw ? +(state.viewSwU ?? -1).toFixed(3) : null,
       moveBpl: state.activeMoveBpl ?? 1,
       loopPhase: +((((state.moveAcc % (state.activeMoveBpl ?? 1)) + (state.activeMoveBpl ?? 1)) % (state.activeMoveBpl ?? 1)) / (state.activeMoveBpl ?? 1)).toFixed(3),

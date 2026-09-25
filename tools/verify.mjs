@@ -114,6 +114,27 @@ const CHECKS = [
     desc: "brief 15B: arm envelope shoulder ±π / elbow ±2.4 signed — components 1, no NaN, spikes 0 at static+beat+snap",
   },
   {
+    name: "view-switch",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/view-switch-check.mjs"],
+    desc: "brief 17 A4: front↔profile squeeze switch ≤1 bar, forced + move-driven, spikes 0, components 1",
+  },
+  {
+    name: "drop",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/drop-check.mjs"],
+    desc: "brief 17 C: grid-tier drops precomputed, pre-arm ≤1 bar out, boundary fires re-pick + fill, spikes 0",
+  },
+  {
+    name: "moves-x-shapes",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/moves-x-shapes.mjs"],
+    desc: "brief 16/17: all vocabulary tables × stage shapes + profile section — spikes 0, components 1, view correct",
+  },
+  {
     name: "liveness",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
