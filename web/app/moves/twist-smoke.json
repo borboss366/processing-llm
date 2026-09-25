@@ -1,0 +1,42 @@
+{
+ "name": "twist-smoke",
+ "beatsPerLoop": 4,
+ "overlay": 0,
+ "view": "front",
+ "keys": [
+  {
+   "phase": 0.0,
+   "joints": {
+    "shoulderL": {
+     "rot": -1.2,
+     "twist": 0.0
+    },
+    "elbowL": {
+     "rot": -0.9
+    },
+    "ankleR": {
+     "twist": 0.0
+    }
+   },
+   "contacts": [],
+   "ease": "linear"
+  },
+  {
+   "phase": 0.5,
+   "joints": {
+    "shoulderL": {
+     "rot": -1.2,
+     "twist": 1.2
+    },
+    "elbowL": {
+     "rot": -0.9
+    },
+    "ankleR": {
+     "twist": 1.1
+    }
+   },
+   "contacts": [],
+   "ease": "linear"
+  }
+ ]
+}

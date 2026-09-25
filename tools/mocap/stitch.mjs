@@ -43,6 +43,10 @@ const mirrorKey = (k) => ({
     ...(ch.rot != null ? { rot: -ch.rot } : {}),
     ...(ch.dx != null ? { dx: -ch.dx } : {}),
     ...(ch.dy != null ? { dy: ch.dy } : {}),
+    // x-reflection: twist = atan2(dz, planar) with planar ≥ 0 — sign holds;
+    // yaw rotates about the vertical axis — sign flips
+    ...(ch.twist != null ? { twist: ch.twist } : {}),
+    ...(ch.yaw != null ? { yaw: -ch.yaw } : {}),
   }])),
   contacts: (k.contacts ?? []).map(swapSide),
   ease: k.ease,
@@ -152,6 +156,7 @@ if (flag("mirror")) {
 const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offset + k.phase / 2).toFixed(5) }));
 const table = {
   name,
+  view: L.view ?? 'front',
   beatsPerLoop: (L.beatsPerLoop ?? 2) * 2,
   overlay: L.overlay ?? 0.3,
   verticalContent: L.verticalContent ?? 0.7,

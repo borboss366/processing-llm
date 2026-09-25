@@ -9,13 +9,15 @@
       "phase": 0.0,
       "joints": {
         "shoulderL": {
-          "rot": 2.5
+          "rot": 2.5,
+          "twist": 1.8
         },
         "elbowL": {
           "rot": 0.0
         },
         "shoulderR": {
-          "rot": -2.5
+          "rot": -2.5,
+          "twist": 1.8
         },
         "elbowR": {
           "rot": -0.0
@@ -34,13 +36,15 @@
       "phase": 0.15,
       "joints": {
         "shoulderL": {
-          "rot": 2.5
+          "rot": 2.5,
+          "twist": 1.8
         },
         "elbowL": {
           "rot": 0.0
         },
         "shoulderR": {
-          "rot": -2.5
+          "rot": -2.5,
+          "twist": 1.8
         },
         "elbowR": {
           "rot": -0.0
@@ -59,13 +63,15 @@
       "phase": 0.3,
       "joints": {
         "shoulderL": {
-          "rot": 0.95
+          "rot": 0.95,
+          "twist": 0.9
         },
         "elbowL": {
           "rot": 1.5
         },
         "shoulderR": {
-          "rot": -0.95
+          "rot": -0.95,
+          "twist": 0.9
         },
         "elbowR": {
           "rot": -1.5
@@ -84,13 +90,15 @@
       "phase": 0.45,
       "joints": {
         "shoulderL": {
-          "rot": 0.35
+          "rot": 0.35,
+          "twist": 0.15
         },
         "elbowL": {
           "rot": 1.7
         },
         "shoulderR": {
-          "rot": -0.35
+          "rot": -0.35,
+          "twist": 0.15
         },
         "elbowR": {
           "rot": -1.7
@@ -109,13 +117,15 @@
       "phase": 0.55,
       "joints": {
         "shoulderL": {
-          "rot": 0.05
+          "rot": 0.05,
+          "twist": 0.0
         },
         "elbowL": {
           "rot": 0.15
         },
         "shoulderR": {
-          "rot": -0.05
+          "rot": -0.05,
+          "twist": 0.0
         },
         "elbowR": {
           "rot": -0.15
@@ -134,13 +144,15 @@
       "phase": 0.7,
       "joints": {
         "shoulderL": {
-          "rot": 0.35
+          "rot": 0.35,
+          "twist": 0.15
         },
         "elbowL": {
           "rot": 1.7
         },
         "shoulderR": {
-          "rot": -0.35
+          "rot": -0.35,
+          "twist": 0.15
         },
         "elbowR": {
           "rot": -1.7
@@ -159,13 +171,15 @@
       "phase": 0.85,
       "joints": {
         "shoulderL": {
-          "rot": 0.95
+          "rot": 0.95,
+          "twist": 0.9
         },
         "elbowL": {
           "rot": 1.5
         },
         "shoulderR": {
-          "rot": -0.95
+          "rot": -0.95,
+          "twist": 0.9
         },
         "elbowR": {
           "rot": -1.5

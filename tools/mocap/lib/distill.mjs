@@ -125,6 +125,16 @@ export function distillMove(avg, opts) {
   const keys = phases.map((b) => {
     const jk = {};
     for (const [nm, v] of Object.entries(joints)) jk[nm] = { rot: +v[b].toFixed(3) };
+    // twist emission (17 B1): DEVIATION from the bone's habitual plane
+    // (mean-removed — same principle as measured rest: a constant offset is
+    // camera geometry, not motion, and would permanently foreshorten the
+    // bone), only where the oscillation is real (range > 0.15 rad)
+    for (const [nm, tw] of Object.entries(avg.twists ?? {})) {
+      const rng = Math.max(...tw) - Math.min(...tw);
+      if (rng <= 0.15) continue;
+      const mean = tw.reduce((a, v) => a + v, 0) / tw.length;
+      (jk[nm] ??= {}).twist = +Math.max(-2.0, Math.min(2.0, tw[b] - mean)).toFixed(3);
+    }
     const contacts = [];
     if (contactMask.L[b]) contacts.push('footL');
     if (contactMask.R[b]) contacts.push('footR');

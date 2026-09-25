@@ -112,6 +112,28 @@ function legSweepTable() {
   }
   return { name: "rotation-stress-leg", beatsPerLoop: 16, overlay: 0, keys };
 }
+// twist sweep (brief 17 B3): each limb's twist rides 0→+1.2→0→−1.2→0
+// (arms), ankles 0→±1.1 (the foot fan), chest yaw ±0.6 — continuous and
+// cyclic like the other sweeps. Elbows bent so the cos-bend flip is live.
+function twistTable() {
+  const K = 40;
+  const keys = [];
+  for (let k = 0; k < K; k++) {
+    const u = k / K;
+    const tw = 1.2 * Math.sin(2 * Math.PI * u);          // smooth cyclic sweep
+    const atw = 1.1 * Math.sin(2 * Math.PI * u);
+    const yw = 0.6 * Math.sin(2 * Math.PI * u);
+    keys.push({ phase: +u.toFixed(4), joints: {
+      shoulderL: { rot: -1.0, twist: +tw.toFixed(3) },
+      shoulderR: { rot: 1.0, twist: +(-tw).toFixed(3) },
+      elbowL: { rot: -0.9 }, elbowR: { rot: 0.9 },
+      ankleL: { twist: +atw.toFixed(3) }, ankleR: { twist: +(-atw).toFixed(3) },
+      chest: { yaw: +yw.toFixed(3) },
+    }, contacts: ["footL", "footR"], ease: "linear" });
+  }
+  return { name: "rotation-stress-twist", beatsPerLoop: 16, overlay: 0, keys };
+}
+
 // lunge snap-hold: declared snap into hips split ±0.7, knees opposing
 const legSnapTable = () => ({ name: "rotation-stress-legsnap", beatsPerLoop: 8, overlay: 0, keys: [
   { phase: 0, joints: { hipL: { rot: 0 }, hipR: { rot: 0 }, kneeL: { rot: 0 }, kneeR: { rot: 0 } }, contacts: ["footL", "footR"], ease: "smooth" },
@@ -171,6 +193,7 @@ try {
   await fs.writeFile(path.join(MOVES, "rotation-stress-w.json"), JSON.stringify(wTable()));
   await fs.writeFile(path.join(MOVES, "rotation-stress-leg.json"), JSON.stringify(legSweepTable()));
   await fs.writeFile(path.join(MOVES, "rotation-stress-legsnap.json"), JSON.stringify(legSnapTable()));
+  await fs.writeFile(path.join(MOVES, "rotation-stress-twist.json"), JSON.stringify(twistTable()));
 
   const page = await openRenderWithFile(browser, MIX, { seekSec: 300 });
   await post("/browser-modules/load", { id: "creature" });
@@ -182,6 +205,55 @@ try {
   await osc("/post/post", 0);
   await post("/browser-modules/trigger", { id: "creature" });
   await sleep(5000);
+
+  // ── TWIST row (brief 17 B3): LIVE first (the pattern fk-check proved —
+  // going manual first once left the incoming table suppressed in the full
+  // harness run, unreproducible standalone; live-first sidesteps it and the
+  // tw print below is the tripwire), then static scrub.
+  await osc("/creature/move", "rotation-stress-twist");
+  await sleep(6000);                       // xfade fully in
+  const spikesT0 = (await page.evaluate(measureSnippet)).spikes;
+  const armLen = [];
+  for (let t = 0; t < 32; t++) {
+    await sleep(260);
+    const m = await page.evaluate(measureSnippet);
+    const nan = m.joints.some((j) => j.slice(1).some((x) => !Number.isFinite(x)));
+    if (nan) failures.push(`NaN during live twist t=${t}`);
+    const J = Object.fromEntries(m.joints.map((j) => [j[0], j]));
+    if (J.shoulderL && J.elbowL) {
+      armLen.push(Math.hypot(J.elbowL[1] - J.shoulderL[1], J.elbowL[2] - J.shoulderL[2]));
+    }
+    if (t % 8 === 0) {
+      const dbg = await page.evaluate(() => ({ lp: window.__creatureBench?.loopPhase,
+        mv: window.__creatureBench?.move,
+        tw: (window.__creatureJoints ?? []).find((q) => q.name === "shoulderL")?.twist }));
+      console.log(`[rotstress]   twist sample t=${t}: ${JSON.stringify(dbg)} len=${armLen.at(-1)?.toFixed(3)}`);
+    }
+  }
+  const spikesT1 = (await page.evaluate(measureSnippet)).spikes;
+  const rangeLen = Math.max(...armLen) - Math.min(...armLen);
+  let maxStep = 0;
+  for (let i = 1; i < armLen.length; i++) maxStep = Math.max(maxStep, Math.abs(armLen[i] - armLen[i - 1]));
+  console.log(`[rotstress] TWIST: humerus draw length ${Math.min(...armLen).toFixed(3)}..${Math.max(...armLen).toFixed(3)} u (range ${rangeLen.toFixed(3)}), max step ${maxStep.toFixed(3)}, spikes delta ${spikesT1 - spikesT0}`);
+  if (rangeLen < 0.02) failures.push(`twist foreshortening invisible (arm length range ${rangeLen.toFixed(3)} u)`);
+  if (maxStep > 0.45 * rangeLen) failures.push(`twist render-length POPPING: step ${maxStep.toFixed(3)} of range ${rangeLen.toFixed(3)}`);
+  if (spikesT1 - spikesT0 !== 0) failures.push(`spikes during live twist: ${spikesT1 - spikesT0}`);
+  // static scrub after
+  await osc("/creature/clockMode", "manual");
+  await sleep(1500);
+  for (let i = 0; i <= 16; i++) {
+    const u = i / 16;
+    await osc("/creature/phaseScrub", u);
+    await sleep(i % 4 === 0 ? 2600 : 700);
+    const m = await page.evaluate(measureSnippet);
+    const comps = i % 4 === 0 ? await page.evaluate(componentsSnippet) : null;
+    const nan = m.joints.some((j) => j.slice(1).some((x) => !Number.isFinite(x)));
+    if (nan) failures.push(`NaN at twist scrub ${u}`);
+    if (comps !== null && comps !== 1) failures.push(`components=${comps} at twist scrub ${u}`);
+  }
+  await osc("/creature/clockMode", "live");
+
+  // (twist row runs FIRST — bisecting a full-run-only suppression)
   await osc("/creature/clockMode", "manual");
 
   // ── STATIC: scrub the sweep, springs settled per step ─────────────────
@@ -212,6 +284,24 @@ try {
     }
   }
 
+
+  // twist liveness tripwire (17 B3): two full-harness runs showed the
+  // twist channel reading 0 while live and cycling — unreproduced in 7
+  // targeted replications; these checks + the end watchdog keep any
+  // recurrence loud. NOTE: after a manual section this samples a PINNED
+  // phase — a 0.00 here alone can be phase parking, cross-check the mode.
+  {
+    await osc("/creature/move", "rotation-stress-twist");
+    await sleep(6000);
+    let mx = 0;
+    for (let t = 0; t < 6; t++) {
+      await sleep(350);
+      const tw = await page.evaluate(() =>
+        Math.abs((window.__creatureJoints ?? []).find((q) => q.name === "shoulderL")?.twist ?? 0));
+      mx = Math.max(mx, tw);
+    }
+    console.log(`[rotstress] twist-check after arm-static: max ${mx.toFixed(2)}`);
+  }
   // ── W hold (snap speed): live, 2 loops. The 2.6 rad snap is a DECLARED
   // snap (choreography) — spikes are counted but only reported for it;
   // the sweep/cross segments below must be strictly clean.
@@ -251,6 +341,24 @@ try {
   console.log(`[rotstress] sweep+cross spikes delta=${spikes1 - spikes0} (must be 0)`);
   if (spikes1 - spikes0 !== 0) failures.push(`spikes during live sweep/cross: ${spikes1 - spikes0}`);
 
+
+  // twist liveness tripwire (17 B3): two full-harness runs showed the
+  // twist channel reading 0 while live and cycling — unreproduced in 7
+  // targeted replications; these checks + the end watchdog keep any
+  // recurrence loud. NOTE: after a manual section this samples a PINNED
+  // phase — a 0.00 here alone can be phase parking, cross-check the mode.
+  {
+    await osc("/creature/move", "rotation-stress-twist");
+    await sleep(6000);
+    let mx = 0;
+    for (let t = 0; t < 6; t++) {
+      await sleep(350);
+      const tw = await page.evaluate(() =>
+        Math.abs((window.__creatureJoints ?? []).find((q) => q.name === "shoulderL")?.twist ?? 0));
+      mx = Math.max(mx, tw);
+    }
+    console.log(`[rotstress] twist-check after w+sweep+cross: max ${mx.toFixed(2)}`);
+  }
   // ── LEG-SWING row (brief 16.1): hip ±0.9 — static scrub, then live, then
   // the declared lunge snap. Same asserts; density watches limb0/limb1.
   await osc("/creature/move", "rotation-stress-leg");
@@ -318,18 +426,30 @@ try {
   console.log(`[rotstress] LEG ENVELOPE: hip ±${HIP_MAX} rad — boneDev max=${(Math.max(...legStatics.map((r) => r.boneDev ?? 0)) * 100).toFixed(1)}%; ` +
     `min leg density at extremes=${Math.min(...legMeasured.map((r) => r.minDens ?? Infinity)).toFixed(2)}`);
 
-  // envelope summary
-  const statics = rows.filter((r) => r.mode === "static");
-  const measured = statics.filter((r) => r.comps !== null);
-  console.log(`[rotstress] static poses=${statics.length} (components measured at ${measured.length}); ` +
-    `boneDev max=${(Math.max(...statics.map((r) => r.boneDev ?? 0)) * 100).toFixed(1)}%; ` +
-    `min arm density at extremes=${Math.min(...measured.map((r) => r.minDens ?? Infinity)).toFixed(2)}`);
-  console.log(`[rotstress] ENVELOPE: shoulder ±${SH_MAX.toFixed(2)} rad, elbow ±${EL_MAX} rad SIGNED — ${failures.length ? "REDUCED (see failures)" : "FULL RANGE CLEAN, static + beat + snap"}`);
+  // ── twist WATCHDOG (end of run): the twist row passes when it runs
+  // first but was fully suppressed when it ran last in two full-harness
+  // runs (tw=0, mv correct, table on disk correct, lp advancing) —
+  // unreproducible in five shorter replications incl. W+cross+legsnap
+  // prefixes. Until root-caused, this re-check keeps the cumulative
+  // suppression LOUD: if twist dies after a long section sequence it
+  // would die in a long live set too. OPEN MYSTERY for the reviewer.
+  await osc("/creature/move", "rotation-stress-twist");
+  await sleep(8000);
+  let wdMax = 0;
+  for (let t = 0; t < 8; t++) {
+    await sleep(400);
+    const tw = await page.evaluate(() =>
+      Math.abs((window.__creatureJoints ?? []).find((q) => q.name === "shoulderL")?.twist ?? 0));
+    wdMax = Math.max(wdMax, tw);
+  }
+  console.log(`[rotstress] twist watchdog (end of run): max |shoulder twist| ${wdMax.toFixed(2)} rad`);
+  if (wdMax < 0.3) failures.push(`twist DEAD at end of run (watchdog max ${wdMax.toFixed(2)}) — the cumulative-suppression mystery fired`);
+  await osc("/creature/move", "none");
 } catch (e) {
   failures.push(String(e));
 } finally {
   for (const f of ["rotation-stress.json", "rotation-stress-cross.json", "rotation-stress-w.json",
-                   "rotation-stress-leg.json", "rotation-stress-legsnap.json"]) {
+                   "rotation-stress-leg.json", "rotation-stress-legsnap.json", "rotation-stress-twist.json"]) {
     await fs.unlink(path.join(MOVES, f)).catch(() => {});
   }
   await browser.close();

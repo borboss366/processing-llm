@@ -806,6 +806,10 @@ function sampleMove(move, moveAcc) {
       dx: (A.dx ?? 0) + ((B.dx ?? 0) - (A.dx ?? 0)) * u,
       dy: (A.dy ?? 0) + ((B.dy ?? 0) - (A.dy ?? 0)) * u,
       rot: (A.rot ?? 0) + ((B.rot ?? 0) - (A.rot ?? 0)) * u,
+      // 17 B: small-angle depth inside a view — twist (per-bone axial,
+      // ±1.2) and yaw (pelvis/chest body yaw, ±0.6), interpolated like rot
+      twist: (A.twist ?? 0) + ((B.twist ?? 0) - (A.twist ?? 0)) * u,
+      yaw: (A.yaw ?? 0) + ((B.yaw ?? 0) - (A.yaw ?? 0)) * u,
     };
   }
   return { joints, contacts: new Set(a.contacts ?? []), ease: a.ease ?? 'smooth', seg: i,
@@ -1332,7 +1336,7 @@ export default {
         if (mvPose) {
           for (const nm of Object.keys(mvPose.joints)) {
             const tk = mvPose.joints[nm];
-            for (const ch of ['dx', 'dy', 'rot']) if (tk[ch]) tk[ch] *= wIn;
+            for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) if (tk[ch]) tk[ch] *= wIn;
           }
         }
         const prev = state.prevMove;
@@ -1342,8 +1346,8 @@ export default {
           mvPose.travel = (mvPose.travel ?? 0) * wIn + (prevPose.travel ?? 0) * (1 - wIn);
           for (const nm of Object.keys(prevPose.joints)) {
             const pk = prevPose.joints[nm];
-            const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0 });
-            for (const ch of ['dx', 'dy', 'rot']) {
+            const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, yaw: 0 });
+            for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) {
               if (pk[ch]) tk[ch] = (tk[ch] || 0) + pk[ch] * (1 - wIn);
             }
           }
@@ -1387,10 +1391,10 @@ export default {
     if (mvPose) {
       const mvS = (state.mvSpring ??= {});
       for (const nm of new Set([...Object.keys(mvS), ...Object.keys(mvPose.joints)])) {
-        const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0 });  // unkeyed → spring back to 0
-        const sp = (mvS[nm] ??= { dx: { x: 0, v: 0 }, dy: { x: 0, v: 0 }, rot: { x: 0, v: 0 } });
-        for (const ch of ['dx', 'dy', 'rot']) {
-          tk[ch] = springStep(sp[ch], tk[ch], MV_WN, dt);
+        const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, yaw: 0 });  // unkeyed → spring back to 0
+        const sp = (mvS[nm] ??= {});
+        for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) {
+          tk[ch] = springStep((sp[ch] ??= { x: 0, v: 0 }), tk[ch], MV_WN, dt);
         }
       }
     }
@@ -1494,10 +1498,24 @@ export default {
           tRot = Math.sign(tRot) * lim;
         }
       }
+      // twist + body yaw channels (17 B1/B2): twist is the bone's axial
+      // rotation (±1.2, render-mapped — no physics); yaw is a body-yaw
+      // squeeze on pelvis/chest (±0.6). Stored on the joint; consumed
+      // below (cos-bend, draw foreshorten) and at render (dim, foot fan).
+      // ±2.0, not the brief's ±1.2: the promised elbow FLIP ("re-emerges
+      // bent the other way") needs cos to cross zero at π/2 ≈ 1.571 —
+      // the brief's own bound forbids its own example (deviation, reported)
+      J.twist = Math.max(-2.0, Math.min(2.0, (tk?.twist ?? 0) * accentK));
+      J.yawCh = (J.role === 'root' || J.role === 'rootMid')
+        ? Math.max(-0.6, Math.min(0.6, tk?.yaw ?? 0)) : 0;
+      // cos-bend (B1): a twisted parent bone flips the child's APPARENT
+      // bend — an arm raise passes through straight and re-emerges bent
+      // the other way (the un-chicken mechanism)
+      const bendK = J.parent >= 0 ? Math.cos(joints[J.parent].twist ?? 0) : 1;
       const dance =
-        (stEff === 'idle' ? 0
+        ((stEff === 'idle' ? 0
           : g.A * amp * accentK * sideMul * Math.sin(2 * Math.PI * (g.freq * mPhase + g.off + vP))) +
-        tRot * accentK;
+        tRot * accentK) * bendK;
       J.theta = dance * vA;
       if (J.role === 'head') J.theta += headLook;
       // chain lead–lag (A3): spine (rootMid) trails the root by
@@ -1534,7 +1552,19 @@ export default {
         // immediate-parent-only inheritance, which left elbows "pulling up"
         // without rotating and kicks that never carried the foot.
         const P = joints[J.parent];
-        const ox = J.x - P.x, oy = J.y - P.y;
+        let ox = J.x - P.x, oy = J.y - P.y;
+        // body-yaw squeeze (B2): pelvis/chest yaw cos-squeezes the limb-root
+        // lateral offsets + a small parallax shift — the 3/4 flavor
+        if ((P.yawCh ?? 0) && (J.role === 'hip' || J.role === 'shoulder')) {
+          ox = ox * Math.cos(P.yawCh) + 0.02 * Math.sin(P.yawCh);
+        }
+        // draw foreshorten (B1): a twisted bone DRAWS shorter (cos, floored
+        // — never collapses); spring rest lengths untouched, tissue follows
+        // the pinned joints. Twist on joint J names the bone LEAVING J
+        // (shoulder twist = the humerus — same convention as rot and the
+        // extractor's defs), so the CHILD's offset is what shrinks.
+        const ftw = Math.max(0.25, Math.cos(P.twist ?? 0));
+        if (ftw < 1) { ox *= ftw; oy *= ftw; }
         const rot = (P.accRot ?? 0) + J.theta;
         const c = Math.cos(rot), s = Math.sin(rot);
         J.ax = P.ax + ox * c - oy * s;
@@ -1544,6 +1574,25 @@ export default {
       // dx/dy in shape units, applied after chaining (authoring guidance:
       // prefer rot on chained limbs — dx/dy there stretches the bone)
       if (tk) { J.ax += (tk.dx || 0) * accentK * vA; J.ay += (tk.dy || 0) * accentK * vA; }
+    }
+
+    // per-limb twist render factors (17 B1): dim (out-of-plane depth cue,
+    // max 0.15) + foot-fan widen (toes toward the viewer read as a wider
+    // density profile). Consumed at node/bone-splat draw.
+    {
+      const fx = (state.twistFx ??= {});
+      for (const k2 in fx) delete fx[k2];
+      for (const J of joints) {
+        if (!J.twist) continue;
+        if (J.limb == null) continue;
+        const lab = `limb${J.limb}`;
+        const s3 = Math.abs(Math.sin(J.twist));
+        const e2 = (fx[lab] ??= { dim: 0, fan: 0 });
+        e2.dim = Math.max(e2.dim, s3);
+        if (J.role === 'limb' || J.role === 'ankle') e2.fan = Math.max(e2.fan, s3);
+      }
+      const chest2 = joints.find((J) => J.role === 'rootMid');
+      state.eyeYawShift = Math.sin(chest2?.yawCh ?? 0) * 0.025;   // B2 eye parallax
     }
 
     // weld-test pose sweep (brief 9 Task 0a acceptance): drag the left arm
@@ -1802,7 +1851,17 @@ export default {
     const inBlend = !!state.blend;
     for (const B of state.bones) {
       const J = joints[B.j], P = joints[B.p];
-      const dev = Math.abs(Math.hypot(J.ax - P.ax, J.ay - P.ay) - B.restLen) / B.restLen;
+      // expected length mirrors the FK exactly (17 B1/B2): twist DRAW
+      // foreshortening and yaw root-squeeze are intentional — without this
+      // the twist stress row legitimately hits ~64% "deviation" and, since
+      // boneDevRot is a RUNNING SESSION MAX, poisons every later assert
+      // (the 2026-09-26 red herring: it read as a stuck pose)
+      let ox = J.x - P.x, oy = J.y - P.y;
+      if ((P.yawCh ?? 0) && (J.role === 'hip' || J.role === 'shoulder')) {
+        ox = ox * Math.cos(P.yawCh) + 0.02 * Math.sin(P.yawCh);
+      }
+      const expected = Math.hypot(ox, oy) * Math.max(0.25, Math.cos(P.twist ?? 0));
+      const dev = Math.abs(Math.hypot(J.ax - P.ax, J.ay - P.ay) - expected) / expected;
       if (B.groundChain) boneDevGround = Math.max(boneDevGround, dev);
       else if (!inBlend) boneDevRot = Math.max(boneDevRot, dev);
     }
@@ -1980,7 +2039,8 @@ export default {
       const neck = joints.find((J) => J.role === 'head');
       const th = (neck?.theta ?? 0) * 0.6;
       const cth = Math.cos(th), sth = Math.sin(th);
-      const walkShift = (st === 'walk' || st === 'hop') ? 0.014 : 0;
+      const walkShift = ((st === 'walk' || st === 'hop') ? 0.014 : 0)
+        + (state.eyeYawShift ?? 0);   // B2: chest-yaw eye parallax
       const blink = t0 < eye.blinkUntilMs ? 0.12 : 1;
       const eyes = state.eyes.length ? state.eyes : [{ x: 0.02, y: -0.01, r: 0.013 }];
       p.push();
@@ -2032,7 +2092,8 @@ export default {
         const sp = lab === 'head' ? sprites.head : lab === 'body' ? sprites.body : sprites.limb;
         const wob = 1 + 0.06 * simmer * (p.noise(i * 0.37, tSec * 0.22) * 2 - 1);
         const r = state.spriteR[i] * S * wob * 0.5;
-        g.globalAlpha = ((lab === 'body' || lab === 'head') ? aBody : aLimb) * farDim(lab, state);
+        g.globalAlpha = ((lab === 'body' || lab === 'head') ? aBody : aLimb) * farDim(lab, state)
+          * (1 - 0.15 * (state.twistFx?.[lab]?.dim ?? 0));
         g.drawImage(sp, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
         dg.globalAlpha = g.globalAlpha;
         dg.drawImage(dens[densChannel(lab, state)], X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
@@ -2051,11 +2112,15 @@ export default {
           // 2× alpha + 1.2× radius: a single-chain splat peaks ~0.25-0.30
           // after gradient/downsample losses — measured dipping below the
           // 0.18 threshold at the wrist. The guarantee must not be marginal.
-          const rU = (state.partFloor[B.label] ?? state.medLen * 1.4) * 1.2;
+          let rU = (state.partFloor[B.label] ?? state.medLen * 1.4) * 1.2;
+          // foot fan (17 B1): toes toward the viewer widen the foot's
+          // density profile on the ground tip bone
+          if (B.tip && B.groundChain) rU *= 1 + 0.6 * (state.twistFx?.[B.label]?.fan ?? 0);
           const r = rU * S * 0.5;
           const len = Math.hypot(J.ax - P.ax, J.ay - P.ay);
           const N = Math.max(5, Math.ceil(len / (rU * 0.5)));
-          g.globalAlpha = Math.min(1, ((B.label === 'body' || B.label === 'head') ? aBody : aLimb) * 2) * farDim(B.label, state);
+          g.globalAlpha = Math.min(1, ((B.label === 'body' || B.label === 'head') ? aBody : aLimb) * 2) * farDim(B.label, state)
+            * (1 - 0.15 * (state.twistFx?.[B.label]?.dim ?? 0));
           dg.globalAlpha = g.globalAlpha;
           for (let k = 0; k <= N; k++) {
             const t = k / N;
@@ -2105,6 +2170,7 @@ export default {
         name: J.name, ax: +J.ax.toFixed(3), ay: +J.ay.toFixed(3),
         sx: Math.round(mapX(J.ax)), sy: Math.round(mapY(J.ay)),
         theta: +(J.theta ?? 0).toFixed(3), accRot: +(J.accRot ?? 0).toFixed(3), pins: J.pins.length,
+        twist: +(J.twist ?? 0).toFixed(3),
       }));
 
       // density probe (brief 8.1 step 4): every 30th frame, min accumulated

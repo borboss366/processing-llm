@@ -360,6 +360,9 @@ async function processView(vk, primary) {
   };
   const channels = {};
   for (const nm of ARTICULATED) channels[`th:${nm}`] = uni(thetaFrames.map((f) => f[nm] ?? 0));
+  // twist channels ride the same averaging (17 B1) — distill emits them
+  // as per-key twist where the bone meaningfully leaves the plane
+  for (const nm of ARTICULATED) channels[`tw:${nm}`] = uni(twistFrames.map((f) => f[nm] ?? 0));
   channels.pelvisU = uni(pelvisU);
   for (const s of ["L", "R"]) {
     channels[`footY${s}`] = uni(footY[s]);
@@ -404,6 +407,8 @@ async function processView(vk, primary) {
   // ── stage 7: distill to the standard table ────────────────────────────────
   const thetasAvg = {};
   for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
+  const twistAvg = {};
+  for (const nm of ARTICULATED) twistAvg[nm] = mean[`tw:${nm}`];
   const pelvisAvg = mean.pelvisU;
   const pelvisMean = pelvisAvg.reduce((a, b) => a + b, 0) / BINS;
   // contacts from the RIG'S OWN FK (2026-09-23): image-space foot height is
@@ -427,6 +432,7 @@ async function processView(vk, primary) {
   }
   const table = distillMove({
     thetas: thetasAvg,
+    twists: twistAvg,
     pelvisU: pelvisAvg,
     footY: { L: fkFY.L, R: fkFY.R },
     footVX: { L: circD(fkFX.L), R: circD(fkFX.R) },
