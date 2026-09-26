@@ -622,7 +622,7 @@ moveOut.estimator = estimator;
     }
     const Dx = {
       meta: { clip: path.basename(video), view: vk, window: [winA, winB], mirror,
-        params: { filter: filterMode, sgWindow: sg.window, sgOrder: sg.order, enhance,
+        params: { estimator, filter: filterMode, sgWindow: sg.window, sgOrder: sg.order, enhance,
                   footGate: FOOT_GATE, bpl, maxKeys: +opt("max-keys", 16), cycles: opt("cycles", null) } },
       crop: frames0.crop, vidW: raw.meta.w, vidH: raw.meta.h, scale: raw.meta.cropScale ?? 1,
       jitter: raw.meta.jitterPx ?? 0,
@@ -636,7 +636,7 @@ moveOut.estimator = estimator;
       theta: Object.fromEntries(ARTICULATED.map((nm) => [nm, thetaFrames.map((f) => r3(f[nm]))])),
       lag: lagX ?? { whole: 0, thirds: [] },
       yawDeg: yawsRaw.map((y) => r3(y * 180 / Math.PI)),
-      frontness: +frontDeg.toFixed(1),
+      frontness: +frontRatio.toFixed(2),
       masks: { global: masks.global.map(Number), legL: masks.legL.map(Number), legR: masks.legR.map(Number) },
       rests: { measured: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, r3(v)])),
                declared, counts: cal.counts, fallbacks: cal.fallbacks },

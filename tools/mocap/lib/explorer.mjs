@@ -35,7 +35,7 @@ export function renderExplorer(D) {
 </style>
 </head>
 <body>
-<h1>${D.meta.clip} <span class="dim">· view=${D.meta.view} · window ${D.meta.window[0]}–${D.meta.window[1]} s · mirror=${D.meta.mirror}</span></h1>
+<h1>${D.meta.clip} <span class="dim">· estimator=${D.meta.params.estimator ?? "mediapipe"} · view=${D.meta.view} · window ${D.meta.window[0]}–${D.meta.window[1]} s · mirror=${D.meta.mirror}</span></h1>
 <div class="note">Scrub the slider (bottom) — every stage's picture moves together. Drag the 3D skeleton to orbit.</div>
 
 <section id="s0"><h2>0 · INPUT — what the estimator saw</h2>
@@ -68,7 +68,7 @@ export function renderExplorer(D) {
     <div><canvas id="c3" width="640" height="140"></canvas><div class="note">yaw per frame (°); band = frontness decision</div></div>
     <div><canvas id="c3b" width="200" height="240"></canvas><div class="note">camera plane</div></div>
     <div><canvas id="c3c" width="200" height="240"></canvas><div class="note">after de-yaw (front)</div></div>
-    <div class="haz" style="max-width:300px"><b>can go wrong:</b> de-yawing a PROFILE clip to front rotates the sagittal motion into z and the projection DROPS it — the running man's knee lift vanished this way (hip span ×3–5 recovered by projecting as-filmed). Frontness ${D.frontness}° → <b>${D.meta.view}</b>. Facing-camera reads |yaw| ≈ 180, not 0 — the first auto rule got that wrong.</div>
+    <div class="haz" style="max-width:300px"><b>can go wrong:</b> de-yawing a PROFILE clip to front rotates the sagittal motion into z and the projection DROPS it — the running man's knee lift vanished this way (hip span ×3–5 recovered by projecting as-filmed). Frontness ratio ${D.frontness} (front ≥ 0.35, from width foreshortening — 2D only since 18.1) → <b>${D.meta.view}</b>.</div>
   </div>
 </section>
 
