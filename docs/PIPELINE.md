@@ -35,6 +35,12 @@ IMAGE space `[x, y, visibility]` (normalized to the frame) and WORLD
 space `[x, y, z]` (metric, hip-origin).
 **How:** MediaPipe pose_landmarker_heavy, VIDEO mode, CPU (CPU =
 deterministic: same clip, byte-identical output — verified by diff).
+The 2D image landmarks are essentially direct observation; the 3D
+world landmarks are the NETWORK'S INFERENCE of metric 3D from one
+camera — the z was never measured, it is a learned guess (weakest
+exactly where visibility is low). We only flip the y-axis and draw it.
+Everything depth-flavored downstream (de-yaw, twist, footYaw) inherits
+this guess as its quality ceiling.
 **Failure we hit:** the OCCLUDED far limb in profile — the running
 man's far leg came out at 25–50 % of the near leg's amplitude. Not
 fixable at this stage; it surfaced as "only one leg moves" on stage and

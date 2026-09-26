@@ -48,7 +48,7 @@ export function renderExplorer(D) {
 <section id="s1"><h2>1 · LANDMARKS — 2D points + 3D world skeleton</h2>
   <div class="row">
     <div><canvas id="c1a" width="360" height="360"></canvas><div class="note">2D over the frame · dot color = visibility (green 1 → red 0)</div></div>
-    <div><canvas id="c1b" width="320" height="360"></canvas><div class="note">3D world (drag to orbit)</div></div>
+    <div><canvas id="c1b" width="320" height="360"></canvas><div class="note">3D world — MediaPipe's ESTIMATE, not measured; z is a learned guess (drag to orbit)</div></div>
     <div class="haz" style="max-width:340px"><b>can go wrong:</b> occluded far limbs — the running man's far leg tracked at 25–50 % of the near leg's amplitude; visibility color shows where the estimator was guessing.</div>
   </div>
 </section>
