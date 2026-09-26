@@ -121,7 +121,9 @@ const raw = await new Promise((resolve, reject) => {
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
       if (!line.trim()) continue;
-      const j = JSON.parse(line);
+      let j;
+      try { j = JSON.parse(line); }
+      catch { continue; }                        // estimator libs chat on stdout
       if (j.meta) meta = j;
       else if (j.meta2) meta = { ...meta, crop: j.crop, cropScale: j.scale };
       else if (j.error) reject(new Error(j.error));
@@ -149,6 +151,20 @@ console.log(`[mocap] frames: ${raw.frames.length} in window, ${detected.length} 
   }
   console.log(`[mocap] landmark jitter (second-difference, pre-smoothing): ${(s / k).toFixed(2)} px mean`);
   raw.meta.jitterPx = +(s / k).toFixed(2);
+}
+// per-limb mean keypoint score (18.1 comparison card): the estimator
+// decision rides on where each one is guessing
+{
+  const G = { legL: [9, 11, 13, 15, 17], legR: [10, 12, 14, 16, 18],
+              arms: [3, 4, 5, 6, 7, 8], smalltoes: [19, 20] };
+  const out = {};
+  for (const [g, idxs] of Object.entries(G)) {
+    let s2 = 0, n2 = 0;
+    for (const f of detected) for (const i2 of idxs) { s2 += f.img[i2][2]; n2++; }
+    out[g] = +(s2 / n2).toFixed(3);
+  }
+  raw.meta.limbScores = out;
+  console.log(`[mocap] limb scores: ${JSON.stringify(out)} (smalltoes 0 = estimator lacks them)`);
 }
 if (detected.length < 30) { console.error("[mocap] too few pose frames — check the loop window / clip"); process.exit(1); }
 
@@ -489,6 +505,7 @@ async function processView(vk, primary) {
   const poses = {
     source: path.basename(video), clipSha: clipHash, view: vk,
     window: [winA, winB], mirror, rig: path.basename(rigPath),
+  estimator, limbScores: raw.meta.limbScores, jitterPx: raw.meta.jitterPx,
     filter: filterMode === "oneeuro" ? { mode: "oneeuro", ...euro } : { mode: filterMode, ...sg },
     fps: raw.meta.fps,
     timing: { route: timingRoute, period: +period.toFixed(4), bpl,

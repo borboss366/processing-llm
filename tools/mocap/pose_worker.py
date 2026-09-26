@@ -110,11 +110,14 @@ def make_mediapipe():
 
 
 def make_rtmpose(model_mode):
+    import contextlib
     from rtmlib import Wholebody
     mode = model_mode if model_mode in ("lightweight", "balanced", "performance") else "balanced"
 
     def make():
-        return Wholebody(mode=mode, backend="onnxruntime", device="cpu")
+        # rtmlib prints model-load progress to stdout — our channel is JSONL
+        with contextlib.redirect_stdout(sys.stderr):
+            return Wholebody(mode=mode, backend="onnxruntime", device="cpu")
 
     def wrap(wb):
         def detect(bgr, ts_ms):

@@ -2,3 +2,7 @@
 mediapipe==0.10.21
 opencv-python==4.10.0.84
 numpy==1.26.4
+# 18.1: RTMPose/DWPose whole-body via rtmlib (onnxruntime CPU)
+rtmlib==0.0.13
+onnxruntime==1.19.2
+tqdm==4.66.5

@@ -20,4 +20,21 @@ if [ ! -f models/pose_landmarker_heavy.task ]; then
 fi
 shasum -a 256 models/pose_landmarker_heavy.task
 ./.venv/bin/python -c "import mediapipe, cv2, numpy; print('mediapipe', mediapipe.__version__, '· cv2', cv2.__version__, '· numpy', numpy.__version__)"
+
+# 18.1 --check: which estimators are runnable
+if [ "${1:-}" = "--check" ]; then
+  ./.venv/bin/python - <<'PY'
+ok = []
+try:
+    import mediapipe; ok.append(f"mediapipe {mediapipe.__version__}")
+except Exception as e: print("mediapipe: NOT runnable:", e)
+try:
+    import onnxruntime
+    from rtmlib import Wholebody
+    from importlib.metadata import version
+    ok.append(f"rtmpose (rtmlib {version('rtmlib')}, onnxruntime {onnxruntime.__version__})")
+except Exception as e: print("rtmpose: NOT runnable:", e)
+print("runnable estimators:", ", ".join(ok) if ok else "NONE")
+PY
+fi
 echo "[mocap/setup] OK"

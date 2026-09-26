@@ -47,6 +47,13 @@ verdict moves to the report and gets a ✓ + date here.
    Note the profile body is PLACEHOLDER ART — judge the motion, redraw
    comes after mechanics are accepted. → ____
 
+4. **Estimator default (brief 18.1 T4)** — from
+   reports/2026-09-26-estimator-cards.md + the explorers: pick the
+   default `--estimator` (mediapipe = smoother/3× faster; rtmpose =
+   occlusion-honest scores + real small toes). Also judge: far leg now
+   usable? (The 25–50 % weakness is gone on BOTH — it was the de-yaw
+   era, not the estimator.) → ____
+
 ## Standing re-check triggers
 
 - **Captured T-step = depth-channel acceptance test** — when brief 17
