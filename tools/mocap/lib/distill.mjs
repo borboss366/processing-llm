@@ -135,6 +135,14 @@ export function distillMove(avg, opts) {
       const mean = tw.reduce((a, v) => a + v, 0) / tw.length;
       (jk[nm] ??= {}).twist = +Math.max(-2.0, Math.min(2.0, tw[b] - mean)).toFixed(3);
     }
+    // body yaw emission (18.1): pelvis/chest yaw from width foreshortening,
+    // clamped to the engine's ±0.6, only where the oscillation is real
+    for (const [nm, yw] of Object.entries(avg.yaws ?? {})) {
+      if (!yw) continue;
+      const rng = Math.max(...yw) - Math.min(...yw);
+      if (rng <= 0.12) continue;
+      (jk[nm] ??= {}).yaw = +Math.max(-0.6, Math.min(0.6, yw[b])).toFixed(3);
+    }
     const contacts = [];
     if (contactMask.L[b]) contacts.push('footL');
     if (contactMask.R[b]) contacts.push('footR');

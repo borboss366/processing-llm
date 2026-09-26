@@ -165,10 +165,27 @@ export function calibMasks(frontalFrames) {
   vel[0] = vel[1] ?? 0;
   const thresh = [...vel].sort((a, b) => a - b)[Math.floor(n * 0.3)];
   const global = Array.from(vel, (v) => v <= thresh);
+  // 18.1: frontal is IMAGE-based now — the dancer translates in frame, so
+  // planted must be measured HIP-RELATIVE (the old world frames were
+  // hip-origin and got this for free; absolute y collapsed the T-step's
+  // planted masks to 3–5 frames and forced declared-rest fallbacks)
+  const hipY = frontalFrames.map((f) => (f[S.hipL][1] + f[S.hipR][1]) / 2);
+  const spineMed = (() => {
+    const v = frontalFrames.map((f) => Math.hypot(
+      (f[S.shoulderL][0] + f[S.shoulderR][0]) / 2 - (f[S.hipL][0] + f[S.hipR][0]) / 2,
+      (f[S.shoulderL][1] + f[S.shoulderR][1]) / 2 - hipYAt(f)));
+    return v.sort((a, b) => a - b)[Math.floor(v.length / 2)] || 1e-6;
+    function hipYAt(f) { return (f[S.hipL][1] + f[S.hipR][1]) / 2; }
+  })();
   const planted = (heel, toe) => {
-    const fy = frontalFrames.map((f) => Math.max(f[heel][1], f[toe][1]));
+    const fy = frontalFrames.map((f, i) => Math.max(f[heel][1], f[toe][1]) - hipY[i]);
     const hi = Math.max(...fy), lo = Math.min(...fy);
-    return fy.map((y) => y >= hi - 0.1 * (hi - lo || 1));
+    // a PIVOT foot never lifts — its fy range is noise, and a band cut from
+    // noise selects ~nothing (T-step read 3/75 planted and fell back to
+    // declared rests). Range below 8% of spine = always planted; a real
+    // lift gets a 25%-of-range band (distill's rule, same reasoning).
+    if (hi - lo < 0.08 * spineMed) return frontalFrames.map(() => true);
+    return fy.map((y) => y >= hi - 0.25 * (hi - lo));
   };
   return { global, legL: planted(MP.heelL, MP.toeL), legR: planted(MP.heelR, MP.toeR) };
 }

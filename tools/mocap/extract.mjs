@@ -46,6 +46,8 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { filterLandmarks, oneEuro } from "./lib/oneeuro.mjs";
 import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
+import { S } from "./lib/landmarks.mjs";
+import { foreshortenAll, frontnessRatio } from "./lib/foreshorten.mjs";
 import { MP, buildRig, detectYSign, frameYaw, deYaw, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove } from "./lib/distill.mjs";
@@ -171,19 +173,24 @@ const img = smooth(rawImg);
 const conf = detected.map((f) => f.img.reduce((a, l) => a + l[2], 0) / f.img.length);
 console.log(`[mocap] filter: ${filterMode}${filterMode === "savgol" ? ` (window ${sg.window}, order ${sg.order})` : ""}`);
 
-// ── view-independent normalization ───────────────────────────────────────
-const ySign = detectYSign(world);
+// ── view-independent normalization (18.1: 2D-only) ───────────────────────
+// world is a DEBUG channel; nothing here may consume its z. Frontness comes
+// from WIDTH FORESHORTENING (shoulder width / spine length — measured 0.63
+// frontal vs 0.07 profile); facing from the nose score (a face the camera
+// can see scores high). Isotropic image coords (x scaled by aspect) so
+// angles are true.
+const AR = raw.meta.w / raw.meta.h;
+const iso = (frames) => frames.map((f) => f.map((p) => [p[0] * AR, p[1]]));
+const imgIso = iso(img);
+const rawImgIso = iso(rawImg);
+const scores = detected.map((f) => f.img.map((p) => p[2]));
+const frontRatio = frontnessRatio(imgIso, S);
+const facing = median(detected.map((f) => f.img[S.nose][2])) > 0.5;
+// legacy world path — kept ONLY for the explorer's world-vs-2D comparison
+const ySign = hasWorld ? detectYSign(world) : 1;
 const worldN = ySign === 1 ? world : world.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-const yawsRaw = worldN.map((f) => frameYaw(f));
-const yawMedDeg = median(yawsRaw.map((y) => y * 180 / Math.PI));
-// frontness: distance to the nearest of {0°, 180°} — facing the camera reads
-// |yaw| ≈ 180 (the left→right vector flips), facing away ≈ 0; both are the
-// FRONT projection. Profile is ±90°. Median of per-frame distances (wrap-safe).
-const frontDeg = median(yawsRaw.map((y) => {
-  const a = Math.abs(y * 180 / Math.PI);
-  return Math.min(a, 180 - a);
-}));
-console.log(`[mocap] world y-sign ${ySign > 0 ? "down (as-is)" : "up (flipped)"} · yaw median ${yawMedDeg.toFixed(0)}° (frontness ${frontDeg.toFixed(0)}°)`);
+const yawsRaw = hasWorld ? worldN.map((f) => frameYaw(f)) : detected.map(() => 0);
+console.log(`[mocap] frontness ratio ${frontRatio.toFixed(2)} (front ≥ 0.35) · facing ${facing ? "camera" : "away"} · world debug ${hasWorld ? "present" : "absent"}`);
 
 // ── canonical view selection (brief 17 A5) ───────────────────────────────
 // --view auto picks the NEAREST canonical view by yaw (front if |yaw| < 45°,
@@ -197,9 +204,9 @@ if (emitV) {
   views = emitV.split(",").map((s) => normView(s.trim()));
 } else {
   const v = opt("view", "auto");
-  views = [v === "auto" ? (frontDeg < 45 ? "front" : "profile") : normView(v)];
+  views = [v === "auto" ? (frontRatio >= 0.35 ? "front" : "profile") : normView(v)];
 }
-console.log(`[mocap] views: ${views.join(" + ")}${opt("view", "auto") === "auto" && !emitV ? " (auto by yaw)" : ""}`);
+console.log(`[mocap] views: ${views.join(" + ")}${opt("view", "auto") === "auto" && !emitV ? " (auto by width foreshortening)" : ""}`);
 
 for (let vi = 0; vi < views.length; vi++) await processView(views[vi], vi === 0);
 
@@ -207,10 +214,15 @@ async function processView(vk, primary) {
   const vBase = primary ? clipBase : `${clipBase}-${vk}`;
   const vName = primary ? moveName : `${moveName}-${vk}`;
   let rawThetaX = null, lagX = null;            // explorer taps (set in the lag block)
-  // ── stage 3: projection for this view ────────────────────────────────────
-  // profile: camera-plane projection, no rotation (yaw recorded in provenance)
-  const yaws = vk === "profile" ? yawsRaw.map(() => 0) : yawsRaw;
-  const frontal = worldN.map((f, i) => deYaw(f, yaws[i]));
+  // ── stage 3: projection for this view (18.1: 2D-only) ────────────────────
+  // The camera plane IS the projection — no 3D rotation anywhere. FRONT view
+  // of a facing-camera clip gets an x-flip so the canonical convention
+  // (person's left→right along +x) holds — the 2D equivalent of the old
+  // de-yaw-by-±180°; landmark labels stay person-side, so no swap.
+  const xFlip = vk === "front" && facing;
+  const flipF = (frames) => xFlip ? frames.map((f) => f.map((p) => [-p[0], p[1]])) : frames;
+  const frontal = flipF(imgIso);
+  const yaws = yawsRaw;                        // debug only (poses provenance)
 
   // ── stage 4: retarget to rig rotations ────────────────────────────────────
   // as-filmed = profile-family view: estimate the dancer's facing (median
@@ -238,22 +250,42 @@ async function processView(vk, primary) {
       `${cal.fallbacks.length ? ` · fallback declared: [${cal.fallbacks}]` : ""}`);
     console.log(`[mocap] measured−declared rest deltas (rad): ${JSON.stringify(deltas)}`);
   }
+  // depth channels (18.1: DERIVED FROM 2D — the estimator's 3D head is not
+  // trusted): per-bone signed twist from projected-length foreshortening
+  // against stage-4's calibration-frame rest lengths; pelvis/chest yaw from
+  // width foreshortening. Sign: continuity through each lobe, score
+  // asymmetry at plane crossings, hold when silent — decisions counted.
+  const legLName = mirror ? "R" : "L";   // person side feeding rig L
+  const maskFor = (nm) => /L$/.test(nm) ? (legLName === "L" ? masks.legL : masks.legR)
+    : /R$/.test(nm) ? (legLName === "L" ? masks.legR : masks.legL)
+    : masks.global;
+  const fore = foreshortenAll(frontal, scores, rig.defs(mirror, view), maskFor, S);
+  console.log(`[mocap] foreshorten sign decisions: ${JSON.stringify(fore.log)}`);
+  const twistFrames = frontal.map((_, i) =>
+    Object.fromEntries(Object.entries(fore.twists).map(([nm, s2]) => [nm, s2[i]])));
+  const yawFrames = frontal.map((_, i) =>
+    ({ pelvis: fore.yaws.pelvis[i], chest: fore.yaws.chest[i] }));
+  const footYawOf = (i, rigSide) => twistFrames[i][`ankle${rigSide}`] ?? 0;
+  // world-derived twist — EXPLORER COMPARISON ONLY (acceptance plot)
+  const twistWorldFrames = hasWorld
+    ? worldN.map((f) => boneTwists(deYaw3(f, 0), rig, mirror)) : null;
+
   const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror, view, cal.rests));
 
-  // foot-length gating (16.2 item 1): where the projected heel→toe length
-  // collapses (foot pointing at the camera), the 2D ankle angle is atan2 of
-  // noise — hold the last valid sample instead. Ratio = projected/full-3D.
+  // foot-length gating (16.2 item 1; 18.1 made 2D-only): where the
+  // projected heel→toe length collapses vs the MEASURED rest length (the
+  // foot pointing at the camera), the 2D ankle angle is atan2 of noise —
+  // hold the last valid sample. (The old ratio divided image-space by
+  // metric-3D — meaningless once the projection went image-based.)
   const FOOT_GATE = +opt("foot-gate", 0.35);
   {
     const gateLog = {};
     for (const rigSide of ["L", "R"]) {
       const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
-      const mask = frontal.map((f2, i) => {
+      const restLen = fore.restLens[`ankle${rigSide}`] || 1;
+      const mask = frontal.map((f2) => {
         const h2 = f2[MP[`heel${p}`]], t2 = f2[MP[`toe${p}`]];
-        const h3 = worldN[i][MP[`heel${p}`]], t3 = worldN[i][MP[`toe${p}`]];
-        const proj = Math.hypot(t2[0] - h2[0], t2[1] - h2[1]);
-        const full = Math.hypot(t3[0] - h3[0], t3[1] - h3[1], t3[2] - h3[2]);
-        return proj / (full || 1) < FOOT_GATE;
+        return Math.hypot(t2[0] - h2[0], t2[1] - h2[1]) / restLen < FOOT_GATE;
       });
       const series = thetaFrames.map((f2) => f2[`ankle${rigSide}`]);
       const held = holdWhere(series, mask);
@@ -288,23 +320,13 @@ async function processView(vk, primary) {
     }
   }
 
-  // depth channels (16.2 item 2 — emitted now, consumed by brief 17's depth
-  // mechanism): per-frame de-yawed 3D pose → footYaw (floor-plane heel→toe
-  // angle) + per-bone out-of-plane twist
-  const frontal3 = worldN.map((f, i) => deYaw3(f, yaws[i]));
-  const footYawOf = (i, rigSide) => {
-    const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
-    const h = frontal3[i][MP[`heel${p}`]], t = frontal3[i][MP[`toe${p}`]];
-    return Math.atan2(t[2] - h[2], t[0] - h[0]);
-  };
-  const twistFrames = frontal3.map((f) => boneTwists(f, rig, mirror));
 
   // ── lag diagnostic: filtered pipeline vs a RAW parallel path ─────────────
   // Cross-correlate joint-angle signals; peak at lag>0 = rig lags source.
   // Reported whole-window + per-third (constant vs drifting).
   {
-    const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-    const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, vk === "profile" ? 0 : frameYaw(f)), rig, mirror, view));
+    const rawFrontal = flipF(rawImgIso);
+    const rawTheta = rawFrontal.map((f) => retargetFrame(f, rig, mirror, view));
     rawThetaX = rawTheta;
     const fps = raw.meta.fps;
     const xlag = (i0, i1) => {
@@ -376,6 +398,8 @@ async function processView(vk, primary) {
   // twist channels ride the same averaging (17 B1) — distill emits them
   // as per-key twist where the bone meaningfully leaves the plane
   for (const nm of ARTICULATED) channels[`tw:${nm}`] = uni(twistFrames.map((f) => f[nm] ?? 0));
+  channels["yw:pelvis"] = uni(yawFrames.map((f) => f.pelvis));
+  channels["yw:chest"] = uni(yawFrames.map((f) => f.chest));
   channels.pelvisU = uni(pelvisU);
   for (const s of ["L", "R"]) {
     channels[`footY${s}`] = uni(footY[s]);
@@ -422,6 +446,7 @@ async function processView(vk, primary) {
   for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
   const twistAvg = {};
   for (const nm of ARTICULATED) twistAvg[nm] = mean[`tw:${nm}`];
+  const yawAvg = { pelvis: mean["yw:pelvis"], chest: mean["yw:chest"] };
   const pelvisAvg = mean.pelvisU;
   const pelvisMean = pelvisAvg.reduce((a, b) => a + b, 0) / BINS;
   // contacts from the RIG'S OWN FK (2026-09-23): image-space foot height is
@@ -446,6 +471,7 @@ async function processView(vk, primary) {
   const table = distillMove({
     thetas: thetasAvg,
     twists: twistAvg,
+    yaws: yawAvg,
     pelvisU: pelvisAvg,
     footY: { L: fkFY.L, R: fkFY.R },
     footVX: { L: circD(fkFX.L), R: circD(fkFX.R) },
@@ -469,7 +495,9 @@ async function processView(vk, primary) {
               bpm: beatSec ? +(60 / beatSec).toFixed(2) : null,
               anchorSec: +anchorSec.toFixed(4), acStrength: +per.strength.toFixed(3),
               cycles: cycles.length, kept: kept.length, dropped },
-    restCalibration: {
+    foreshorten: { signDecisions: fore.log,
+    restLens: Object.fromEntries(Object.entries(fore.restLens).map(([k, v]) => [k, +v.toFixed(4)])) },
+  restCalibration: {
       rests: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, +v.toFixed(4)])),
       counts: cal.counts, fallbacks: cal.fallbacks,
     },
@@ -481,6 +509,8 @@ async function processView(vk, primary) {
       pelvisU: +pelvisU[i].toFixed(4),
       footYaw: { L: +footYawOf(i, "L").toFixed(4), R: +footYawOf(i, "R").toFixed(4) },
       twist: Object.fromEntries(Object.entries(twistFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])),
+      yaw2d: { pelvis: +yawFrames[i].pelvis.toFixed(4), chest: +yawFrames[i].chest.toFixed(4) },
+      ...(twistWorldFrames ? { twistWorld: Object.fromEntries(Object.entries(twistWorldFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])) } : {}),
     })),
   };
   fs.writeFileSync(`${vBase}.poses.json`, JSON.stringify(poses));
