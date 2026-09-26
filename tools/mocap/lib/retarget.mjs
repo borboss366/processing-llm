@@ -10,13 +10,12 @@
 // pelvis→knee), so leg swing projects onto knee/ankle; the QA video shows
 // this honestly.
 
-// MediaPipe pose landmark indices (33-point BlazePose)
-export const MP = {
-  nose: 0, earL: 7, earR: 8,
-  shoulderL: 11, shoulderR: 12, elbowL: 13, elbowR: 14, wristL: 15, wristR: 16,
-  hipL: 23, hipR: 24, kneeL: 25, kneeR: 26, ankleL: 27, ankleR: 28,
-  heelL: 29, heelR: 30, toeL: 31, toeR: 32,
-};
+// 18.1: the pipeline speaks the SCHEMA (lib/landmarks.mjs, 21 points) —
+// estimator-specific indexing never reaches this file. MP is kept as an
+// alias table over schema indices so downstream call sites read the same
+// (toe = bigtoe; smalltoe exists in the schema for estimators that have it).
+import { S } from './landmarks.mjs';
+export const MP = { ...S, toeL: S.bigtoeL, toeR: S.bigtoeR };
 
 const mid = (a, b) => a.map((v, i) => (v + b[i]) / 2);
 const ang = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]);

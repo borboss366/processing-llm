@@ -74,7 +74,7 @@ if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
                             "min-cutoff", "beta", "anchor", "max-keys", "out",
-                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views", "cycles"]);
+                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views", "cycles", "estimator", "estimator-model"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -106,8 +106,10 @@ const py = path.join(HERE, ".venv/bin/python");
 if (!fs.existsSync(py)) { console.error("[mocap] no .venv — run tools/mocap/setup.sh first"); process.exit(1); }
 console.log(`[mocap] extracting poses: ${path.basename(video)} window ${winA}-${winB}s mirror=${mirror}`);
 const enhance = opt("enhance", "on");   // 16.2 item 3: bbox crop + flip-TTA (off = legacy full-frame VIDEO mode)
+const estimator = opt("estimator", "mediapipe");     // 18.1: mediapipe | rtmpose
+const estimatorModel = opt("estimator-model", "balanced");
 const raw = await new Promise((resolve, reject) => {
-  const p = spawn(py, [path.join(HERE, "pose_worker.py"), video, String(winA), String(winB), enhance]);
+  const p = spawn(py, [path.join(HERE, "pose_worker.py"), video, String(winA), String(winB), enhance, estimator, estimatorModel]);
   let buf = "", err = "";
   const frames = [];
   let meta = null;
@@ -154,7 +156,11 @@ if (detected.length < 30) { console.error("[mocap] too few pose frames — check
 const times = detected.map((f) => f.t);
 const filterMode = opt("filter", "savgol");
 const sg = { window: +opt("sg-window", 9), order: +opt("sg-order", 3) };
-const rawWorld = detected.map((f) => f.world);
+// 18.1: world is a DEBUG channel (mediapipe only) — depth comes from 2D.
+// Estimators without world get a flat z=0 stand-in so legacy world-path
+// diagnostics stay runnable; nothing downstream may CONSUME z (Task 2).
+const hasWorld = detected.every((f) => Array.isArray(f.world));
+const rawWorld = detected.map((f) => hasWorld ? f.world : f.img.map((p) => [p[0], p[1], 0]));
 const rawImg = detected.map((f) => f.img.map((l) => l.slice(0, 2)));
 const smooth = (frames) =>
   filterMode === "oneeuro" ? filterLandmarks(frames, times, euro)
@@ -480,6 +486,7 @@ async function processView(vk, primary) {
   fs.writeFileSync(`${vBase}.poses.json`, JSON.stringify(poses));
   const { _netDriftUnits, ...moveOut } = table;
   moveOut.view = vk;
+moveOut.estimator = estimator;
   moveOut.provenance = { clip: path.basename(video), clipSha: clipHash, window: [winA, winB],
                          mirror, cyclesKept: kept.length, cyclesDropped: dropped.length,
                          netDriftUnits: _netDriftUnits, pipeline: "tools/mocap/extract.mjs" };

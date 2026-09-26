@@ -115,7 +115,7 @@ export function renderExplorer(D) {
 
 <script>
 const D = ${json};
-const MPB = [[11,12],[11,13],[13,15],[12,14],[14,16],[23,24],[11,23],[12,24],[23,25],[25,27],[27,29],[29,31],[27,31],[24,26],[26,28],[28,30],[30,32],[28,32],[7,8]];
+const MPB = [[3,4],[3,5],[5,7],[4,6],[6,8],[9,10],[3,9],[4,10],[9,11],[11,13],[13,15],[15,17],[13,17],[10,12],[12,14],[14,16],[16,18],[14,18],[1,2]];  // schema bones (18.1)
 const $ = (id) => document.getElementById(id);
 const ART = Object.keys(D.theta);
 let F = 0, orbY = 0.6, orbX = 0.25;
@@ -229,9 +229,9 @@ function stage5() {
   // replicate the transfer at frame F and compare to the pipeline's theta
   const obsAng = (fr, a, b) => {
     const pt = (k) => typeof k === 'number' ? fr[k]
-      : k === 'hipMid' ? [(fr[23][0]+fr[24][0])/2, (fr[23][1]+fr[24][1])/2]
-      : k === 'shoulderMid' ? [(fr[11][0]+fr[12][0])/2, (fr[11][1]+fr[12][1])/2]
-      : [(fr[7][0]+fr[8][0])/2, (fr[7][1]+fr[8][1])/2];
+      : k === 'hipMid' ? [(fr[9][0]+fr[10][0])/2, (fr[9][1]+fr[10][1])/2]
+      : k === 'shoulderMid' ? [(fr[3][0]+fr[4][0])/2, (fr[3][1]+fr[4][1])/2]
+      : [(fr[1][0]+fr[2][0])/2, (fr[1][1]+fr[2][1])/2];   // schema mids (18.1)
     const A = pt(a), B = pt(b);
     return Math.atan2(B[1]-A[1], B[0]-A[0]);
   };
