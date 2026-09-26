@@ -150,6 +150,8 @@ def main() -> int:
 
     cw, chh = x1p - x0p, y1p - y0p
     scale = max(1.0, MIN_SIDE / min(cw, chh))
+    # explorer (brief 18): the crop the estimator actually saw
+    print(json.dumps({"meta2": True, "crop": [x0p, y0p, x1p, y1p], "scale": round(scale, 3)}))
 
     # pass 2 — two tracked VIDEO streams on the FIXED crop (plain + mirror)
     with make_landmarker() as lm1, make_landmarker() as lm2:

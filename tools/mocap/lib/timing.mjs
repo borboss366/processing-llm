@@ -76,7 +76,14 @@ export function detectPeriod(signal, fs, { minLag = 0.25, maxLag = 4, peakTol = 
   // parabolic refinement
   const y0 = acAt(lag - 1), y1 = acAt(lag), y2 = acAt(lag + 1);
   const off = (y0 - y2) / (2 * (y0 - 2 * y1 + y2) || 1);
-  return { period: (lag + Math.max(-0.5, Math.min(0.5, off))) / fs, strength: y1 };
+  // debug payload for the stage explorer (brief 18): the whole curve +
+  // every local peak, so the octave choice is inspectable
+  const candidates = [];
+  for (let k = 1; k < ac.length - 1; k++) {
+    if (ac[k] > ac[k - 1] && ac[k] >= ac[k + 1]) candidates.push({ lagSec: +((lo + k) / fs).toFixed(4), ac: +ac[k].toFixed(3) });
+  }
+  return { period: (lag + Math.max(-0.5, Math.min(0.5, off))) / fs, strength: y1,
+           debug: { ac: ac.map((v) => +v.toFixed(3)), loSec: +(lo / fs).toFixed(4), fs, candidates } };
 }
 
 // Does the loop span 1× or 2× the base period? Fold the signed channels at

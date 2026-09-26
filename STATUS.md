@@ -93,12 +93,13 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-BRIEF 17 COMPLETE (A views incl. A8 body roll; B twist — cos-bend /
-foreshorten / dim / foot fan / body yaw, tstep re-extracted with the
-fan, armpump v7 un-parked; C drop reactivity + fillKey). OPEN with the
-user: A7 gate (running man profile — variant videos sent), B4 re-check
-(tstep fan + armpump un-chicken — videos sent), bodyroll window
-confirm. OPEN engineering: intermittent twist-suppression (tripwired,
-unreproduced ×7 — reports/2026-09-26-brief-17-BC.md). Remaining from
-16: Task 3 anatomy stats + lint (three clips of corrected poses now
-qualify). Then: reviewer's next brief.
+BRIEF 18 Tasks 1+2 BUILT: every extract run now writes
+<clip>.explorer.html (9 stages, shared scrub, orbitable 3D, per-stage
+hazards tied to real bugs) — generated for all three clips
+(corpus/{runningman,tstep-L,bodyroll}.explorer.html); docs/PIPELINE.md
+one page per stage with formula/params/failure/file:line. WAITING on
+the user (this brief is accepted by UNDERSTANDING): read PIPELINE.md
+against an explorer, return the "can't follow" list — each item
+becomes a revision; then Task 3 (three functions, three predictions).
+Older opens: A7/B4 gates (videos delivered), bodyroll window confirm,
+brief 16 Task 3 anatomy stats. Brief 19 (fidelity) waits on 18.

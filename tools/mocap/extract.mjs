@@ -49,6 +49,8 @@ import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
 import { MP, buildRig, detectYSign, frameYaw, deYaw, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove } from "./lib/distill.mjs";
+import { renderExplorer } from "./lib/explorer.mjs";
+import { sideSigns } from "./lib/retarget.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -117,6 +119,7 @@ const raw = await new Promise((resolve, reject) => {
       if (!line.trim()) continue;
       const j = JSON.parse(line);
       if (j.meta) meta = j;
+      else if (j.meta2) meta = { ...meta, crop: j.crop, cropScale: j.scale };
       else if (j.error) reject(new Error(j.error));
       else frames.push(j);
     }
@@ -141,6 +144,7 @@ console.log(`[mocap] frames: ${raw.frames.length} in window, ${detected.length} 
     }
   }
   console.log(`[mocap] landmark jitter (second-difference, pre-smoothing): ${(s / k).toFixed(2)} px mean`);
+  raw.meta.jitterPx = +(s / k).toFixed(2);
 }
 if (detected.length < 30) { console.error("[mocap] too few pose frames — check the loop window / clip"); process.exit(1); }
 
@@ -196,6 +200,7 @@ for (let vi = 0; vi < views.length; vi++) await processView(views[vi], vi === 0)
 async function processView(vk, primary) {
   const vBase = primary ? clipBase : `${clipBase}-${vk}`;
   const vName = primary ? moveName : `${moveName}-${vk}`;
+  let rawThetaX = null, lagX = null;            // explorer taps (set in the lag block)
   // ── stage 3: projection for this view ────────────────────────────────────
   // profile: camera-plane projection, no rotation (yaw recorded in provenance)
   const yaws = vk === "profile" ? yawsRaw.map(() => 0) : yawsRaw;
@@ -294,6 +299,7 @@ async function processView(vk, primary) {
   {
     const rawN = ySign === 1 ? rawWorld : rawWorld.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
     const rawTheta = rawN.map((f, i) => retargetFrame(deYaw(f, vk === "profile" ? 0 : frameYaw(f)), rig, mirror, view));
+    rawThetaX = rawTheta;
     const fps = raw.meta.fps;
     const xlag = (i0, i1) => {
       const seg = (frames2) => ARTICULATED.map((nm) => {
@@ -325,6 +331,7 @@ async function processView(vk, primary) {
     const whole = xlag(0, n);
     const thirds = [0, 1, 2].map((k) => xlag(Math.floor(n * k / 3), Math.floor(n * (k + 1) / 3)));
     const spread = Math.max(...thirds) - Math.min(...thirds);
+    lagX = { whole: +whole.toFixed(1), thirds: thirds.map((v) => +v.toFixed(1)) };
     console.log(`[mocap] lag vs raw: ${whole.toFixed(1)} ms (thirds ${thirds.map((v) => v.toFixed(1)).join("/")} ms → ${spread < 1000 / fps ? "constant" : "DRIFTING"})`);
   }
 
@@ -515,6 +522,84 @@ async function processView(vk, primary) {
     });
     fs.unlinkSync(specPath);
     console.log(`[mocap] wrote ${path.basename(vBase)}.qa.mp4`);
+  }
+
+  // ── stage 10: the stage explorer (brief 18 Task 1) ───────────────────────
+  if (primary && !flag("no-explorer")) {
+    const r3 = (v) => +(+v).toFixed(3);
+    const cropStr = raw.meta.crop ? raw.meta.crop.join(",") : "full";
+    let frames0 = { frames: [], crop: raw.meta.crop ?? [0, 0, raw.meta.w, raw.meta.h] };
+    try {
+      const out = await new Promise((resolve, reject) => {
+        let buf2 = "";
+        const p2 = spawn(py, [path.join(HERE, "frame_dump.py"), video, String(winA), String(winB), cropStr, "14"]);
+        p2.stdout.on("data", (d) => { buf2 += d; });
+        p2.on("close", (c) => c === 0 ? resolve(JSON.parse(buf2)) : reject(new Error("frame_dump " + c)));
+      });
+      frames0 = out;
+    } catch (e) { console.warn("[mocap] explorer frame dump failed (page still written):", e.message); }
+    const boneOf = (nm) => nm === "chest" ? ["pelvis", "chest"] : nm === "neck" ? ["chest", "neck"]
+      : /^shoulder/.test(nm) ? [nm, "elbow" + nm.slice(-1)] : /^elbow/.test(nm) ? [nm, "hand" + nm.slice(-1)]
+      : /^hip/.test(nm) ? [nm, "knee" + nm.slice(-1)] : /^knee/.test(nm) ? [nm, "ankle" + nm.slice(-1)]
+      : [nm, "foot" + nm.slice(-1)];
+    const defRows = rig.defs(mirror, view);
+    const defLen = {}, declared = {};
+    for (const [nm, , , , restDecl] of defRows) {
+      const [ja, jb] = boneOf(nm);
+      defLen[nm] = r3(Math.hypot(rig.joints[jb].x - rig.joints[ja].x, rig.joints[jb].y - rig.joints[ja].y));
+      declared[nm] = r3(restDecl);
+    }
+    const sgnFn = sideSigns(rig, view);
+    const cycJoints = ["hipL", "hipR", "kneeL", "kneeR"].filter((j) => ARTICULATED.includes(j));
+    // reconstruction RMS of the emitted keys vs the averaged loop
+    let rmsAcc = 0, rmsN = 0;
+    const kp = table.keys.map((k) => k.phase);
+    for (const [nm, v] of Object.entries(thetasAvg)) {
+      for (let b = 0; b < BINS; b++) {
+        const lp = b / BINS;
+        let i = kp.length - 1;
+        for (let k = 0; k < kp.length; k++) if (kp[k] <= lp) i = k;
+        const A = table.keys[i], B2 = table.keys[(i + 1) % kp.length];
+        const span = (((B2.phase - A.phase) % 1) + 1) % 1 || 1;
+        const u = ((((lp - A.phase) % 1) + 1) % 1) / span;
+        const va = A.joints[nm]?.rot ?? 0, vb = B2.joints[nm]?.rot ?? 0;
+        rmsAcc += (va + (vb - va) * u - v[b]) ** 2; rmsN++;
+      }
+    }
+    const Dx = {
+      meta: { clip: path.basename(video), view: vk, window: [winA, winB], mirror,
+        params: { filter: filterMode, sgWindow: sg.window, sgOrder: sg.order, enhance,
+                  footGate: FOOT_GATE, bpl, maxKeys: +opt("max-keys", 16), cycles: opt("cycles", null) } },
+      crop: frames0.crop, vidW: raw.meta.w, vidH: raw.meta.h, scale: raw.meta.cropScale ?? 1,
+      jitter: raw.meta.jitterPx ?? 0,
+      frames0: frames0.frames,
+      times: times.map(r3),
+      img: img.map((f, i) => f.map((p, l) => [r3(p[0]), r3(p[1]), r3(detected[i].img[l][2])])),
+      world: worldN.map((f) => f.map((p) => p.map(r3))),
+      camPlane: worldN.map((f) => deYaw(f, 0).map((p) => p.map(r3))),
+      frontal: frontal.map((f) => f.map((p) => p.map(r3))),
+      rawTheta: Object.fromEntries(ARTICULATED.map((nm) => [nm, rawThetaX.map((f) => r3(f[nm]))])),
+      theta: Object.fromEntries(ARTICULATED.map((nm) => [nm, thetaFrames.map((f) => r3(f[nm]))])),
+      lag: lagX ?? { whole: 0, thirds: [] },
+      yawDeg: yawsRaw.map((y) => r3(y * 180 / Math.PI)),
+      frontness: +frontDeg.toFixed(1),
+      masks: { global: masks.global.map(Number), legL: masks.legL.map(Number), legR: masks.legR.map(Number) },
+      rests: { measured: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, r3(v)])),
+               declared, counts: cal.counts, fallbacks: cal.fallbacks },
+      defs: defRows.map(([nm, parent, a, b]) => [nm, parent, a, b]),
+      defLen,
+      sideSigns: Object.fromEntries(defRows.map(([nm]) => [nm, sgnFn(nm)])),
+      rotLimits: { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0, ...(sidecar.rotLimits ?? {}) },
+      period: { ...per.debug, chosen: +period.toFixed(4), mult: loop.mult,
+                cyclesPrior: opt("cycles", null), anchorSec: +anchorSec.toFixed(3) },
+      cycles: { data: Object.fromEntries(cycJoints.map((j) => [j, cycles.map((c) => Array.from(c["th:" + j]).map(r3))])),
+                kept, dropped },
+      avg: Object.fromEntries(Object.entries(thetasAvg).map(([k, v]) => [k, Array.from(v).map(r3)])),
+      distill: { keyPhases: kp, keyCount: table.keys.length, rms: +Math.sqrt(rmsAcc / Math.max(1, rmsN)).toFixed(3) },
+      table: moveOut,
+    };
+    fs.writeFileSync(`${vBase}.explorer.html`, renderExplorer(Dx));
+    console.log(`[mocap] wrote ${path.basename(vBase)}.explorer.html (${(fs.statSync(`${vBase}.explorer.html`).size / 1e6).toFixed(1)} MB)`);
   }
 
 }
