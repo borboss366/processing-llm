@@ -33,25 +33,10 @@ export function detectYSign(worldFrames) {
   return s < 0 ? +1 : -1;
 }
 
-// Per-frame yaw about the vertical axis, from the person's left→right
-// shoulder+hip vector in the xz plane. Returns radians; 0 = that vector
-// along +x (canonical frame).
-export function frameYaw(world) {
-  const v = [0, 0, 0];
-  for (const [a, b] of [[MP.shoulderL, MP.shoulderR], [MP.hipL, MP.hipR]]) {
-    for (let i = 0; i < 3; i++) v[i] += world[b][i] - world[a][i];
-  }
-  return Math.atan2(v[2], v[0]);
-}
-
-// Rotate all landmarks about the vertical (y) axis by -yaw and project
-// orthographically to xy — the de-yawed frontal pose.
-export function deYaw(world, yaw) {
-  const c = Math.cos(-yaw), s = Math.sin(-yaw);
-  return world.map(([x, y, z]) => [x * c - z * s, y]);
-}
-
-// same rotation, z kept — for the depth channels (16.2)
+// World-debug rotation, kept ONLY at yaw 0 so boneTwists can measure
+// out-of-plane angles in the world channel (explorer fore-vs-world overlay).
+// The de-yaw ROTATION itself was removed 2026-09-27: with 2D landmarks it
+// degenerates to x·cos(yaw) — a squash, not a view.
 export function deYaw3(world, yaw) {
   const c = Math.cos(-yaw), s = Math.sin(-yaw);
   return world.map(([x, y, z]) => [x * c - z * s, y, x * s + z * c]);

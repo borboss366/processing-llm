@@ -61,6 +61,7 @@ creature rig). Full guide in `README.md`.
 | Mocap on real clip (T-step L) | 58/58 posed; 0.63 s loop; 16 keys; determinism byte-identical | extract.mjs + diff |
 | Hip DOF (brief 16.1) | hip ±0.9 clean static+beat+snap; boneDev 0.0%; free-leg knee variance −47% on re-extraction; walk pixel-identical (gait A=0) | rotation-stress + fk-check |
 | Moves × shapes matrix (brief 16 T2) | 6 moves × 2 stage shapes: 0 spikes, components 1, hips articulate (0.47/0.53) | moves-x-shapes |
+| De-yaw removal + reinterpretation | 2D "rotation" = x·cos(yaw) squash → stage 3 selects view only; front-from-profile = rot→twist reinterpretation (159 twist keys, 0 in-plane leak; synthetic knee-lift 0.7 → twist 0.7) | extract.mjs self-test + integration run |
 | Shape-load degrade (live path) | bad shape name resumes old body (was: frozen at n=0 forever) | moves-x-shapes (found) + probe |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
@@ -97,8 +98,11 @@ BRIEF 18.1: T1 DONE (schema + pluggable worker, mediapipe + rtmpose
 both runnable, setup --check), T2 DONE (2D foreshortening twist/yaw,
 sign ladder, 2D-only view/gate; 3 regressions found+fixed), T4 cards
 COMMITTED (reports/2026-09-26-estimator-cards.md) — headline: the
-far-leg 25–50 % weakness was the de-yaw era, gone on both estimators;
-they differ in score honesty (rtmpose +0.2 occluded), feet (real small
-toes), jitter (mediapipe −30 %), cost (3×). WAITING: user picks the
-default estimator (USER_GATES item 4). T3 (A/B toggle explorer)
-remains. Then briefs 18 loop + 19.
+far-leg 25–50 % weakness was the de-yaw era, gone on both estimators.
+De-yaw now REMOVED entirely (2026-09-27, user directive): stage 3
+selects a view, never rotates; a mismatched requested view is a
+rot→twist reinterpretation (reports/2026-09-27-deyaw-removal.md); the
+A7 front variant table rebuilt as the honest reinterpretation.
+WAITING: user picks the default estimator (USER_GATES item 4) + A7
+verdict (item 3). T3 (A/B toggle explorer) remains. Then briefs 18
+loop + 19.

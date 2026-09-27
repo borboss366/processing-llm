@@ -63,12 +63,10 @@ export function renderExplorer(D) {
   </div>
 </section>
 
-<section id="s3"><h2>3 · YAW &amp; VIEW — which plane holds the motion</h2>
+<section id="s3"><h2>3 · VIEW SELECT — no rotation exists in 2D</h2>
   <div class="row">
-    <div><canvas id="c3" width="640" height="140"></canvas><div class="note">yaw per frame (°); band = frontness decision</div></div>
-    <div><canvas id="c3b" width="200" height="240"></canvas><div class="note">camera plane</div></div>
-    <div><canvas id="c3c" width="200" height="240"></canvas><div class="note">after de-yaw (front)</div></div>
-    <div class="haz" style="max-width:300px"><b>can go wrong:</b> de-yawing a PROFILE clip to front rotates the sagittal motion into z and the projection DROPS it — the running man's knee lift vanished this way (hip span ×3–5 recovered by projecting as-filmed). Frontness ratio ${D.frontness} (front ≥ 0.35, from width foreshortening — 2D only since 18.1) → <b>${D.meta.view}</b>.</div>
+    <div><canvas id="c3" width="640" height="140"></canvas><div class="note">${D.reinterpret ? "twist traces the reinterpretation produced (hipL ▮ hipR ▮ kneeL ▮ kneeR ▮, rad)" : "frontness per frame (shoulder width / spine length); line = 0.35 threshold"}</div></div>
+    <div class="haz" style="max-width:420px">frontness ${D.frontness} (front ≥ 0.35) → natural view <b>${D.natural}</b>, emitted as <b>${D.meta.view}</b>${D.reinterpret ? " — <b>REINTERPRETATION</b>: this view's in-plane deviations are unobserved (≈0); the sagittal deviations are routed to the TWIST channel and rendered by cos-foreshortening" : ""}.<br><b>can go wrong:</b> with 2D landmarks a "de-yaw rotation" degenerates to x·cos(yaw) — a squash, not a view; that fake rotation dropped the running man's knee lift (hip span ×3–5 recovered by removing it). Stage 3 SELECTS a view; the table is always built from the camera plane.</div>
   </div>
 </section>
 
@@ -189,9 +187,11 @@ function stage2() {
   tracePlot($('c2'), [D.rawTheta[j], D.theta[j]], ['#888', '#59f'], F/(D.times.length-1));
 }
 function stage3() {
-  tracePlot($('c3'), [D.yawDeg], ['#c9f'], F/(D.times.length-1));
-  skel2d($('c3b'), D.camPlane[F], null, true);
-  skel2d($('c3c'), D.frontal[F], null, true);
+  if (D.reinterpret) {
+    tracePlot($('c3'), ['hipL','hipR','kneeL','kneeR'].map(j => D.theta[j]), ['#59f','#5c5','#c95','#c9f'], F/(D.times.length-1));
+  } else {
+    tracePlot($('c3'), [D.frontSeries, D.frontSeries.map(() => 0.35)], ['#c9f', '#555'], F/(D.times.length-1));
+  }
 }
 function stage4() {
   const g = $('c4').getContext('2d'); g.clearRect(0,0,640,90);

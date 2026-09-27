@@ -21,12 +21,13 @@
  *                               ankle angle holds last valid (default 0.35)
  *     --enhance on|off          bbox crop + flip-TTA pose inference (default
  *                               on; off = legacy full-frame single-pass)
- *     --view frontal|as-filmed  projection plane (default frontal = de-yaw to
- *                               front view). as-filmed projects onto the
- *                               CAMERA plane with no rotation — for clips
- *                               filmed in the plane of the motion (profile
- *                               running man: de-yaw rotates the sagittal
- *                               knee lift into z and the projection drops it)
+ *     --view auto|front|profile  emitted view (default auto = the clip's
+ *                               NATURAL view from the frontness score). The
+ *                               table is ALWAYS built from the camera plane —
+ *                               2D has no rotation (a "de-yaw" is x·cos(yaw),
+ *                               a squash). Requesting the other view emits a
+ *                               REINTERPRETATION: rot keys become twist keys.
+ *     --emit-views a,b          emit several views in one run (first = primary)
  *     --anchor F                extra phase shift 0..1 after auto-anchor
  *     --keep-drift              keep net pelvis drift in `travel` (single-side
  *                               captures of travelling moves; default removes it)
@@ -48,7 +49,7 @@ import { filterLandmarks, oneEuro } from "./lib/oneeuro.mjs";
 import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
 import { S } from "./lib/landmarks.mjs";
 import { foreshortenAll, frontnessRatio } from "./lib/foreshorten.mjs";
-import { MP, buildRig, detectYSign, frameYaw, deYaw, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
+import { MP, buildRig, detectYSign, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove } from "./lib/distill.mjs";
 import { renderExplorer } from "./lib/explorer.mjs";
@@ -205,7 +206,6 @@ const facing = median(detected.map((f) => f.img[S.nose][2])) > 0.5;
 // legacy world path — kept ONLY for the explorer's world-vs-2D comparison
 const ySign = hasWorld ? detectYSign(world) : 1;
 const worldN = ySign === 1 ? world : world.map((f) => f.map(([x, y, z]) => [x, -y, -z]));
-const yawsRaw = hasWorld ? worldN.map((f) => frameYaw(f)) : detected.map(() => 0);
 console.log(`[mocap] frontness ratio ${frontRatio.toFixed(2)} (front ≥ 0.35) · facing ${facing ? "camera" : "away"} · world debug ${hasWorld ? "present" : "absent"}`);
 
 // ── canonical view selection (brief 17 A5) ───────────────────────────────
@@ -230,15 +230,21 @@ async function processView(vk, primary) {
   const vBase = primary ? clipBase : `${clipBase}-${vk}`;
   const vName = primary ? moveName : `${moveName}-${vk}`;
   let rawThetaX = null, lagX = null;            // explorer taps (set in the lag block)
-  // ── stage 3: projection for this view (18.1: 2D-only) ────────────────────
-  // The camera plane IS the projection — no 3D rotation anywhere. FRONT view
-  // of a facing-camera clip gets an x-flip so the canonical convention
-  // (person's left→right along +x) holds — the 2D equivalent of the old
-  // de-yaw-by-±180°; landmark labels stay person-side, so no swap.
-  const xFlip = vk === "front" && facing;
+  // ── stage 3: VIEW SELECTION ONLY (no rotation exists in 2D) ──────────────
+  // With 2D-only landmarks a "rotation by yaw" degenerates to x·cos(yaw) —
+  // a squash, not a view. So: the camera plane IS the projection, always;
+  // stage 3 only DECIDES the canonical view (frontness score). The analysis
+  // always runs in the clip's NATURAL view; a requested view that differs
+  // is a table-level REINTERPRETATION at stage 8 (sagittal deviations →
+  // the twist channel, rendered by B's cos-foreshortening).
+  // The x-flip below is mirror CANONICALIZATION (person's left→right along
+  // +x for facing-camera front clips), not a rotation.
+  const natural = frontRatio >= 0.35 ? "front" : "profile";
+  const reinterpret = vk !== natural;
+  if (reinterpret) console.log(`[mocap] view ${vk} ≠ natural ${natural} → REINTERPRETATION (rot→twist at the table level)`);
+  const xFlip = natural === "front" && facing;
   const flipF = (frames) => xFlip ? frames.map((f) => f.map((p) => [-p[0], p[1]])) : frames;
   const frontal = flipF(imgIso);
-  const yaws = yawsRaw;                        // debug only (poses provenance)
 
   // ── stage 4: retarget to rig rotations ────────────────────────────────────
   // as-filmed = profile-family view: estimate the dancer's facing (median
@@ -246,7 +252,7 @@ async function processView(vk, primary) {
   // forward, arms hanging) — measuring a profile pose against FRONT rests
   // parked ~π on one ankle (the "palsy foot": clamps at rotLimits.ankle)
   let view = null;
-  if (vk === "profile") {
+  if (natural === "profile") {
     let s = 0;
     for (const f of frontal) {
       s += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
@@ -520,7 +526,6 @@ async function processView(vk, primary) {
     },
     frames: detected.map((f, i) => ({
       t: +times[i].toFixed(4),
-      yaw: +yawsRaw[i].toFixed(4),
       conf: +conf[i].toFixed(3),
       thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
       pelvisU: +pelvisU[i].toFixed(4),
@@ -533,7 +538,18 @@ async function processView(vk, primary) {
   fs.writeFileSync(`${vBase}.poses.json`, JSON.stringify(poses));
   const { _netDriftUnits, ...moveOut } = table;
   moveOut.view = vk;
-moveOut.estimator = estimator;
+  moveOut.estimator = estimator;
+  // reinterpretation (stage 3's contract): the requested view differs from
+  // the natural one — the requested view's in-plane deviations are
+  // unobserved (≈0); the observed deviations are OUT-OF-PLANE there, so
+  // every rot key becomes a twist key (clamped ±2). Positional channels
+  // (dx/dy/travel: in the natural plane) and foreshortening twists (the
+  // other plane, sign-ambiguous) do not transfer; contacts/ease do.
+  if (reinterpret) {
+    moveOut.reinterpreted = `from-${natural}`;
+    moveOut.keys = reinterpretKeys(moveOut.keys);
+    console.log(`[mocap] reinterpreted table: ${moveOut.keys.reduce((a2, k) => a2 + Object.keys(k.joints).length, 0)} twist keys, rot channels empty by design`);
+  }
   moveOut.provenance = { clip: path.basename(video), clipSha: clipHash, window: [winA, winB],
                          mirror, cyclesKept: kept.length, cyclesDropped: dropped.length,
                          netDriftUnits: _netDriftUnits, pipeline: "tools/mocap/extract.mjs" };
@@ -579,7 +595,10 @@ moveOut.estimator = estimator;
   }
 
   // ── stage 10: the stage explorer (brief 18 Task 1) ───────────────────────
-  if (primary && !flag("no-explorer")) {
+  // reinterpreted views get their own page (stage 3 must show the twist
+  // traces the reinterpretation produced); other secondary views share the
+  // primary's analysis exactly, so a second page would be a duplicate.
+  if ((primary || reinterpret) && !flag("no-explorer")) {
     const r3 = (v) => +(+v).toFixed(3);
     const cropStr = raw.meta.crop ? raw.meta.crop.join(",") : "full";
     let frames0 = { frames: [], crop: raw.meta.crop ?? [0, 0, raw.meta.w, raw.meta.h] };
@@ -630,13 +649,19 @@ moveOut.estimator = estimator;
       times: times.map(r3),
       img: img.map((f, i) => f.map((p, l) => [r3(p[0]), r3(p[1]), r3(detected[i].img[l][2])])),
       world: worldN.map((f) => f.map((p) => p.map(r3))),
-      camPlane: worldN.map((f) => deYaw(f, 0).map((p) => p.map(r3))),
       frontal: frontal.map((f) => f.map((p) => p.map(r3))),
       rawTheta: Object.fromEntries(ARTICULATED.map((nm) => [nm, rawThetaX.map((f) => r3(f[nm]))])),
       theta: Object.fromEntries(ARTICULATED.map((nm) => [nm, thetaFrames.map((f) => r3(f[nm]))])),
       lag: lagX ?? { whole: 0, thirds: [] },
-      yawDeg: yawsRaw.map((y) => r3(y * 180 / Math.PI)),
       frontness: +frontRatio.toFixed(2),
+      natural, reinterpret,
+      // per-frame frontness (shoulder width / spine length) — stage 3's trace
+      frontSeries: imgIso.map((f) => {
+        const sw = Math.hypot(f[S.shoulderR][0] - f[S.shoulderL][0], f[S.shoulderR][1] - f[S.shoulderL][1]);
+        const hm = [(f[S.hipL][0] + f[S.hipR][0]) / 2, (f[S.hipL][1] + f[S.hipR][1]) / 2];
+        const sm = [(f[S.shoulderL][0] + f[S.shoulderR][0]) / 2, (f[S.shoulderL][1] + f[S.shoulderR][1]) / 2];
+        return r3(sw / (Math.hypot(sm[0] - hm[0], sm[1] - hm[1]) || 1e-6));
+      }),
       masks: { global: masks.global.map(Number), legL: masks.legL.map(Number), legR: masks.legR.map(Number) },
       rests: { measured: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, r3(v)])),
                declared, counts: cal.counts, fallbacks: cal.fallbacks },
@@ -659,6 +684,20 @@ moveOut.estimator = estimator;
 }
 
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
+
+// stage-8 reinterpretation: rot keys become twist keys (clamped ±2); joints
+// left with only in-plane channels (dx/dy) drop; travel (natural-plane) zeroes;
+// contacts/ease pass through untouched.
+function reinterpretKeys(keys) {
+  return keys.map((k) => ({
+    ...k,
+    travel: 0,
+    joints: Object.fromEntries(Object.entries(k.joints).flatMap(([nm, ch]) => {
+      const tw = ch.rot != null ? Math.max(-2, Math.min(2, ch.rot)) : null;
+      return tw != null && Math.abs(tw) > 0.02 ? [[nm, { twist: +tw.toFixed(3) }]] : [];
+    })),
+  }));
+}
 
 // ── self-test: synthetic checks, no video needed ─────────────────────────
 function selfTest() {
@@ -947,6 +986,27 @@ function selfTest() {
     const ok = vals.every((v, i) => v === want[i]) && held === 3;
     console.log(`[self-test] foot gate hold: [${vals}] held=${held} (want [${want}] held=3)`);
     if (!ok) fails.push("holdWhere gating wrong");
+  }
+  // 7) reinterpretation (2026-09-27): a synthetic PROFILE knee-lift emitted
+  //    as FRONT must round-trip through the TWIST channel, never through the
+  //    in-plane angle — with 2D landmarks the front view of a profile clip
+  //    observes no in-plane deviation at all.
+  {
+    const lift = 0.7; // same knee-lift magnitude as the round-trip pose (3)
+    const profileKeys = [
+      { beat: 0, joints: { kneeL: { rot: 0 }, hipL: { rot: 0 } },
+        travel: -0.03, contacts: { L: 1, R: 1 } },
+      { beat: 1, joints: { kneeL: { rot: lift }, hipL: { rot: -0.55 }, ankleL: { dx: 0.1 } },
+        travel: -0.03, contacts: { L: 0, R: 1 } },
+    ];
+    const out = reinterpretKeys(profileKeys);
+    const leak = out.some((k) => Object.values(k.joints).some(
+      (ch) => ch.rot != null || ch.dx != null || ch.dy != null));
+    const twKnee = out[1].joints.kneeL?.twist ?? 0;
+    const ok = !leak && Math.abs(twKnee - lift) < 1e-6 && out[1].travel === 0 &&
+               out[1].contacts.L === 0 && !("kneeL" in out[0].joints);
+    console.log(`[self-test] reinterpret front-from-profile: kneeL lift ${lift} → twist ${twKnee}, in-plane leak ${leak} (want twist ${lift}, no leak)`);
+    if (!ok) fails.push("reinterpretation must route sagittal deviations to twist, zero in-plane");
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);
   console.log(`VERIFY:${fails.length ? "FAIL" : "PASS"} mocap-self-test`);

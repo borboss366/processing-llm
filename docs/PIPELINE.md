@@ -39,8 +39,8 @@ The 2D image landmarks are essentially direct observation; the 3D
 world landmarks are the NETWORK'S INFERENCE of metric 3D from one
 camera — the z was never measured, it is a learned guess (weakest
 exactly where visibility is low). We only flip the y-axis and draw it.
-Everything depth-flavored downstream (de-yaw, twist, footYaw) inherits
-this guess as its quality ceiling.
+Since 18.1 nothing downstream consumes the 3D guess — depth (twist/
+yaw) is derived from 2D foreshortening; world stays a debug overlay.
 **Failure we hit:** the OCCLUDED far limb in profile — the running
 man's far leg came out at 25–50 % of the near leg's amplitude. Not
 fixable at this stage; it surfaced as "only one leg moves" on stage and
@@ -65,24 +65,35 @@ pipeline against a raw parallel path (the "lag vs raw" number in the
 explorer — should read ~0 now).
 **Code:** `tools/mocap/lib/smooth.mjs` (savgolKernel/savgolSmooth).
 
-## 3 · Yaw & view
+## 3 · View select (no rotation exists in 2D)
 
-**In:** world landmarks. **Out:** the 2D projection everything
-downstream uses, plus the yaw trace.
-**Formula:** yaw per frame = atan2 of the summed shoulder+hip
-left→right vector in the xz plane. FRONTNESS = median over frames of
-`min(|yaw|, 180° − |yaw|)` — facing the camera reads |yaw| ≈ 180°, not
-0° (the first auto rule assumed 0 and sent the T-step to profile).
-`--view auto`: frontness < 45° → FRONT (rotate each frame by −yaw, drop
-z); else → PROFILE (project the camera plane as filmed, no rotation).
-**Parameters:** `--view auto|front|profile` (`--emit-views a,b` runs
-the whole rest of the pipeline once per view from one capture).
-**Failure we hit:** de-yawing a profile clip to front rotates the
-sagittal motion into z and the orthographic projection DELETES it — the
-running man's knee lift (hip span ×3–5 smaller). Caught by the twist
-channel: thigh out-of-plane angle 0.40 rad de-yawed vs 0.16 as-filmed.
-**Code:** `lib/retarget.mjs` frameYaw/deYaw/deYaw3; view choice in
-`extract.mjs` ("canonical view selection").
+**In:** 2D image landmarks. **Out:** the chosen canonical view; the
+table is ALWAYS built from the camera plane.
+**Why no rotation:** with 2D-only landmarks a "rotation by yaw" reduces
+to scaling x by cos(yaw) — a squash, not a view change. The old de-yaw
+step was removed 2026-09-27; nothing downstream rotates anything.
+**Formula:** FRONTNESS = median shoulder width / median spine length
+(pure 2D width foreshortening); front ≥ 0.35, else profile — that is
+the clip's NATURAL view, and the analysis always runs in it. A facing-
+camera front clip additionally gets an x-FLIP (mirror canonicalization
+so the person's left→right runs along +x — orientation, not rotation).
+**Reinterpretation:** requesting the OTHER view (`--view front` /
+`--emit-views profile,front` on a profile clip) does not re-project —
+it reinterprets at the table level: that view's in-plane deviations are
+unobserved (≈ 0), so every rot key becomes a TWIST key (clamped ±2,
+rendered by the engine's cos-foreshortening); positional channels and
+travel (natural-plane quantities) drop; contacts/ease pass through.
+The table carries `reinterpreted: "from-<view>"`; its explorer's stage
+3 plots the twist traces it produced.
+**Parameters:** `--view auto|front|profile`, `--emit-views a,b` (first
+= primary).
+**Failure we hit:** de-yawing a profile clip "to front" squashed the
+sagittal motion toward zero — the running man's knee lift (hip span
+×3–5 smaller). The fake front view is exactly what reinterpretation
+replaces. Self-test: a synthetic profile knee-lift emitted as front
+must round-trip through twist, never through the in-plane angle.
+**Code:** frontness in `lib/foreshorten.mjs` (frontnessRatio); view
+choice + `reinterpretKeys` in `extract.mjs` stage 3/8.
 
 ## 4 · Measured rest
 
