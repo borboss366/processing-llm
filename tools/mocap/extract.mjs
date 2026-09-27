@@ -33,6 +33,11 @@
  *                               captures of travelling moves; default removes it)
  *     --out <prefix>            output path prefix (default: next to the clip;
  *                               needed when extracting several windows of one clip)
+ *     --estimator rtmpose|mediapipe  pose backend (default rtmpose — user
+ *                               verdict 2026-09-27; mediapipe = ~3× faster
+ *                               and smoother raw, kept for fast passes)
+ *     --explorer-json           also dump the explorer dataset as JSON
+ *                               (input for tools/mocap/explorer-ab.mjs)
  *     --no-qa                   skip the QA video render
  *     --self-test               run synthetic math checks and exit
  *
@@ -109,7 +114,7 @@ const py = path.join(HERE, ".venv/bin/python");
 if (!fs.existsSync(py)) { console.error("[mocap] no .venv — run tools/mocap/setup.sh first"); process.exit(1); }
 console.log(`[mocap] extracting poses: ${path.basename(video)} window ${winA}-${winB}s mirror=${mirror}`);
 const enhance = opt("enhance", "on");   // 16.2 item 3: bbox crop + flip-TTA (off = legacy full-frame VIDEO mode)
-const estimator = opt("estimator", "mediapipe");     // 18.1: mediapipe | rtmpose
+const estimator = opt("estimator", "rtmpose");       // default per user verdict 2026-09-27; mediapipe kept for fast passes
 const estimatorModel = opt("estimator-model", "balanced");
 const raw = await new Promise((resolve, reject) => {
   const p = spawn(py, [path.join(HERE, "pose_worker.py"), video, String(winA), String(winB), enhance, estimator, estimatorModel]);
@@ -189,6 +194,21 @@ const world = smooth(rawWorld);
 const img = smooth(rawImg);
 const conf = detected.map((f) => f.img.reduce((a, l) => a + l[2], 0) / f.img.length);
 console.log(`[mocap] filter: ${filterMode}${filterMode === "savgol" ? ` (window ${sg.window}, order ${sg.order})` : ""}`);
+// post-smoothing jitter — same second-difference metric on the STAGE-2
+// OUTPUT: what the retarget actually consumes (estimator-card number)
+{
+  let s = 0, k = 0;
+  for (let i = 1; i < img.length - 1; i++) {
+    for (let l = 0; l < img[i].length; l++) {
+      const ddx = (img[i - 1][l][0] + img[i + 1][l][0] - 2 * img[i][l][0]) * raw.meta.w;
+      const ddy = (img[i - 1][l][1] + img[i + 1][l][1] - 2 * img[i][l][1]) * raw.meta.h;
+      s += Math.hypot(ddx, ddy) / 2;
+      k++;
+    }
+  }
+  raw.meta.jitterPostPx = +(s / k).toFixed(3);
+  console.log(`[mocap] landmark jitter post-smoothing: ${raw.meta.jitterPostPx} px mean (raw ${raw.meta.jitterPx})`);
+}
 
 // ── view-independent normalization (18.1: 2D-only) ───────────────────────
 // world is a DEBUG channel; nothing here may consume its z. Frontness comes
@@ -512,6 +532,7 @@ async function processView(vk, primary) {
     source: path.basename(video), clipSha: clipHash, view: vk,
     window: [winA, winB], mirror, rig: path.basename(rigPath),
   estimator, limbScores: raw.meta.limbScores, jitterPx: raw.meta.jitterPx,
+  jitterPostPx: raw.meta.jitterPostPx,
     filter: filterMode === "oneeuro" ? { mode: "oneeuro", ...euro } : { mode: filterMode, ...sg },
     fps: raw.meta.fps,
     timing: { route: timingRoute, period: +period.toFixed(4), bpl,
@@ -645,6 +666,15 @@ async function processView(vk, primary) {
                   footGate: FOOT_GATE, bpl, maxKeys: +opt("max-keys", 16), cycles: opt("cycles", null) } },
       crop: frames0.crop, vidW: raw.meta.w, vidH: raw.meta.h, scale: raw.meta.cropScale ?? 1,
       jitter: raw.meta.jitterPx ?? 0,
+      jitterPost: raw.meta.jitterPostPx ?? 0,
+      limbScores: raw.meta.limbScores ?? {},
+      // T2.3 fore-vs-world twist overlay: 2D-derived signed twist vs the
+      // estimator's own 3D (mediapipe only — null on 2D-only estimators)
+      // fore.twists are typed arrays — Array.from, or JSON turns them into {"0":..} objects
+      twistFore: Object.fromEntries(Object.entries(fore.twists).map(([nm, s2]) => [nm, Array.from(s2, r3)])),
+      twistWorld: twistWorldFrames
+        ? Object.fromEntries(Object.keys(fore.twists).map((nm) => [nm, twistWorldFrames.map((f) => r3(f[nm] ?? 0))]))
+        : null,
       frames0: frames0.frames,
       times: times.map(r3),
       img: img.map((f, i) => f.map((p, l) => [r3(p[0]), r3(p[1]), r3(detected[i].img[l][2])])),
@@ -677,6 +707,7 @@ async function processView(vk, primary) {
       distill: { keyPhases: kp, keyCount: table.keys.length, rms: +Math.sqrt(rmsAcc / Math.max(1, rmsN)).toFixed(3) },
       table: moveOut,
     };
+    if (flag("explorer-json")) fs.writeFileSync(`${vBase}.explorer-data.json`, JSON.stringify(Dx));
     fs.writeFileSync(`${vBase}.explorer.html`, renderExplorer(Dx));
     console.log(`[mocap] wrote ${path.basename(vBase)}.explorer.html (${(fs.statSync(`${vBase}.explorer.html`).size / 1e6).toFixed(1)} MB)`);
   }

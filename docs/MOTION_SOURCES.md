@@ -1,3 +1,5 @@
+ESTIMATOR: rtmpose is the extraction default (user verdict 2026-09-27 — occlusion-honest scores, real small toes); mediapipe kept for fast passes (--estimator mediapipe, ~3x faster). All corpus extractions re-run on rtmpose 2026-09-27 = brief 19's R0 baseline.
+
 CATGROOVE (electro swing) - for groove https://www.youtube.com/watch?v=twqM56f_cVo
 SHUFFLE t step tutorial https://www.youtube.com/shorts/bniL9e3aIdE
 SHUFFLE t step tutorial https://www.youtube.com/shorts/7chK8IPvhb4

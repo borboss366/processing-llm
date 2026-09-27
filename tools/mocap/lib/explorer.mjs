@@ -4,8 +4,30 @@
 // lived there. One scrub slider drives every stage's picture together.
 // No server, no dependencies: data inlined, canvas 2D, drag-to-orbit 3D.
 
-export function renderExplorer(D) {
+export function renderExplorer(D, D2 = null) {
   const json = JSON.stringify(D);
+  const json2 = D2 ? JSON.stringify(D2) : "null";
+  const est = (X) => X.meta.params.estimator ?? "mediapipe";
+  const row = (label, a, b) => `<tr><td class="name">${label}</td><td>${a}</td><td>${b}</td></tr>`;
+  const abCard = !D2 ? "" : `
+<section id="sAB"><h2>A/B — ${est(D)} (A) vs ${est(D2)} (B), same window, same downstream</h2>
+  <div id="abbar" class="note">show:
+    <label><input type="radio" name="ab" value="A" checked> A · ${est(D)}</label> &nbsp;
+    <label><input type="radio" name="ab" value="B"> B · ${est(D2)}</label> &nbsp;
+    <label><input type="radio" name="ab" value="overlay"> overlay (B ghosted at 45 %)</label>
+  </div>
+  <table><tr><th>metric</th><th>A · ${est(D)}</th><th>B · ${est(D2)}</th></tr>
+  ${row("jitter raw (px, 2nd-diff)", D.jitter, D2.jitter)}
+  ${row("jitter post-smoothing (px)", D.jitterPost, D2.jitterPost)}
+  ${row("limb scores", JSON.stringify(D.limbScores), JSON.stringify(D2.limbScores))}
+  ${row("frontness → natural view", `${D.frontness} → ${D.natural}`, `${D2.frontness} → ${D2.natural}`)}
+  ${row("period (s ×mult)", `${D.period.chosen} ×${D.period.mult}`, `${D2.period.chosen} ×${D2.period.mult}`)}
+  ${row("cycles kept / dropped", `${(Object.values(D.cycles.data)[0] ?? []).length - D.cycles.dropped.length} / ${D.cycles.dropped.length}`, `${(Object.values(D2.cycles.data)[0] ?? []).length - D2.cycles.dropped.length} / ${D2.cycles.dropped.length}`)}
+  ${row("distill keys · RMS (rad)", `${D.distill.keyCount} · ${D.distill.rms}`, `${D2.distill.keyCount} · ${D2.distill.rms}`)}
+  ${row("filter lag (ms)", D.lag.whole, D2.lag.whole)}
+  </table>
+  <div class="note">The toggle re-renders EVERY stage below from the chosen estimator's data; tables (rest/retarget/keys) always show the primary in overlay mode.</div>
+</section>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -35,8 +57,9 @@ export function renderExplorer(D) {
 </style>
 </head>
 <body>
-<h1>${D.meta.clip} <span class="dim">· estimator=${D.meta.params.estimator ?? "mediapipe"} · view=${D.meta.view} · window ${D.meta.window[0]}–${D.meta.window[1]} s · mirror=${D.meta.mirror}</span></h1>
+<h1>${D.meta.clip} <span class="dim">· estimator=${D.meta.params.estimator ?? "mediapipe"}${D2 ? " vs " + est(D2) : ""} · view=${D.meta.view} · window ${D.meta.window[0]}–${D.meta.window[1]} s · mirror=${D.meta.mirror}</span></h1>
 <div class="note">Scrub the slider (bottom) — every stage's picture moves together. Drag the 3D skeleton to orbit.</div>
+${abCard}
 
 <section id="s0"><h2>0 · INPUT — what the estimator saw</h2>
   <div class="row"><canvas id="c0" width="360" height="360"></canvas>
@@ -67,6 +90,13 @@ export function renderExplorer(D) {
   <div class="row">
     <div><canvas id="c3" width="640" height="140"></canvas><div class="note">${D.reinterpret ? "twist traces the reinterpretation produced (hipL ▮ hipR ▮ kneeL ▮ kneeR ▮, rad)" : "frontness per frame (shoulder width / spine length); line = 0.35 threshold"}</div></div>
     <div class="haz" style="max-width:420px">frontness ${D.frontness} (front ≥ 0.35) → natural view <b>${D.natural}</b>, emitted as <b>${D.meta.view}</b>${D.reinterpret ? " — <b>REINTERPRETATION</b>: this view's in-plane deviations are unobserved (≈0); the sagittal deviations are routed to the TWIST channel and rendered by cos-foreshortening" : ""}.<br><b>can go wrong:</b> with 2D landmarks a "de-yaw rotation" degenerates to x·cos(yaw) — a squash, not a view; that fake rotation dropped the running man's knee lift (hip span ×3–5 recovered by removing it). Stage 3 SELECTS a view; the table is always built from the camera plane.</div>
+  </div>
+</section>
+
+<section id="s3b"><h2>3b · DEPTH FROM 2D — foreshortening twist vs estimator 3D (debug)</h2>
+  <div class="row">
+    <div><canvas id="c3b2" width="640" height="160"></canvas><div class="note">bone <select id="jsel3b"></select> · <span style="color:#59f">blue = 2D foreshortening</span> (the pipeline's channel) · <span style="color:#889">grey = estimator world z</span>${D.twistWorld ? "" : " — ABSENT on this estimator (2D-only); the pipeline needs no z"}</div></div>
+    <div class="haz" style="max-width:340px"><b>can go wrong:</b> acos of a noisy length ratio has a hard noise floor (3 % length noise ≈ 0.25 rad fake twist — hence the 0.965 deadband, flat spans here are the deadband holding); the world z is the network's GUESS, weakest exactly where the 2D is occluded. Agreement is corroboration, not ground truth — the 2D channel is unsigned until the sign ladder picks a lobe.</div>
   </div>
 </section>
 
@@ -107,12 +137,18 @@ export function renderExplorer(D) {
 </section>
 
 <div id="scrubbar">
-  <span>scrub</span><input type="range" id="scrub" min="0" max="${D.times.length - 1}" value="0" step="1">
+  <span>scrub</span><input type="range" id="scrub" min="0" max="${(D2 ? Math.min(D.times.length, D2.times.length) : D.times.length) - 1}" value="0" step="1">
   <span id="tlab" class="num">t=0</span>
 </div>
 
 <script>
-const D = ${json};
+const DA = ${json};
+const DB = ${json2};
+let D = DA, AB = 'A';
+// overlay mode: second pass draws B ghosted on top — clearRect is gated so
+// the pass doesn't wipe A's strokes
+const _clr = CanvasRenderingContext2D.prototype.clearRect;
+CanvasRenderingContext2D.prototype.clearRect = function(...a) { if (!window.SKIPCLEAR) _clr.apply(this, a); };
 const MPB = [[3,4],[3,5],[5,7],[4,6],[6,8],[9,10],[3,9],[4,10],[9,11],[11,13],[13,15],[15,17],[13,17],[10,12],[12,14],[14,16],[16,18],[14,18],[1,2]];  // schema bones (18.1)
 const $ = (id) => document.getElementById(id);
 const ART = Object.keys(D.theta);
@@ -193,6 +229,13 @@ function stage3() {
     tracePlot($('c3'), [D.frontSeries, D.frontSeries.map(() => 0.35)], ['#c9f', '#555'], F/(D.times.length-1));
   }
 }
+function stage3b() {
+  const j = $('jsel3b').value;
+  const series = [D.twistFore[j] ?? []];
+  const colors = ['#59f'];
+  if (D.twistWorld) { series.unshift(D.twistWorld[j] ?? []); colors.unshift('#889'); }
+  tracePlot($('c3b2'), series, colors, F/(D.times.length-1));
+}
 function stage4() {
   const g = $('c4').getContext('2d'); g.clearRect(0,0,640,90);
   const rows = [['global', D.masks.global, '#59f'], ['legL', D.masks.legL, '#5c5'], ['legR', D.masks.legR, '#c95']];
@@ -223,7 +266,7 @@ function stage4() {
     h += '<tr><td class="name">' + nm + '</td><td>' + m.toFixed(2) + '</td><td>' + dec.toFixed(2) +
          '</td><td class="' + (Math.abs(dd) > 0.5 ? 'err1' : 'err0') + '">' + dd.toFixed(2) + '</td><td>' + D.rests.counts[nm] + '</td></tr>';
   }
-  $('restTable').innerHTML = h + '</table>';
+  if (!window.GHOSTPASS) $('restTable').innerHTML = h + '</table>';
 }
 function stage5() {
   // replicate the transfer at frame F and compare to the pipeline's theta
@@ -256,7 +299,7 @@ function stage5() {
       '</td><td>' + (pipe != null ? pipe.toFixed(2) : '—') + '</td><td class="' + cls + '">' + err.toFixed(3) +
       '</td><td>' + (clamp ? '<span class="err2">CLAMP</span>' : '') + '</td></tr>';
   }
-  $('retTable').innerHTML = h + '</table>';
+  if (!window.GHOSTPASS) $('retTable').innerHTML = h + '</table>';
 }
 function stage6() {
   const g = $('c6').getContext('2d'); const W = 640, H = 160; g.clearRect(0,0,W,H);
@@ -289,13 +332,35 @@ function stage8() {
     h += '<tr><td>' + k.phase.toFixed(3) + '</td><td>' + k.ease + '</td><td class="name">' + (k.contacts.join(',') || '—') +
       '</td><td>' + Object.keys(k.joints).length + '</td><td class="name">' + (tw.join(',') || '—') + '</td><td>' + (k.travel ?? 0).toFixed(3) + '</td></tr>';
   }
-  $('tableView').innerHTML = h + '</table>';
+  if (!window.GHOSTPASS) $('tableView').innerHTML = h + '</table>';
 }
 
 // ---------- wiring ----------
-function renderAll() {
+function renderStages() {
+  if (F >= D.times.length) F = D.times.length - 1;
   $('tlab').textContent = 't=' + D.times[F].toFixed(2) + 's (frame ' + F + ')';
-  stage0(); stage1(); stage2(); stage3(); stage4(); stage5(); stage6(); stage7();
+  stage0(); stage1(); stage2(); stage3(); stage3b(); stage4(); stage5(); stage6(); stage7(); stage8();
+}
+function renderAll() {
+  if (AB === 'overlay' && DB) {
+    D = DA; renderStages();
+    window.SKIPCLEAR = true; window.GHOSTPASS = true;
+    document.querySelectorAll('canvas').forEach((c) => c.getContext('2d').globalAlpha = 0.45);
+    D = DB; renderStages();
+    document.querySelectorAll('canvas').forEach((c) => c.getContext('2d').globalAlpha = 1);
+    window.SKIPCLEAR = false; window.GHOSTPASS = false;
+    D = DA;
+  } else {
+    D = (AB === 'B' && DB) ? DB : DA;
+    renderStages();
+  }
+}
+document.querySelectorAll('input[name=ab]').forEach((r) => r.onchange = () => { AB = r.value; renderAll(); });
+{
+  const el = $('jsel3b');
+  for (const j of Object.keys(DA.twistFore ?? {})) { const o = document.createElement('option'); o.value = o.textContent = j; el.appendChild(o); }
+  if (el.options.length) el.value = DA.twistFore.hipL ? 'hipL' : el.options[0].value;
+  el.onchange = renderAll;
 }
 for (const [sel, def] of [['jsel2', 'kneeR'], ['jsel6', 'hipR'], ['jsel7', 'kneeR']]) {
   const el = $(sel);
@@ -312,7 +377,6 @@ window.addEventListener('mousemove', (e) => {
   orbY += (e.clientX - px) * 0.01; orbX += (e.clientY - py) * 0.01;
   px = e.clientX; py = e.clientY; stage1();
 });
-stage8();
 renderAll();
 </script>
 </body>

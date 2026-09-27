@@ -30,10 +30,15 @@ union crop keeps the tracker's prior. (Also: vertical Shorts crop feet
 
 ## 1 · Landmarks
 
-**In:** frames. **Out:** per frame, 33 BlazePose landmarks twice over:
-IMAGE space `[x, y, visibility]` (normalized to the frame) and WORLD
-space `[x, y, z]` (metric, hip-origin).
-**How:** MediaPipe pose_landmarker_heavy, VIDEO mode, CPU (CPU =
+**In:** frames. **Out:** per frame, the 21-point PIPELINE SCHEMA
+(`lib/landmarks.mjs`) in IMAGE space `[x, y, score]`; MediaPipe also
+emits WORLD space `[x, y, z]` (debug-only channel).
+**How:** DEFAULT `--estimator rtmpose` (rtmlib Wholebody, COCO-
+WholeBody 133 → schema; real 3-point feet, occlusion-honest scores —
+user verdict 2026-09-27). `--estimator mediapipe`
+(pose_landmarker_heavy, VIDEO mode) is kept for FAST passes: ~3× faster
+and 25–35 % smoother raw, but its smalltoes are a bigtoe copy at score
+0 and its occluded-limb scores are optimistic. Both run on CPU (CPU =
 deterministic: same clip, byte-identical output — verified by diff).
 The 2D image landmarks are essentially direct observation; the 3D
 world landmarks are the NETWORK'S INFERENCE of metric 3D from one

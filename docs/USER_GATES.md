@@ -47,12 +47,11 @@ verdict moves to the report and gets a ✓ + date here.
    Note the profile body is PLACEHOLDER ART — judge the motion, redraw
    comes after mechanics are accepted. → ____
 
-4. **Estimator default (brief 18.1 T4)** — from
-   reports/2026-09-26-estimator-cards.md + the explorers: pick the
-   default `--estimator` (mediapipe = smoother/3× faster; rtmpose =
-   occlusion-honest scores + real small toes). Also judge: far leg now
-   usable? (The 25–50 % weakness is gone on BOTH — it was the de-yaw
-   era, not the estimator.) → ____
+4. **Estimator default (brief 18.1 T4)** → **VERDICT 2026-09-27:
+   estimator chosen: rtmpose** (mediapipe kept for fast passes).
+   Recorded in PIPELINE.md stage 1 + MOTION_SOURCES.md header; default
+   flipped in extract.mjs; all three corpus clips re-extracted on
+   rtmpose = brief 19's R0 baseline.
 
 ## Standing re-check triggers
 
