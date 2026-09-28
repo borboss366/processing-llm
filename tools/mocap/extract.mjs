@@ -579,13 +579,21 @@ async function processView(vk, primary) {
 
   // ── stage 9: QA video ─────────────────────────────────────────────────────
   if (primary && !flag("no-qa")) {
-    const bones = sidecar.joints.filter((j) => j.parent).map((j) => [j.name, j.parent]);
+    // FK over the body the STAGE will use for this view: a profile table
+    // plays on the profile shape, so a profile QA stickman must too —
+    // deviations painted on the front body's rest read as a fake front view
+    // (user catch 2026-09-28)
+    const qaSidecar = vk === "profile"
+      ? JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-profile.json"), "utf8"))
+      : sidecar;
+    const qaRig = vk === "profile" ? buildRig(qaSidecar) : rig;
+    const bones = qaSidecar.joints.filter((j) => j.parent).map((j) => [j.name, j.parent]);
     const spec = {
       video: path.resolve(video), out: `${vBase}.qa.mp4`,
       w: raw.meta.w, h: raw.meta.h, fps: raw.meta.fps,
       period, anchorSec, t0: times[0], bpl, beatSec,
       droppedCycles: dropped, bones,
-      ground: sidecar.ground ?? 0.905,
+      ground: qaSidecar.ground ?? 0.905,
       // extracted pelvis drift about the window mean, shape units — the QA
       // ground marker (16.2 item 4) makes travel capture visible
       pelvisDrift: (() => {
@@ -594,9 +602,9 @@ async function processView(vk, primary) {
       })(),
       frames: detected.map((f, i) => {
         // rig-anchored render: theta = obs − measured human rest, so the
-        // calibration pose draws AS the rig's rest pose — this is what the
-        // stage will do, no view correction needed
-        const pose = fkPose(rig, thetaFrames[i]);
+        // calibration pose draws AS the view-correct rig's rest pose —
+        // exactly what the stage does with this table
+        const pose = fkPose(qaRig, thetaFrames[i]);
         return {
           i: f.i, k: i, t: +times[i].toFixed(4),
           img: img[i].map(([x, y]) => [+(x).toFixed(4), +(y).toFixed(4)]),

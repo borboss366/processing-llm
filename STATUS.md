@@ -64,6 +64,7 @@ creature rig). Full guide in `README.md`.
 | De-yaw removal + reinterpretation | 2D "rotation" = x·cos(yaw) squash → stage 3 selects view only; front-from-profile = rot→twist reinterpretation (159 twist keys, 0 in-plane leak; synthetic knee-lift 0.7 → twist 0.7) | extract.mjs self-test + integration run |
 | Estimator default = rtmpose (18.1 T4 verdict) | post-SavGol jitter gap 3–10 % (was 25–35 % raw — a filter property); R0 re-extracted ×3 clips; runningman 4/4 cycles, drift −0.0001 u/loop, halves symmetric pre-symmetrize (L 1.13/R 1.14 vs mediapipe 0.84/1.45) | extract batch log + stitch |
 | A/B explorer + fore-vs-world (18.1 T3/T2.3) | 3 A/B pages (summary card, A/B/overlay toggle) + section 3b twist overlay; headless smoke 5 pages 0 errors | explorer-ab.mjs + puppeteer smoke |
+| QA stickman view-correct (user catch) | profile QAs FK'd the FRONT body (fake-front look) → FK over biped-profile; knee lift/planted leg now track the dancer 1:1; tables byte-identical | reports/2026-09-28-qa-profile-body.md + strip |
 | Shape-load degrade (live path) | bad shape name resumes old body (was: frozen at n=0 forever) | moves-x-shapes (found) + probe |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
