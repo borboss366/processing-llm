@@ -451,8 +451,35 @@ function buildFromShape(state, params, shape) {
     if (/^limb/.test(labels[i])) (limbNodeIdx[labels[i]] ??= []).push(i);
   }
 
+  // spine-bow nodes (2026-09-28, body-roll verdict): unpinned BODY nodes
+  // near the pelvis→neck rest line, stored as (t along the line, lateral
+  // offset u). Per frame they are softly pulled onto a quadratic curve
+  // through pelvis/chest/neck, so a spine BEND renders as a BOW instead of
+  // one rigid kink — render-only; tables and the rig untouched.
+  const bowNodes = [];
+  {
+    const gj = (nm) => joints.find((J) => J.name === nm);
+    const P0 = gj('pelvis'), C0 = gj('chest'), N0 = gj('neck');
+    if (P0 && C0 && N0) {
+      const dx = N0.x - P0.x, dy = N0.y - P0.y;
+      const L2 = dx * dx + dy * dy || 1e-9;
+      for (let i = 0; i < n; i++) {
+        if (labels[i] !== 'body' || pinned.has(i)) continue;
+        const t = ((xs[i] - P0.x) * dx + (ys[i] - P0.y) * dy) / L2;
+        if (t < 0.05 || t > 0.95) continue;
+        const px2 = P0.x + dx * t, py2 = P0.y + dy * t;
+        const u = (xs[i] - px2) * (-dy) / Math.sqrt(L2) + (ys[i] - py2) * dx / Math.sqrt(L2);
+        if (Math.abs(u) > 0.10) continue;
+        bowNodes.push({ i, t, u });
+      }
+      // chest's own param on the rest line — the curve passes through it
+      const tC = ((C0.x - P0.x) * dx + (C0.y - P0.y) * dy) / L2;
+      state.bowTC = Math.min(0.9, Math.max(0.1, tC));
+    }
+  }
+
   Object.assign(state, {
-    n, pos, prev, rest, edges, restLen, boundary, joints, pinned,
+    n, pos, prev, rest, edges, restLen, boundary, joints, pinned, bowNodes,
     nodeR, drawNodes, labels, triByPart, medLen, spriteR, headNodes,
     bones, limbNodeIdx, partFloor, limbDensity: {}, densityFrame: 0,
     tips: joints.filter((J) => J.role === 'limb'),
@@ -919,6 +946,7 @@ export default {
     varyPhase: 0.02,           // ±0.02 loop-phase wander per joint
     swingPct: 0.2,             // beat's second half lands this fraction late (0–0.25; user taste, gate R2 2026-09-01)
     spineLagMs: 30,            // chain lead–lag: spine trails the root
+    spineBow: 1.8,             // torso bow gain (body-roll legibility): 0 = off, 1 = through chest, >1 exaggerates
     headLagMs: 60,             // …head trails further
     accentAmt: 0.15,           // downbeat "one" amplitude accent (grid tier)
     phraseBars: 8,             // every Nth bar gets lifted variation
@@ -1873,6 +1901,39 @@ export default {
         const ox = pin.offX * scale, oy = pin.offY * scale;
         pos[pin.i * 2] = prev[pin.i * 2] = J.ax + ox * c - oy * s;
         pos[pin.i * 2 + 1] = prev[pin.i * 2 + 1] = J.ay + ox * s + oy * c;
+      }
+    }
+
+    // spine bow (2026-09-28): pull mid-torso nodes onto a quadratic curve
+    // through pelvis/chest/neck. Straight spine → the curve IS the line
+    // (identity); a chest bend bows the whole torso instead of hinging at
+    // one point. Gain 1 = pass exactly through the chest; >1 exaggerates.
+    const bowGain = Number(params.spineBow) || 0;
+    if (bowGain > 0 && state.bowNodes?.length) {
+      const gj = (nm) => joints.find((J) => J.name === nm);
+      const P = gj('pelvis'), C = gj('chest'), N = gj('neck');
+      if (P && C && N) {
+        const tC = state.bowTC ?? 0.5;
+        const midX = P.ax + (N.ax - P.ax) * tC, midY = P.ay + (N.ay - P.ay) * tC;
+        const cbX = midX + (C.ax - midX) * bowGain, cbY = midY + (C.ay - midY) * bowGain;
+        const w = 2 * tC * (1 - tC);
+        const qX = (cbX - (1 - tC) ** 2 * P.ax - tC * tC * N.ax) / w;
+        const qY = (cbY - (1 - tC) ** 2 * P.ay - tC * tC * N.ay) / w;
+        const BOW_K = 0.35;                        // soft pull — keeps the goo alive
+        for (const bn of state.bowNodes) {
+          const t = bn.t, o = 1 - t;
+          const bx = o * o * P.ax + 2 * o * t * qX + t * t * N.ax;
+          const by = o * o * P.ay + 2 * o * t * qY + t * t * N.ay;
+          // tangent → unit normal for the lateral offset
+          let txv = 2 * o * (qX - P.ax) + 2 * t * (N.ax - qX);
+          let tyv = 2 * o * (qY - P.ay) + 2 * t * (N.ay - qY);
+          const tl = Math.hypot(txv, tyv) || 1e-6;
+          const nx2 = -tyv / tl, ny2 = txv / tl;
+          const gx = bx + nx2 * bn.u, gy = by + ny2 * bn.u;
+          const ix = bn.i * 2, iy = ix + 1;
+          pos[ix] += (gx - pos[ix]) * BOW_K; pos[iy] += (gy - pos[iy]) * BOW_K;
+          prev[ix] += (gx - prev[ix]) * BOW_K; prev[iy] += (gy - prev[iy]) * BOW_K;
+        }
       }
     }
 
