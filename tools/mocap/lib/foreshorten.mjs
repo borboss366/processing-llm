@@ -26,9 +26,12 @@ const SCORE_EPS = 0.08;      // minimum score asymmetry to count as evidence
 const DEAD = 0.965;
 
 // One signed-twist series from a projected-length series + score series.
+// srcs codes (18.2 explorer overlays): 0 = in deadband/ambiguous (no twist),
+// 1 = continuity through the lobe, 2 = score asymmetry, 3 = hold last known
 function signedSeries(projLen, restLen, dScore, log) {
   const n = projLen.length;
   const out = new Float64Array(n);
+  const srcs = new Uint8Array(n);
   let sign = 0;
   for (let t = 0; t < n; t++) {
     const ratio = projLen[t] / restLen;
@@ -39,17 +42,17 @@ function signedSeries(projLen, restLen, dScore, log) {
       continue;
     }
     if (sign !== 0) {
-      log.continuity++;                             // 1: hold through the lobe
+      log.continuity++; srcs[t] = 1;                // 1: hold through the lobe
     } else if (Math.abs(dScore[t]) > SCORE_EPS) {
       sign = dScore[t] < 0 ? -1 : 1;                // 2: score asymmetry
-      log.score++;
+      log.score++; srcs[t] = 2;
     } else {
       sign = out[t - 1] < 0 ? -1 : 1;               // 3: hold last known
-      log.hold++;
+      log.hold++; srcs[t] = 3;
     }
     out[t] = sign * mag;
   }
-  return out;
+  return { vals: out, srcs };
 }
 
 /**
@@ -69,6 +72,7 @@ export function foreshortenAll(frontal, scores, defs, maskFor, S) {
     : [(f[S.earL][0] + f[S.earR][0]) / 2, (f[S.earL][1] + f[S.earR][1]) / 2];
   const sc = (f, k) => typeof k === 'number' ? f[k] : 1;    // mids: no single score
   const twists = {};
+  const twistSrcs = {};
   const restLens = {};
   for (const [name, , a, b] of defs) {
     const projLen = frontal.map((f) => {
@@ -83,7 +87,9 @@ export function foreshortenAll(frontal, scores, defs, maskFor, S) {
       [...projLen].sort((x, y) => x - y)[Math.floor(projLen.length * 0.95)] * 0.999) || 1e-6;
     restLens[name] = restLen;
     const dScore = frontal.map((_, i) => sc(scores[i], b) - sc(scores[i], a));
-    twists[name] = signedSeries(projLen, restLen, dScore, log);
+    const ss = signedSeries(projLen, restLen, dScore, log);
+    twists[name] = ss.vals;
+    twistSrcs[name] = ss.srcs;
   }
   // body yaw from width foreshortening (B2's channels)
   const width = (f, l, r) => Math.hypot(f[r][0] - f[l][0], f[r][1] - f[l][1]);
@@ -93,9 +99,9 @@ export function foreshortenAll(frontal, scores, defs, maskFor, S) {
     const calib = w.filter((_, i) => maskFor('chest')[i]);
     const restW = (calib.length >= 5 ? median(calib) : median(w)) || 1e-6;
     const dScore = frontal.map((_, i) => scores[i][l] - scores[i][r]);
-    yaws[nm] = signedSeries(w, restW, dScore, log);
+    yaws[nm] = signedSeries(w, restW, dScore, log).vals;
   }
-  return { twists, yaws, restLens, log };
+  return { twists, twistSrcs, yaws, restLens, log };
 }
 
 // frontness for --view auto, 2D-only (estimator-agnostic): shoulder width

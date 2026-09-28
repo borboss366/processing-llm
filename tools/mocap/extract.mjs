@@ -336,6 +336,7 @@ async function processView(vk, primary) {
   const FOOT_GATE = +opt("foot-gate", 0.35);
   {
     const gateLog = {};
+    var gateMasks = {};                       // 18.2 overlays: per-frame gate
     for (const rigSide of ["L", "R"]) {
       const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
       const restLen = fore.restLens[`ankle${rigSide}`] || 1;
@@ -347,6 +348,7 @@ async function processView(vk, primary) {
       const held = holdWhere(series, mask);
       thetaFrames.forEach((f2, i) => { f2[`ankle${rigSide}`] = series[i]; });
       gateLog[`ankle${rigSide}`] = held;
+      gateMasks[`ankle${rigSide}`] = mask.map(Number);
     }
     console.log(`[mocap] foot gate (<${FOOT_GATE}): held ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
   }
@@ -519,9 +521,13 @@ async function processView(vk, primary) {
   }
   const circD = (arr) => Float64Array.from(arr, (_, b) =>
     (arr[(b + 1) % BINS] - arr[(b - 1 + BINS) % BINS]) / 2);
+  const contactDebug = {};                    // 18.2 overlays: bins + band
   for (const s of ["L", "R"]) {
     const range = Math.max(...fkFY[s]) - Math.min(...fkFY[s]);
     const band = range < 0.04 ? range : Math.max(0.02, 0.25 * range);   // mirror of distill's rule
+    contactDebug[s] = { fy: Array.from(fkFY[s], (v) => +v.toFixed(4)),
+                        band: +band.toFixed(4), hi: +Math.max(...fkFY[s]).toFixed(4),
+                        pivot: range < 0.04 };
     console.log(`[mocap] fk foot${s}: y-range ${range.toFixed(3)} u (contact band ${band.toFixed(3)}${range < 0.04 ? ", pivot foot: all planted" : ""})`);
   }
   const table = distillMove({
@@ -562,6 +568,10 @@ async function processView(vk, primary) {
       counts: cal.counts, fallbacks: cal.fallbacks,
     },
     restRef: Object.fromEntries(rigV.defs(mirror).map((d) => [d[0], +d[4].toFixed(4)])),
+    // 18.2: per-frame/bin debug for on-frame overlays — offline only
+    debug: { signSrc: Object.fromEntries(Object.entries(fore.twistSrcs ?? {}).map(([nm, s2]) => [nm, Array.from(s2)])),
+             gateMasks: typeof gateMasks !== "undefined" ? gateMasks : null,
+             contactDebug },
     frames: detected.map((f, i) => ({
       t: +times[i].toFixed(4),
       conf: +conf[i].toFixed(3),
@@ -645,7 +655,7 @@ async function processView(vk, primary) {
     try {
       const out = await new Promise((resolve, reject) => {
         let buf2 = "";
-        const p2 = spawn(py, [path.join(HERE, "frame_dump.py"), video, String(winA), String(winB), cropStr, "14"]);
+        const p2 = spawn(py, [path.join(HERE, "frame_dump.py"), video, String(winA), String(winB), cropStr, "40"]);
         p2.stdout.on("data", (d) => { buf2 += d; });
         p2.on("close", (c) => c === 0 ? resolve(JSON.parse(buf2)) : reject(new Error("frame_dump " + c)));
       });
@@ -691,6 +701,17 @@ async function processView(vk, primary) {
       // estimator's own 3D (mediapipe only — null on 2D-only estimators)
       // fore.twists are typed arrays — Array.from, or JSON turns them into {"0":..} objects
       twistFore: Object.fromEntries(Object.entries(fore.twists).map(([nm, s2]) => [nm, Array.from(s2, r3)])),
+      // 18.2 overlay plumbing: sign sources (0 dead, 1 continuity, 2 score,
+      // 3 hold), foreshortening rest lengths, raw landmarks, gate masks,
+      // contact bins, the rig tree for in-page FK, loop timing
+      signSrc: Object.fromEntries(Object.entries(fore.twistSrcs ?? {}).map(([nm, s2]) => [nm, Array.from(s2)])),
+      restLens: Object.fromEntries(Object.entries(fore.restLens).map(([k, v]) => [k, +v.toFixed(4)])),
+      imgRaw: rawImg.map((f) => f.map((p) => [r3(p[0]), r3(p[1])])),
+      gateMasks: typeof gateMasks !== "undefined" ? gateMasks : null,
+      contactDebug,
+      rigJoints: Object.fromEntries(sidecarV.joints.map((j) => [j.name, [r3(j.x), r3(j.y)]])),
+      rigParent: Object.fromEntries(sidecarV.joints.map((j) => [j.name, j.parent ?? null])),
+      anchorSec: +anchorSec.toFixed(4), loopSec: +(period).toFixed(4),
       twistWorld: twistWorldFrames
         ? Object.fromEntries(Object.keys(fore.twists).map((nm) => [nm, twistWorldFrames.map((f) => r3(f[nm] ?? 0))]))
         : null,
@@ -723,7 +744,9 @@ async function processView(vk, primary) {
       rotLimits: { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0, ...(sidecarV.rotLimits ?? {}) },
       period: { ...per.debug, chosen: +period.toFixed(4), mult: loop.mult,
                 cyclesPrior: opt("cycles", null), anchorSec: +anchorSec.toFixed(3) },
-      cycles: { data: Object.fromEntries(cycJoints.map((j) => [j, cycles.map((c) => Array.from(c["th:" + j]).map(r3))])),
+      // 18.2: ALL articulated joints (onion-skin ghosts FK whole skeletons)
+      cycles: { data: Object.fromEntries(ARTICULATED.filter((j) => cycles[0] && cycles[0]["th:" + j])
+                  .map((j) => [j, cycles.map((c) => Array.from(c["th:" + j]).map(r3))])),
                 kept, dropped },
       avg: Object.fromEntries(Object.entries(thetasAvg).map(([k, v]) => [k, Array.from(v).map(r3)])),
       distill: { keyPhases: kp, keyCount: table.keys.length, rms: +Math.sqrt(rmsAcc / Math.max(1, rmsN)).toFixed(3) },

@@ -66,6 +66,7 @@ creature rig). Full guide in `README.md`.
 | A/B explorer + fore-vs-world (18.1 T3/T2.3) | 3 A/B pages (summary card, A/B/overlay toggle) + section 3b twist overlay; headless smoke 5 pages 0 errors | explorer-ab.mjs + puppeteer smoke |
 | QA stickman view-correct (user catch) | profile QAs FK'd the FRONT body (fake-front look) → FK over biped-profile; knee lift/planted leg now track the dancer 1:1; tables byte-identical | reports/2026-09-28-qa-profile-body.md + strip |
 | ABSOLUTE retarget (root cause: collapsed arms) | measured rest erased habitual pose (elbows −1.4 rad!) → theta = obsAbs − rigRestAbs(view); arms-forward anti-test renders 0.00° abs; QA overlay panel tracks dancer bone-for-bone; 0 clamps (runningman) | reports/2026-09-28-absolute-retarget.md + self-test |
+| Brief 18.2 overlays + diagnostics | 8 on-frame layers (rig/rest/gonio/foreshorten/contacts/raw/velocity/table) + heatmap/onion/filmstrip/key-ghosts; PNG+webm export; smoke 0 errors; 3 acceptance stills | reports/2026-09-28-brief-18-2-overlays.md + 182-still-*.png |
 | Shape-load degrade (live path) | bad shape name resumes old body (was: frozen at n=0 forever) | moves-x-shapes (found) + probe |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
@@ -110,5 +111,7 @@ rtmpose = brief 19's R0; runningman stage tables rebuilt from it
 (2026-09-28): habitual pose transfers; all R0 re-extracted again;
 tstep front-view ankle clamps = known foot-convention gap (parked with
 tstep); bodyroll elbowR exceeds engine limit 18/180 frames (real
-finding). WAITING: A7 stage verdict (item 3). NOW: brief 18.2
-(on-frame overlays). Then brief 19.
+finding). WAITING: A7 stage verdict (item 3). Brief 18.2 DONE (on-frame
+overlays + whole-clip diagnostics in every explorer; 3 acceptance
+stills committed). NEXT: brief 19 (fidelity ladder — consumes these
+overlays); the brief-18 reading loop remains open for the user.

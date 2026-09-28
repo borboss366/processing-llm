@@ -58,7 +58,7 @@ export function renderExplorer(D, D2 = null) {
 </head>
 <body>
 <h1>${D.meta.clip} <span class="dim">· estimator=${D.meta.params.estimator ?? "mediapipe"}${D2 ? " vs " + est(D2) : ""} · view=${D.meta.view} · window ${D.meta.window[0]}–${D.meta.window[1]} s · mirror=${D.meta.mirror}</span></h1>
-<div class="note">Scrub the slider (bottom) — every stage's picture moves together. Drag the 3D skeleton to orbit.</div>
+<div class="note">Scrub the slider (bottom) — every stage's picture moves together. Drag the 3D skeleton to orbit. <span id="ovIndex" style="color:#9ad"></span></div>
 ${abCard}
 
 <section id="s0"><h2>0 · INPUT — what the estimator saw</h2>
@@ -71,8 +71,35 @@ ${abCard}
 <section id="s1"><h2>1 · LANDMARKS — 2D points + 3D world skeleton</h2>
   <div class="row">
     <div><canvas id="c1a" width="360" height="360"></canvas><div class="note">2D over the frame · dot color = visibility (green 1 → red 0)</div></div>
-    <div><canvas id="c1b" width="320" height="360"></canvas><div class="note">3D world — MediaPipe's ESTIMATE, not measured; z is a learned guess (drag to orbit)</div></div>
+    <div><canvas id="c1b" width="320" height="360"></canvas><div class="note">3D world — ${D.meta.params.estimator ?? "mediapipe"}: ${D.twistWorld ? "the estimator's own ESTIMATE, not measured (drag to orbit)" : "ABSENT on this estimator (2D-only; drawn flat)"}</div></div>
     <div class="haz" style="max-width:340px"><b>can go wrong:</b> occluded far limbs — the running man's far leg tracked at 25–50 % of the near leg's amplitude; visibility color shows where the estimator was guessing.</div>
+  </div>
+</section>
+
+<section id="sOV"><h2>OV · ON-FRAME OVERLAYS — every stage drawn back onto the video (18.2)</h2>
+  <div class="row">
+    <div>
+      <canvas id="cOV" width="520" height="560"></canvas>
+      <div class="note" id="ovLegend">green→red bones = round-trip error · ghost = rig rest · magenta = distilled table at this phase</div>
+    </div>
+    <div style="max-width:330px">
+      <div class="par" id="ovToggles">
+        <label><input type="checkbox" id="ov1" checked> 1 rig-on-source (RT-colored)</label><br>
+        <label><input type="checkbox" id="ov2"> 2 rest ghost</label><br>
+        <label><input type="checkbox" id="ov3"> 3 goniometers (obs/ref/θ)</label><br>
+        <label><input type="checkbox" id="ov4"> 4 foreshortening heat + twist sign</label><br>
+        <label><input type="checkbox" id="ov5"> 5 contacts + ankle-height inset</label><br>
+        <label><input type="checkbox" id="ov6"> 6 raw vs smoothed landmarks</label><br>
+        <label><input type="checkbox" id="ov7"> 7 velocity arrows</label><br>
+        <label><input type="checkbox" id="ov8"> 8 table ghost (distilled keys played)</label>
+      </div>
+      <div style="margin-top:8px">
+        <button id="ovPng">export PNG</button>
+        <button id="ovWebm">export webm (full clip)</button>
+        <span id="ovExpState" class="note"></span>
+      </div>
+      <div class="haz" style="margin-top:8px"><b>read it as:</b> the rig (1) should track the dancer bone-for-bone — a bone stuck at the ghost (2) means its channel died (the measured-rest bug read exactly so); (8) drifting from (1) is distill smear; (4)'s dim bones are where 2D length collapsed and twist takes over; (5) shows what the stance lock will believe.</div>
+    </div>
   </div>
 </section>
 
@@ -135,6 +162,27 @@ ${abCard}
 <section id="s8"><h2>8 · TABLE — what the stage will play</h2>
   <div id="tableView"></div>
   <div class="note">view=${D.table.view} · bpl ${D.table.beatsPerLoop} · contacts drive the stance lock (a wrongly-planted foot loses its lift — the near-leg bug); twist = out-of-plane deviation (fan / elbow flip)</div>
+</section>
+
+<section id="sDIAG"><h2>DIAG · WHOLE-CLIP DIAGNOSTICS — where and when (18.2)</h2>
+  <div class="row">
+    <div><canvas id="cHM" width="660" height="200" style="cursor:crosshair"></canvas>
+      <div class="note">bone × time heatmap · metric <select id="hmSel">
+        <option value="rt">round-trip error</option>
+        <option value="r1">R1: |smoothed − raw θ|</option>
+        <option value="fore">foreshortening ratio (dark = collapsed)</option>
+        <option value="score">endpoint score (dark = guessing)</option>
+        <option value="abs">|θ| magnitude</option>
+      </select> · click a cell → scrub jumps there · <span id="hmWorst" class="num"></span></div></div>
+    <div><canvas id="cONION" width="240" height="260"></canvas><div class="note">onion-skin: all cycles at this phase (<span style="color:#e66">red = dropped</span>)</div></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div><canvas id="cFILM" width="920" height="120" style="cursor:pointer"></canvas>
+      <div class="note">flag filmstrip · ▮<span style="color:#fd4">gate held</span> ▮<span style="color:#e66">clamp</span> ▮<span style="color:#c9f">twist sign: score/hold</span> ▮<span style="color:#e66">dropped cycle</span> ▮<span style="color:#5c5">distill key</span> · click → scrub</div></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div><canvas id="cKEYS" width="920" height="130"></canvas><div class="note">key-pose ghosts — the distilled table's keys as poses (phase-ordered)</div></div>
+  </div>
 </section>
 
 <div id="scrubbar">
@@ -341,11 +389,404 @@ function stage8() {
   if (!window.GHOSTPASS) $('tableView').innerHTML = h + '</table>';
 }
 
+// ---------- 18.2: on-frame overlays + whole-clip diagnostics ----------
+const wrapA = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+const REF = D.restRef ?? D.rests.declared;
+const NF = D.times.length;
+// in-page FK over the rig tree (same walk as the engine / QA)
+const RKIDS = {};
+for (const nm of Object.keys(D.rigParent ?? {})) {
+  const p = D.rigParent[nm] ?? '_root';
+  (RKIDS[p] ??= []).push(nm);
+}
+function fkJS(th) {
+  const out = {}, acc = {};
+  const walk = (name) => {
+    const j = D.rigJoints[name], p = D.rigParent[name];
+    if (p == null) { out[name] = [j[0], j[1]]; acc[name] = th[name] ?? 0; }
+    else {
+      const pj = D.rigJoints[p], pa = acc[p] ?? 0;
+      const c = Math.cos(pa), s = Math.sin(pa);
+      const dx = j[0] - pj[0], dy = j[1] - pj[1];
+      out[name] = [out[p][0] + dx * c - dy * s, out[p][1] + dx * s + dy * c];
+      acc[name] = pa + (th[name] ?? 0);
+    }
+    for (const k of RKIDS[name] ?? []) walk(k);
+  };
+  for (const k of RKIDS['_root'] ?? []) walk(k);
+  return out;
+}
+const thAt = (f) => Object.fromEntries(ART.map((nm) => [nm, D.theta[nm][f]]));
+// per-frame per-bone metrics — cached PER DATASET (A/B overlay switches D)
+const METRICS_MAP = new WeakMap();
+let METRICS = null;
+function ensureMetrics() {
+  METRICS = METRICS_MAP.get(D);
+  if (!METRICS) { computeMetrics(); METRICS_MAP.set(D, METRICS); }
+}
+function computeMetrics() {
+  const bones = D.defs.map((d) => d[0]);
+  const rt = {}, r1 = {}, fr = {}, sc = {}, ab = {};
+  for (const b of bones) { rt[b] = []; r1[b] = []; fr[b] = []; sc[b] = []; ab[b] = []; }
+  for (let f = 0; f < NF; f++) {
+    const acc = {};
+    for (const d of D.defs) {
+      const [name, parent, a, b] = d;
+      const A = ptOf(D.frontal[f], a), B = ptOf(D.frontal[f], b);
+      const obs = Math.atan2(B[1] - A[1], B[0] - A[0]);
+      const sgn = D.sideSigns[name] ?? 1;
+      const accH = sgn * wrapA(obs - REF[name]);
+      acc[name] = accH;
+      const th = wrapA(accH - (parent ? acc[parent] : 0));
+      const pipe = D.theta[name] ? D.theta[name][f] : null;
+      rt[name].push(pipe != null ? Math.abs(wrapA(th - pipe)) : 0);
+      r1[name].push(D.rawTheta[name] ? Math.abs(wrapA((D.theta[name][f] ?? 0) - D.rawTheta[name][f])) : 0);
+      const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+      fr[name].push(D.restLens ? Math.min(1.2, len / (D.restLens[name] || 1e-6)) : 1);
+      const sA = typeof a === 'number' ? D.img[f][a][2] : 1;
+      const sB = typeof b === 'number' ? D.img[f][b][2] : 1;
+      sc[name].push(Math.min(sA, sB));
+      ab[name].push(Math.abs(pipe ?? 0));
+    }
+  }
+  METRICS = { bones, rt, r1, fore: fr, score: sc, abs: ab };
+}
+function ptOf(fr, k) {
+  if (typeof k === 'number') return fr[k];
+  if (k === 'hipMid') return [(fr[9][0] + fr[10][0]) / 2, (fr[9][1] + fr[10][1]) / 2];
+  if (k === 'shoulderMid') return [(fr[3][0] + fr[4][0]) / 2, (fr[3][1] + fr[4][1]) / 2];
+  return [(fr[1][0] + fr[2][0]) / 2, (fr[1][1] + fr[2][1]) / 2];
+}
+const rtColor = (e) => e < 0.02 ? '#5c5' : e < 0.2 ? '#cc6' : '#e66';
+const phaseOf = (f) => {
+  const el = D.times[f] - D.times[0] - (D.anchorSec ?? 0);
+  const L = (D.loopSec ?? 1);
+  return ((el / L) % 1 + 1) % 1;
+};
+// nearest dumped video frame for frame index f
+function thumbFor(f) {
+  const fr = D.frames0; if (!fr.length) return null;
+  const t = D.times[f];
+  let best = 0;
+  for (let i = 0; i < fr.length; i++) if (Math.abs(fr[i].t - t) < Math.abs(fr[best].t - t)) best = i;
+  return fr[best];
+}
+const OVIMG = new Image();
+let OVLOADED = null;
+// table sampling (linear/smooth/snap eases, same shapes as the engine)
+function sampleTable(phase) {
+  const keys = D.table.keys;
+  if (!keys.length) return {};
+  let i = keys.length - 1;
+  for (let k = 0; k < keys.length; k++) if (keys[k].phase <= phase) i = k;
+  const a = keys[i], b = keys[(i + 1) % keys.length];
+  const span = (((b.phase - a.phase) % 1) + 1) % 1 || 1;
+  let u = ((((phase - a.phase) % 1) + 1) % 1) / span;
+  const ease = a.ease ?? 'smooth';
+  if (ease === 'snap') u = Math.min(1, u * 4);
+  if (ease !== 'linear') u = u * u * (3 - 2 * u);
+  const names = new Set([...Object.keys(a.joints), ...Object.keys(b.joints)]);
+  const th = {};
+  for (const nm of names) {
+    const ra = a.joints[nm]?.rot ?? 0, rb = b.joints[nm]?.rot ?? 0;
+    th[nm] = ra + (rb - ra) * u;
+  }
+  return th;
+}
+function stageOV() {
+  const cv = $('cOV'), g = cv.getContext('2d');
+  const th = thumbFor(F);
+  const draw = () => {
+    g.clearRect(0, 0, cv.width, cv.height);
+    // background: cropped video frame, fit
+    const crop = D.crop, cw = crop[2] - crop[0], ch = crop[3] - crop[1];
+    const s = Math.min(cv.width / cw, cv.height / ch);
+    const dw = cw * s, dh = ch * s;
+    if (OVLOADED) g.drawImage(OVIMG, 0, 0, dw, dh);
+    // landmark px mapping: img is FULL-frame normalized
+    const P = (x, y) => [(x * D.vidW - crop[0]) * s, (y * D.vidH - crop[1]) * s];
+    const on = (id) => $(id).checked;
+    // alignment: rig → person (hip-center anchor, hip→shoulder scale)
+    const fr = D.img[F];
+    const hm = P((fr[9][0] + fr[10][0]) / 2, (fr[9][1] + fr[10][1]) / 2);
+    const sm = P((fr[3][0] + fr[4][0]) / 2, (fr[3][1] + fr[4][1]) / 2);
+    const personHS = Math.max(1e-6, Math.hypot(sm[0] - hm[0], sm[1] - hm[1]));
+    const rj = D.rigJoints;
+    const rigHS = Math.max(1e-6, Math.hypot(rj.chest[0] - rj.pelvis[0], rj.chest[1] - rj.pelvis[1]));
+    const K = personHS / rigHS;
+    const M = (pt) => [hm[0] + (pt[0] - rj.pelvis[0]) * K, hm[1] + (pt[1] - rj.pelvis[1]) * K];
+    const drawSkel = (pose, colFn, w, alpha) => {
+      g.globalAlpha = alpha;
+      for (const [nm, p] of Object.entries(D.rigParent)) {
+        if (p == null || !pose[nm] || !pose[p]) continue;
+        const A = M(pose[p]), B = M(pose[nm]);
+        g.strokeStyle = colFn(nm); g.lineWidth = w;
+        g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke();
+      }
+      g.globalAlpha = 1;
+    };
+    if (on('ov2')) drawSkel(fkJS({}), () => '#ccd', 2, 0.35);                    // rest ghost
+    if (on('ov8')) drawSkel(fkJS(sampleTable(phaseOf(F))), () => '#e5e', 2, 0.7); // table ghost
+    if (on('ov4')) {                                                             // foreshorten heat
+      for (const d of D.defs) {
+        const [name, , a, b] = d;
+        const A0 = ptOf(D.frontal[F], a), B0 = ptOf(D.frontal[F], b);
+        const ratio = METRICS.fore[name][F];
+        const A = P(D.img[F][typeof a === 'number' ? a : 9][0], D.img[F][typeof a === 'number' ? a : 9][1]);
+        const B = P(D.img[F][typeof b === 'number' ? b : 3][0], D.img[F][typeof b === 'number' ? b : 3][1]);
+        const c2 = Math.round(220 * Math.min(1, ratio));
+        g.strokeStyle = 'rgb(' + (240 - c2) + ',' + c2 + ',180)'; g.lineWidth = 5; g.globalAlpha = 0.5;
+        g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); g.globalAlpha = 1;
+        const tw = D.twistFore?.[name]?.[F] ?? 0;
+        if (Math.abs(tw) > 0.15) {
+          const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+          g.fillStyle = '#fd4'; g.font = '11px monospace';
+          g.fillText(tw > 0 ? '⊙' : '⊗', mx + 4, my);                            // toward / away
+        }
+      }
+    }
+    if (on('ov6')) {                                                             // raw vs smoothed
+      for (let l = 0; l < D.img[F].length; l++) {
+        if (D.imgRaw) { const q = P(D.imgRaw[F][l][0], D.imgRaw[F][l][1]); g.fillStyle = '#888'; g.beginPath(); g.arc(q[0], q[1], 2, 0, 7); g.fill(); }
+        const q2 = P(D.img[F][l][0], D.img[F][l][1]); g.fillStyle = '#59f'; g.beginPath(); g.arc(q2[0], q2[1], 2, 0, 7); g.fill();
+      }
+    }
+    if (on('ov7') && F > 0) {                                                    // velocity
+      for (let l = 0; l < D.img[F].length; l++) {
+        const q1 = P(D.img[F - 1][l][0], D.img[F - 1][l][1]), q2 = P(D.img[F][l][0], D.img[F][l][1]);
+        let vx = (q2[0] - q1[0]) * 3, vy = (q2[1] - q1[1]) * 3;
+        const vm = Math.hypot(vx, vy); if (vm > 40) { vx *= 40 / vm; vy *= 40 / vm; }
+        if (vm < 3) continue;
+        g.strokeStyle = '#7cf'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(q2[0], q2[1]); g.lineTo(q2[0] + vx, q2[1] + vy); g.stroke();
+      }
+    }
+    if (on('ov1')) drawSkel(fkJS(thAt(F)), (nm) => rtColor(METRICS.rt[nm]?.[F] ?? 0), 3, 0.9); // rig-on-source
+    if (on('ov3')) {                                                             // goniometers
+      g.font = '9px monospace';
+      for (const d of D.defs) {
+        const [name, , a] = d;
+        const anch = typeof a === 'number' ? P(D.img[F][a][0], D.img[F][a][1]) : null;
+        if (!anch) continue;
+        const obsA = (() => { const [ , , aa, bb] = d; const A0 = ptOf(D.frontal[F], aa), B0 = ptOf(D.frontal[F], bb); return Math.atan2(B0[1] - A0[1], B0[0] - A0[0]); })();
+        const ref = REF[name];
+        g.strokeStyle = '#667'; g.beginPath(); g.arc(anch[0], anch[1], 12, ref, obsA, wrapA(obsA - ref) < 0); g.stroke();
+        g.fillStyle = rtColor(METRICS.rt[name]?.[F] ?? 0);
+        g.fillText((D.theta[name]?.[F] ?? 0).toFixed(2), anch[0] + 13, anch[1] - 3);
+      }
+    }
+    if (on('ov5') && D.contactDebug) {                                           // contacts
+      const BINS = D.contactDebug.L.fy.length;
+      const bin = Math.min(BINS - 1, Math.floor(phaseOf(F) * BINS));
+      for (const side of ['L', 'R']) {
+        const cd = D.contactDebug[side];
+        const planted = cd.fy[bin] >= cd.hi - cd.band;
+        const personHeel = (D.meta.mirror ? side !== 'L' : side === 'L') ? 15 : 16;
+        const heel = P(D.img[F][personHeel][0], D.img[F][personHeel][1]);
+        g.strokeStyle = planted ? '#5c5' : '#666'; g.lineWidth = planted ? 4 : 2;
+        g.beginPath(); g.moveTo(heel[0] - 12, heel[1] + 10); g.lineTo(heel[0] + 12, heel[1] + 10); g.stroke();
+      }
+      // inset: fk ankle-height traces
+      const ix = cv.width - 150, iy = 8, iw = 140, ih = 54;
+      g.fillStyle = 'rgba(10,10,20,0.8)'; g.fillRect(ix, iy, iw, ih);
+      for (const [side, col] of [['L', '#5c5'], ['R', '#c95']]) {
+        const fy = D.contactDebug[side].fy;
+        const lo = Math.min(...fy), hi = Math.max(...fy);
+        g.strokeStyle = col; g.beginPath();
+        fy.forEach((v, i2) => {
+          const x = ix + 4 + (iw - 8) * i2 / (fy.length - 1);
+          const y = iy + 4 + (ih - 8) * (v - lo) / (hi - lo + 1e-9);
+          i2 ? g.lineTo(x, y) : g.moveTo(x, y);
+        });
+        g.stroke();
+      }
+      const bx = ix + 4 + (iw - 8) * bin / (BINS - 1);
+      g.strokeStyle = '#fd4'; g.beginPath(); g.moveTo(bx, iy); g.lineTo(bx, iy + ih); g.stroke();
+      g.fillStyle = '#667'; g.font = '9px monospace'; g.fillText('fk foot height (contacts source)', ix + 4, iy + ih + 9);
+    }
+    g.fillStyle = '#889'; g.font = '11px monospace';
+    g.fillText('f' + F + '  t=' + D.times[F].toFixed(2) + 's  phase ' + phaseOf(F).toFixed(2), 6, 14);
+  };
+  if (th && OVLOADED !== th.jpg) {
+    OVIMG.onload = () => { OVLOADED = th.jpg; draw(); };
+    OVIMG.src = 'data:image/jpeg;base64,' + th.jpg;
+  } else draw();
+  const onList = [];
+  const names = { ov1: 'rig', ov2: 'rest', ov3: 'gonio', ov4: 'foreshorten', ov5: 'contacts', ov6: 'raw/smooth', ov7: 'velocity', ov8: 'table' };
+  for (const id of Object.keys(names)) if ($(id).checked) onList.push(names[id]);
+  $('ovIndex').textContent = 'overlays on: ' + (onList.join(', ') || 'none');
+}
+function stageHM() {
+  const cv = $('cHM'), g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  const metric = $('hmSel').value;
+  const dat = METRICS[metric === 'fore' ? 'fore' : metric === 'score' ? 'score' : metric === 'r1' ? 'r1' : metric === 'abs' ? 'abs' : 'rt'];
+  const bones = METRICS.bones;
+  const cellW = (cv.width - 70) / NF, cellH = (cv.height - 16) / bones.length;
+  let worst = { v: -1, b: '', f: 0 };
+  const inv = metric === 'fore' || metric === 'score';   // dark = LOW is bad
+  // FIXED absolute scales — color = severity, not rank (a clean clip stays
+  // dark; rt buckets match stage 5's green/yellow/red thresholds)
+  const SCALE = { rt: 0.2, r1: 0.3, abs: 2.0, fore: 1, score: 1 }[metric] ?? 1;
+  bones.forEach((b, r) => {
+    g.fillStyle = '#667'; g.font = '9px monospace'; g.fillText(b, 2, 10 + r * cellH + cellH / 2);
+    for (let f = 0; f < NF; f++) {
+      const v = dat[b][f];
+      const bad = Math.min(1, (inv ? 1 - v / SCALE : v / SCALE));
+      if ((inv ? 1 - v : v) > worst.v) worst = { v: inv ? 1 - v : v, b, f };
+      const c2 = Math.round(210 * Math.max(0, bad));
+      g.fillStyle = 'rgb(' + (30 + c2) + ',' + Math.round(60 - c2 * 0.2) + ',' + Math.round(90 - c2 * 0.3) + ')';
+      g.fillRect(64 + f * cellW, 4 + r * cellH, Math.ceil(cellW), Math.ceil(cellH) - 1);
+    }
+  });
+  const x = 64 + F * cellW;
+  g.strokeStyle = '#fd4'; g.beginPath(); g.moveTo(x, 2); g.lineTo(x, cv.height - 10); g.stroke();
+  $('hmWorst').textContent = 'worst: ' + worst.b + ' @ frame ' + worst.f;
+  cv.onclick = (e) => {
+    const f = Math.max(0, Math.min(NF - 1, Math.round((e.offsetX - 64) / cellW)));
+    F = f; $('scrub').value = f; renderAll();
+  };
+}
+function stageOnion() {
+  const cv = $('cONION'), g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  const cj = Object.keys(D.cycles.data);
+  if (!cj.length) return;
+  const nCyc = D.cycles.data[cj[0]].length;
+  const bins = D.cycles.data[cj[0]][0].length;
+  const bin = Math.min(bins - 1, Math.floor(phaseOf(F) * bins));
+  for (let c2 = 0; c2 < nCyc; c2++) {
+    const th = {};
+    for (const j of cj) th[j] = D.cycles.data[j][c2][bin];
+    const pose = fkJS(th);
+    const dropped = D.cycles.dropped.includes(c2);
+    g.globalAlpha = dropped ? 0.9 : 0.45;
+    for (const [nm, p] of Object.entries(D.rigParent)) {
+      if (p == null || !pose[nm] || !pose[p]) continue;
+      g.strokeStyle = dropped ? '#e66' : '#59f'; g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(30 + pose[p][0] * 180, 10 + pose[p][1] * 230);
+      g.lineTo(30 + pose[nm][0] * 180, 10 + pose[nm][1] * 230);
+      g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
+}
+let FILM_FLAGS = null;
+function frameFlags(f) {
+  const flags = [];
+  if (D.gateMasks && (D.gateMasks.ankleL?.[f] || D.gateMasks.ankleR?.[f])) flags.push('#fd4');
+  let clamp = false, sign = false;
+  for (const nm of ART) {
+    const lim = D.rotLimits[nm.replace(/[LR]$/, '')];
+    if (lim && Math.abs(D.theta[nm][f]) > lim) clamp = true;
+  }
+  for (const nm of Object.keys(D.signSrc ?? {})) if (D.signSrc[nm][f] >= 2) sign = true;
+  if (clamp) flags.push('#e66');
+  if (sign) flags.push('#c9f');
+  const cyc = Math.floor((D.times[f] - D.times[0] - (D.anchorSec ?? 0)) / (D.loopSec ?? 1));
+  if (D.cycles.dropped.includes(cyc)) flags.push('#e00');
+  const ph = phaseOf(f);
+  if (D.distill.keyPhases.some((p) => Math.abs(wrapA((ph - p) * 6.283)) < 6.283 / 64)) flags.push('#5c5');
+  return flags;
+}
+const FILMIMGS = [];
+function stageFilm() {
+  const cv = $('cFILM'), g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  const fr = D.frames0;
+  if (!fr.length) return;
+  const tw = cv.width / fr.length;
+  fr.forEach((f0, i) => {
+    if (!FILMIMGS[i]) {
+      const im = new Image();
+      im.onload = () => { FILMIMGS[i].ready = true; stageFilm(); };
+      im.src = 'data:image/jpeg;base64,' + f0.jpg;
+      FILMIMGS[i] = im;
+    }
+    const im = FILMIMGS[i];
+    if (im.ready) {
+      const s = Math.min(tw / im.width, 84 / im.height);
+      g.drawImage(im, i * tw, 0, im.width * s, im.height * s);
+    }
+    // flags at the NEAREST analysis frame
+    let bf = 0;
+    for (let k = 0; k < NF; k++) if (Math.abs(D.times[k] - f0.t) < Math.abs(D.times[bf] - f0.t)) bf = k;
+    frameFlags(bf).forEach((col, r) => {
+      g.fillStyle = col; g.fillRect(i * tw + 2 + r * 8, 92, 6, 6);
+    });
+  });
+  // cursor
+  const t = D.times[F];
+  let ci = 0;
+  fr.forEach((f0, i) => { if (Math.abs(f0.t - t) < Math.abs(fr[ci].t - t)) ci = i; });
+  g.strokeStyle = '#fd4'; g.strokeRect(ci * tw, 0, tw, 100);
+  cv.onclick = (e) => {
+    const i = Math.min(fr.length - 1, Math.floor(e.offsetX / tw));
+    let bf = 0;
+    for (let k = 0; k < NF; k++) if (Math.abs(D.times[k] - fr[i].t) < Math.abs(D.times[bf] - fr[i].t)) bf = k;
+    F = bf; $('scrub').value = bf; renderAll();
+  };
+}
+function stageKeys() {
+  const cv = $('cKEYS'), g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  const keys = D.table.keys;
+  const w = cv.width / keys.length;
+  keys.forEach((k, i) => {
+    const th = Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => [nm, ch.rot ?? 0]));
+    const pose = fkJS(th);
+    for (const [nm, p] of Object.entries(D.rigParent)) {
+      if (p == null || !pose[nm] || !pose[p]) continue;
+      g.strokeStyle = '#9ad'; g.lineWidth = 1.2;
+      g.beginPath();
+      g.moveTo(i * w + 10 + pose[p][0] * (w - 20) * 0.9, 4 + pose[p][1] * 105);
+      g.lineTo(i * w + 10 + pose[nm][0] * (w - 20) * 0.9, 4 + pose[nm][1] * 105);
+      g.stroke();
+    }
+    g.fillStyle = '#667'; g.font = '9px monospace';
+    g.fillText(k.phase.toFixed(2), i * w + 4, cv.height - 2);
+  });
+}
+// exports
+$('ovPng').onclick = () => {
+  const a = document.createElement('a');
+  a.download = D.meta.clip.replace(/\.[^.]+$/, '') + '-overlay-f' + F + '.png';
+  a.href = $('cOV').toDataURL('image/png');
+  a.click();
+};
+$('ovWebm').onclick = async () => {
+  const cv = $('cOV');
+  const stream = cv.captureStream(30);
+  const rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+  const chunks = [];
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  const done = new Promise((res) => rec.onstop = res);
+  rec.start();
+  const F0 = F;
+  for (let f = 0; f < NF; f++) {
+    F = f; $('scrub').value = f; renderAll();
+    $('ovExpState').textContent = 'recording ' + f + '/' + NF;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  rec.stop(); await done;
+  F = F0; $('scrub').value = F0; renderAll();
+  $('ovExpState').textContent = 'done';
+  const a = document.createElement('a');
+  a.download = D.meta.clip.replace(/\.[^.]+$/, '') + '-overlays.webm';
+  a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+  a.click();
+};
+document.querySelectorAll('#ovToggles input').forEach((cb) => cb.onchange = renderAll);
+$('hmSel').onchange = renderAll;
+
 // ---------- wiring ----------
 function renderStages() {
   if (F >= D.times.length) F = D.times.length - 1;
   $('tlab').textContent = 't=' + D.times[F].toFixed(2) + 's (frame ' + F + ')';
-  stage0(); stage1(); stage2(); stage3(); stage3b(); stage4(); stage5(); stage6(); stage7(); stage8();
+  ensureMetrics();
+  stage0(); stage1(); stageOV(); stage2(); stage3(); stage3b(); stage4(); stage5(); stage6(); stage7(); stage8();
+  stageHM(); stageOnion(); stageFilm(); stageKeys();
 }
 function renderAll() {
   if (AB === 'overlay' && DB) {
@@ -357,7 +798,9 @@ function renderAll() {
     window.SKIPCLEAR = false; window.GHOSTPASS = false;
     D = DA;
   } else {
+    const prev = D;
     D = (AB === 'B' && DB) ? DB : DA;
+    if (D !== prev) FILMIMGS.length = 0;
     renderStages();
   }
 }
