@@ -259,8 +259,7 @@ async function processView(vk, primary) {
   // the twist channel, rendered by B's cos-foreshortening).
   // The x-flip below is mirror CANONICALIZATION (person's left→right along
   // +x for facing-camera front clips), not a rotation.
-  const natural = frontRatio >= 0.35 ? "front" : "profile";
-  const reinterpret = vk !== natural;
+  const { natural, reinterpret } = viewDecision(frontRatio, vk);
   if (reinterpret) console.log(`[mocap] view ${vk} ≠ natural ${natural} → REINTERPRETATION (rot→twist at the table level)`);
   const xFlip = natural === "front" && facing;
   const flipF = (frames) => xFlip ? frames.map((f) => f.map((p) => [-p[0], p[1]])) : frames;
@@ -724,6 +723,14 @@ async function processView(vk, primary) {
 
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
 
+// stage-3 gate: the natural view comes from frontness alone; a requested
+// view only REINTERPRETS when it differs. Matched view = STRICT IDENTITY —
+// in-plane channels untouched, twist from foreshortening only.
+function viewDecision(frontRatio, vk) {
+  const natural = frontRatio >= 0.35 ? "front" : "profile";
+  return { natural, reinterpret: vk !== natural };
+}
+
 // stage-8 reinterpretation: rot keys become twist keys (clamped ±2); joints
 // left with only in-plane channels (dx/dy) drop; travel (natural-plane) zeroes;
 // contacts/ease pass through untouched.
@@ -1026,25 +1033,40 @@ function selfTest() {
     console.log(`[self-test] foot gate hold: [${vals}] held=${held} (want [${want}] held=3)`);
     if (!ok) fails.push("holdWhere gating wrong");
   }
-  // 7) reinterpretation (2026-09-27): a synthetic PROFILE knee-lift emitted
-  //    as FRONT must round-trip through the TWIST channel, never through the
-  //    in-plane angle — with 2D landmarks the front view of a profile clip
-  //    observes no in-plane deviation at all.
+  // 7) view gate + reinterpretation (2026-09-27/28): a PROFILE capture
+  //    emitted as PROFILE is STRICT IDENTITY — in-plane keys untouched, no
+  //    transfer into twist (its twist stays foreshortening-sourced). The
+  //    SAME capture emitted as FRONT moves the sagittal deviations into
+  //    twist and zeroes the in-plane channels.
   {
     const lift = 0.7; // same knee-lift magnitude as the round-trip pose (3)
+    const foreTwist = 0.25; // foreshortening-sourced twist already on the key
     const profileKeys = [
       { beat: 0, joints: { kneeL: { rot: 0 }, hipL: { rot: 0 } },
         travel: -0.03, contacts: { L: 1, R: 1 } },
-      { beat: 1, joints: { kneeL: { rot: lift }, hipL: { rot: -0.55 }, ankleL: { dx: 0.1 } },
+      { beat: 1, joints: { kneeL: { rot: lift, twist: foreTwist }, hipL: { rot: -0.55 }, ankleL: { dx: 0.1 } },
         travel: -0.03, contacts: { L: 0, R: 1 } },
     ];
-    const out = reinterpretKeys(profileKeys);
+    // matched view (profile clip, frontness 0.16, emitted profile) = identity
+    const dM = viewDecision(0.16, "profile");
+    const outM = dM.reinterpret ? reinterpretKeys(profileKeys) : profileKeys;
+    const idOK = !dM.reinterpret && dM.natural === "profile" && outM === profileKeys &&
+                 outM[1].joints.kneeL.rot === lift && outM[1].joints.kneeL.twist === foreTwist &&
+                 outM[1].joints.ankleL.dx === 0.1 && outM[1].travel === -0.03;
+    console.log(`[self-test] matched view (profile as profile): identity ${idOK} (rot ${outM[1].joints.kneeL.rot}, fore-twist ${outM[1].joints.kneeL.twist} — want ${lift}, ${foreTwist}, untouched)`);
+    if (!idOK) fails.push("matched view must be strict identity — no reinterpretation, no twist transfer");
+    // matched front (frontal clip, frontness 0.71, emitted front) = identity too
+    const dF2 = viewDecision(0.71, "front");
+    if (dF2.reinterpret || dF2.natural !== "front") fails.push("front-as-front must not reinterpret");
+    // mismatched (same profile capture emitted front) = rot → twist
+    const dF = viewDecision(0.16, "front");
+    const out = dF.reinterpret ? reinterpretKeys(profileKeys) : profileKeys;
     const leak = out.some((k) => Object.values(k.joints).some(
       (ch) => ch.rot != null || ch.dx != null || ch.dy != null));
     const twKnee = out[1].joints.kneeL?.twist ?? 0;
-    const ok = !leak && Math.abs(twKnee - lift) < 1e-6 && out[1].travel === 0 &&
+    const ok = dF.reinterpret && !leak && Math.abs(twKnee - lift) < 1e-6 && out[1].travel === 0 &&
                out[1].contacts.L === 0 && !("kneeL" in out[0].joints);
-    console.log(`[self-test] reinterpret front-from-profile: kneeL lift ${lift} → twist ${twKnee}, in-plane leak ${leak} (want twist ${lift}, no leak)`);
+    console.log(`[self-test] reinterpret front-from-profile: kneeL lift ${lift} → twist ${twKnee}, in-plane leak ${leak} (want twist ${lift}, no leak; fore-twist ${foreTwist} dropped, sign-ambiguous cross-plane)`);
     if (!ok) fails.push("reinterpretation must route sagittal deviations to twist, zero in-plane");
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);

@@ -30,3 +30,36 @@ matching his upright moment. Both profile QAs re-rendered
 front view and rotate it sideways — no rotation exists anywhere since
 the de-yaw removal (2026-09-27). The fake-front look was purely this
 QA rendering artifact.
+
+## Addendum — regression check (same day)
+
+A collapsed-to-vertical-line profile stickman was reported, suspecting
+the rot→twist reinterpretation firing on a MATCHED view. Checked as
+directed; **the regression does not reproduce in the current
+artifacts**:
+
+1. **Exact strings:** poses view `"profile"` · table view `"profile"`
+   · `reinterpreted: null`. The front emission carries `"front"` /
+   `"from-profile"`. The gate fired only on the mismatched view.
+2. **QA source:** the QA renders the PRIMARY (matched-view) pass's
+   per-frame thetas FK'd over the profile body — it never touches any
+   table, so it cannot render the reinterpreted front table.
+3. **Amplitudes, measured:** in-plane theta ranges hipL 1.14 / kneeL
+   1.80 rad; FK input to the QA renderer spans kneeL x 0.147 u, footL
+   y 0.187 u, handL x 0.205 u. The profile table holds kneeL rot span
+   0.825 (twist 0.251, foreshortening-sourced); the front table shows
+   the complement (rot 0.000, twist 0.825) — reinterpretation confined
+   to where it belongs.
+
+Hardened anyway: the gate is now a function (`viewDecision`) and
+self-test 7 asserts BOTH branches — profile-as-profile is strict
+identity (`outM === profileKeys`, rot AND foreshortening-twist
+untouched, dx/travel intact; front-as-front also no-reinterpret), and
+profile-as-front moves the sagittal deviations into twist with zero
+in-plane leak. Re-render after the change: table diff-identical,
+VERIFY:PASS.
+
+Likely source of the report: the pass-through phase (~0.2) where the
+figure is legitimately near-vertical for a beat, or a stale cached
+mp4. The current runningman.qa.mp4 shows the knee lift sideways
+throughout (evidence strip in this report's PNG).
