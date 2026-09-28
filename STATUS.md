@@ -65,6 +65,7 @@ creature rig). Full guide in `README.md`.
 | Estimator default = rtmpose (18.1 T4 verdict) | post-SavGol jitter gap 3–10 % (was 25–35 % raw — a filter property); R0 re-extracted ×3 clips; runningman 4/4 cycles, drift −0.0001 u/loop, halves symmetric pre-symmetrize (L 1.13/R 1.14 vs mediapipe 0.84/1.45) | extract batch log + stitch |
 | A/B explorer + fore-vs-world (18.1 T3/T2.3) | 3 A/B pages (summary card, A/B/overlay toggle) + section 3b twist overlay; headless smoke 5 pages 0 errors | explorer-ab.mjs + puppeteer smoke |
 | QA stickman view-correct (user catch) | profile QAs FK'd the FRONT body (fake-front look) → FK over biped-profile; knee lift/planted leg now track the dancer 1:1; tables byte-identical | reports/2026-09-28-qa-profile-body.md + strip |
+| ABSOLUTE retarget (root cause: collapsed arms) | measured rest erased habitual pose (elbows −1.4 rad!) → theta = obsAbs − rigRestAbs(view); arms-forward anti-test renders 0.00° abs; QA overlay panel tracks dancer bone-for-bone; 0 clamps (runningman) | reports/2026-09-28-absolute-retarget.md + self-test |
 | Shape-load degrade (live path) | bad shape name resumes old body (was: frozen at n=0 forever) | moves-x-shapes (found) + probe |
 
 Known-items (documented, not tuned — the grid tier owns file playback):
@@ -105,5 +106,9 @@ REMOVED entirely (user directive): stage 3 selects a view, never
 rotates; mismatched view = rot→twist reinterpretation
 (reports/2026-09-27-deyaw-removal.md). All three clips re-extracted on
 rtmpose = brief 19's R0; runningman stage tables rebuilt from it
-(halves near-symmetric pre-symmetrize now). WAITING: A7 stage verdict
-(item 3). Then brief 18 reading loop + brief 19.
+(halves near-symmetric pre-symmetrize now). ABSOLUTE RETARGET landed
+(2026-09-28): habitual pose transfers; all R0 re-extracted again;
+tstep front-view ankle clamps = known foot-convention gap (parked with
+tstep); bodyroll elbowR exceeds engine limit 18/180 frames (real
+finding). WAITING: A7 stage verdict (item 3). NOW: brief 18.2
+(on-frame overlays). Then brief 19.

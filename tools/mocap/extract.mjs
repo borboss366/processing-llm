@@ -97,6 +97,11 @@ const mirror = flag("mirror");
 const rigPath = opt("rig", path.join(ROOT, "web/app/shapes/biped-1.json"));
 const sidecar = JSON.parse(fs.readFileSync(rigPath, "utf8"));
 const rig = buildRig(sidecar);
+// absolute retarget (2026-09-28): each view retargets against ITS shape's
+// rest geometry — the body the table plays on. Profile = the stage's
+// profile body, regardless of --rig (which stays the front shape).
+const profileSidecar = JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-profile.json"), "utf8"));
+const profileRig = buildRig(profileSidecar);
 const clipBase = opt("out", video.replace(/\.[^.]+$/, ""));   // output prefix (default: next to clip)
 const moveName = opt("name", `${path.basename(clipBase)}-captured`);
 const euro = { minCutoff: +opt("min-cutoff", 1.2), beta: +opt("beta", 0.35) };
@@ -261,35 +266,45 @@ async function processView(vk, primary) {
   // +x for facing-camera front clips), not a rotation.
   const { natural, reinterpret } = viewDecision(frontRatio, vk);
   if (reinterpret) console.log(`[mocap] view ${vk} ≠ natural ${natural} → REINTERPRETATION (rot→twist at the table level)`);
-  const xFlip = natural === "front" && facing;
+  // mirror canonicalization (never rotation): front facing-camera clips flip
+  // so the person's left→right runs along +x; profile clips flip so the
+  // dancer FACES +x — the profile shape's facing, whose geometry is the
+  // absolute-retarget reference.
+  let profileFacingRaw = 0;
+  if (natural === "profile") {
+    for (const f of imgIso) {
+      profileFacingRaw += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
+    }
+  }
+  const xFlip = natural === "front" ? facing : profileFacingRaw < 0;
   const flipF = (frames) => xFlip ? frames.map((f) => f.map((p) => [-p[0], p[1]])) : frames;
   const frontal = flipF(imgIso);
 
-  // ── stage 4: retarget to rig rotations ────────────────────────────────────
-  // as-filmed = profile-family view: estimate the dancer's facing (median
-  // heel→toe x over both feet) and swap in the profile rest set (both feet
-  // forward, arms hanging) — measuring a profile pose against FRONT rests
-  // parked ~π on one ankle (the "palsy foot": clamps at rotLimits.ankle)
+  // ── stage 4: retarget to rig rotations (ABSOLUTE, 2026-09-28) ────────────
+  // theta = observedAbs − rigRestAbs(view) × sideSign. The reference is the
+  // VIEW shape's own rest geometry (profile body: arms hang ~93°, legs down,
+  // feet flat toward +x facing) — the dancer's habitual pose is SIGNAL and
+  // transfers to the stage. On the profile shape both feet face +x, so
+  // sideSigns resolves to identity by construction.
+  const rigV = natural === "profile" ? profileRig : rig;
+  const sidecarV = natural === "profile" ? profileSidecar : sidecar;
   let view = null;
   if (natural === "profile") {
-    let s = 0;
-    for (const f of frontal) {
-      s += (f[MP.toeL][0] - f[MP.heelL][0]) + (f[MP.toeR][0] - f[MP.heelR][0]);
-    }
-    view = { profileFacing: s < 0 ? -1 : 1 };
-    console.log(`[mocap] profile rest set: facing ${view.profileFacing < 0 ? "left" : "right"} (heel→toe median)`);
+    view = { profileFacing: 1 };
+    console.log(`[mocap] profile facing ${profileFacingRaw < 0 ? "left → x-flipped to +x" : "right (+x)"} · reference: biped-profile rest geometry`);
   }
-  // measured-rest calibration (2026-09-21): the human's own neutral from
-  // planted low-velocity frames; declared/view rests only as fallback
+  // measured rest: DIAGNOSTIC ONLY since 2026-09-28 (it is the dancer's
+  // HABITUAL pose — subtracting it erased sustained postures: collapsed
+  // arms, paralytic legs). Kept for the explorer's habitual-vs-reference
+  // comparison; lengths for foreshortening calibrate separately.
   const masks = calibMasks(frontal);
-  const cal = measureRest(frontal, rig, mirror, view, masks);
+  const cal = measureRest(frontal, rigV, mirror, masks);
   {
-    const declared = Object.fromEntries(rig.defs(mirror, view).map((d) => [d[0], d[4]]));
+    const refs = Object.fromEntries(rigV.defs(mirror).map((d) => [d[0], d[4]]));
     const deltas = Object.fromEntries(Object.entries(cal.rests)
-      .map(([nm, v]) => [nm, +((((v - declared[nm]) + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI).toFixed(2)]));
-    console.log(`[mocap] measured rest: calib frames global=${masks.global.filter(Boolean).length} legL=${masks.legL.filter(Boolean).length} legR=${masks.legR.filter(Boolean).length}` +
-      `${cal.fallbacks.length ? ` · fallback declared: [${cal.fallbacks}]` : ""}`);
-    console.log(`[mocap] measured−declared rest deltas (rad): ${JSON.stringify(deltas)}`);
+      .map(([nm, v]) => [nm, +((((v - refs[nm]) + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI).toFixed(2)]));
+    console.log(`[mocap] calib frames global=${masks.global.filter(Boolean).length} legL=${masks.legL.filter(Boolean).length} legR=${masks.legR.filter(Boolean).length}`);
+    console.log(`[mocap] habitual−rigRest deltas (rad, DIAGNOSTIC — this is what measured-rest used to erase): ${JSON.stringify(deltas)}`);
   }
   // depth channels (18.1: DERIVED FROM 2D — the estimator's 3D head is not
   // trusted): per-bone signed twist from projected-length foreshortening
@@ -300,7 +315,7 @@ async function processView(vk, primary) {
   const maskFor = (nm) => /L$/.test(nm) ? (legLName === "L" ? masks.legL : masks.legR)
     : /R$/.test(nm) ? (legLName === "L" ? masks.legR : masks.legL)
     : masks.global;
-  const fore = foreshortenAll(frontal, scores, rig.defs(mirror, view), maskFor, S);
+  const fore = foreshortenAll(frontal, scores, rigV.defs(mirror), maskFor, S);
   console.log(`[mocap] foreshorten sign decisions: ${JSON.stringify(fore.log)}`);
   const twistFrames = frontal.map((_, i) =>
     Object.fromEntries(Object.entries(fore.twists).map(([nm, s2]) => [nm, s2[i]])));
@@ -309,9 +324,9 @@ async function processView(vk, primary) {
   const footYawOf = (i, rigSide) => twistFrames[i][`ankle${rigSide}`] ?? 0;
   // world-derived twist — EXPLORER COMPARISON ONLY (acceptance plot)
   const twistWorldFrames = hasWorld
-    ? worldN.map((f) => boneTwists(deYaw3(f, 0), rig, mirror)) : null;
+    ? worldN.map((f) => boneTwists(deYaw3(f, 0), rigV, mirror)) : null;
 
-  const thetaFrames = frontal.map((f) => retargetFrame(f, rig, mirror, view, cal.rests));
+  const thetaFrames = frontal.map((f) => retargetFrame(f, rigV, mirror, view));
 
   // foot-length gating (16.2 item 1; 18.1 made 2D-only): where the
   // projected heel→toe length collapses vs the MEASURED rest length (the
@@ -339,13 +354,13 @@ async function processView(vk, primary) {
   // (the 2026-09-20 ankle re-centering is gone: measured-rest calibration
   // subsumes it — the ankle's planted median IS the stance neutral)
 
-  // rotLimit clamp report (2026-09-20): a retargeted theta past the engine's
-  // clamp is a REST-REFERENCE SMELL, not a data property — captured human
-  // motion lives well inside anatomical limits when measured against the
-  // right neutral
+  // rotLimit clamp report (2026-09-20; recontextualized 2026-09-28): under
+  // ABSOLUTE retarget thetas carry the habitual offset too, so a clamp hit
+  // can be either a reference smell OR a real "the engine's limit is tighter
+  // than this dancer's pose" finding — report it either way, judge per case
   {
     const lim = { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0,
-                  ...(sidecar.rotLimits ?? {}) };
+                  ...(sidecarV.rotLimits ?? {}) };
     const limitOf = (nm) => lim[nm.replace(/[LR]$/, "")] ?? null;
     const hits = {};
     for (const f of thetaFrames) {
@@ -367,7 +382,7 @@ async function processView(vk, primary) {
   // Reported whole-window + per-third (constant vs drifting).
   {
     const rawFrontal = flipF(rawImgIso);
-    const rawTheta = rawFrontal.map((f) => retargetFrame(f, rig, mirror, view));
+    const rawTheta = rawFrontal.map((f) => retargetFrame(f, rigV, mirror, view));
     rawThetaX = rawTheta;
     const fps = raw.meta.fps;
     const xlag = (i0, i1) => {
@@ -498,7 +513,7 @@ async function processView(vk, primary) {
   const fkFY = { L: new Float64Array(BINS), R: new Float64Array(BINS) };
   const fkFX = { L: new Float64Array(BINS), R: new Float64Array(BINS) };
   for (let b = 0; b < BINS; b++) {
-    const pose = fkPose(rig, Object.fromEntries(ARTICULATED.map((nm) => [nm, thetasAvg[nm][b]])));
+    const pose = fkPose(rigV, Object.fromEntries(ARTICULATED.map((nm) => [nm, thetasAvg[nm][b]])));
     fkFY.L[b] = pose.footL[1]; fkFY.R[b] = pose.footR[1];
     fkFX.L[b] = pose.footL[0]; fkFX.R[b] = pose.footR[0];
   }
@@ -540,10 +555,13 @@ async function processView(vk, primary) {
               cycles: cycles.length, kept: kept.length, dropped },
     foreshorten: { signDecisions: fore.log,
     restLens: Object.fromEntries(Object.entries(fore.restLens).map(([k, v]) => [k, +v.toFixed(4)])) },
-  restCalibration: {
+  // habitualPose = measured rest, DIAGNOSTIC only (2026-09-28); restRef =
+    // the rig rest angles the absolute retarget actually subtracts
+    habitualPose: {
       rests: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, +v.toFixed(4)])),
       counts: cal.counts, fallbacks: cal.fallbacks,
     },
+    restRef: Object.fromEntries(rigV.defs(mirror).map((d) => [d[0], +d[4].toFixed(4)])),
     frames: detected.map((f, i) => ({
       t: +times[i].toFixed(4),
       conf: +conf[i].toFixed(3),
@@ -578,21 +596,15 @@ async function processView(vk, primary) {
 
   // ── stage 9: QA video ─────────────────────────────────────────────────────
   if (primary && !flag("no-qa")) {
-    // FK over the body the STAGE will use for this view: a profile table
-    // plays on the profile shape, so a profile QA stickman must too —
-    // deviations painted on the front body's rest read as a fake front view
-    // (user catch 2026-09-28)
-    const qaSidecar = vk === "profile"
-      ? JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-profile.json"), "utf8"))
-      : sidecar;
-    const qaRig = vk === "profile" ? buildRig(qaSidecar) : rig;
-    const bones = qaSidecar.joints.filter((j) => j.parent).map((j) => [j.name, j.parent]);
+    // FK over the body the STAGE will use — same geometry the retarget
+    // references (rigV), so calibration pose == rig rest by construction
+    const bones = sidecarV.joints.filter((j) => j.parent).map((j) => [j.name, j.parent]);
     const spec = {
       video: path.resolve(video), out: `${vBase}.qa.mp4`,
       w: raw.meta.w, h: raw.meta.h, fps: raw.meta.fps,
       period, anchorSec, t0: times[0], bpl, beatSec,
       droppedCycles: dropped, bones,
-      ground: qaSidecar.ground ?? 0.905,
+      ground: sidecarV.ground ?? 0.905,
       // extracted pelvis drift about the window mean, shape units — the QA
       // ground marker (16.2 item 4) makes travel capture visible
       pelvisDrift: (() => {
@@ -603,7 +615,7 @@ async function processView(vk, primary) {
         // rig-anchored render: theta = obs − measured human rest, so the
         // calibration pose draws AS the view-correct rig's rest pose —
         // exactly what the stage does with this table
-        const pose = fkPose(qaRig, thetaFrames[i]);
+        const pose = fkPose(rigV, thetaFrames[i]);
         return {
           i: f.i, k: i, t: +times[i].toFixed(4),
           img: img[i].map(([x, y]) => [+(x).toFixed(4), +(y).toFixed(4)]),
@@ -643,14 +655,14 @@ async function processView(vk, primary) {
       : /^shoulder/.test(nm) ? [nm, "elbow" + nm.slice(-1)] : /^elbow/.test(nm) ? [nm, "hand" + nm.slice(-1)]
       : /^hip/.test(nm) ? [nm, "knee" + nm.slice(-1)] : /^knee/.test(nm) ? [nm, "ankle" + nm.slice(-1)]
       : [nm, "foot" + nm.slice(-1)];
-    const defRows = rig.defs(mirror, view);
+    const defRows = rigV.defs(mirror);
     const defLen = {}, declared = {};
     for (const [nm, , , , restDecl] of defRows) {
       const [ja, jb] = boneOf(nm);
-      defLen[nm] = r3(Math.hypot(rig.joints[jb].x - rig.joints[ja].x, rig.joints[jb].y - rig.joints[ja].y));
+      defLen[nm] = r3(Math.hypot(rigV.joints[jb].x - rigV.joints[ja].x, rigV.joints[jb].y - rigV.joints[ja].y));
       declared[nm] = r3(restDecl);
     }
-    const sgnFn = sideSigns(rig, view);
+    const sgnFn = sideSigns(rigV, view);
     const cycJoints = ["hipL", "hipR", "kneeL", "kneeR"].filter((j) => ARTICULATED.includes(j));
     // reconstruction RMS of the emitted keys vs the averaged loop
     let rmsAcc = 0, rmsN = 0;
@@ -700,12 +712,15 @@ async function processView(vk, primary) {
         return r3(sw / (Math.hypot(sm[0] - hm[0], sm[1] - hm[1]) || 1e-6));
       }),
       masks: { global: masks.global.map(Number), legL: masks.legL.map(Number), legR: masks.legR.map(Number) },
+      // measured = the dancer's HABITUAL pose (diagnostic); restRef = the rig
+      // rest angles actually subtracted (absolute retarget 2026-09-28)
       rests: { measured: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, r3(v)])),
                declared, counts: cal.counts, fallbacks: cal.fallbacks },
+      restRef: declared,
       defs: defRows.map(([nm, parent, a, b]) => [nm, parent, a, b]),
       defLen,
       sideSigns: Object.fromEntries(defRows.map(([nm]) => [nm, sgnFn(nm)])),
-      rotLimits: { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0, ...(sidecar.rotLimits ?? {}) },
+      rotLimits: { shoulder: 3.15, elbow: 2.4, hip: 0.9, knee: 2.0, ankle: 1.0, ...(sidecarV.rotLimits ?? {}) },
       period: { ...per.debug, chosen: +period.toFixed(4), mult: loop.mult,
                 cyclesPrior: opt("cycles", null), anchorSec: +anchorSec.toFixed(3) },
       cycles: { data: Object.fromEntries(cycJoints.map((j) => [j, cycles.map((c) => Array.from(c["th:" + j]).map(r3))])),
@@ -888,84 +903,95 @@ function selfTest() {
     }
     console.log(`[self-test] mirror round-trip: worst rendered-vs-observed ${worstM.toExponential(2)} rad (${worstMB})`);
     if (worstM > 1e-9) fails.push(`mirror round-trip err ${worstM} rad (${worstMB})`);
-    // profile rest set (2026-09-20 palsy foot): both observed feet forward
-    // (left) → ankle thetas small under view rests; against FRONT rests the
-    // off-side foot reads ~π (the clamp-smell case)
-    const fake2 = fake.map((p) => p && [...p]);
-    fake2[MP.toeL] = [pose.ankleL[0] - 0.1, pose.ankleL[1] + 0.02];
-    fake2[MP.toeR] = [pose.ankleR[0] - 0.1, pose.ankleR[1] + 0.02];
-    fake2[MP.heelL] = [pose.ankleL[0] + 0.02, pose.ankleL[1] + 0.02];
-    fake2[MP.heelR] = [pose.ankleR[0] + 0.02, pose.ankleR[1] + 0.02];
-    const thProf = retargetFrame(fake2, rg, false, { profileFacing: -1 });
-    const thFront = retargetFrame(fake2, rg, false);
+    // ── absolute-retarget suite (2026-09-28): reference = the PROFILE
+    // shape's own geometry; facing canonicalized to +x upstream ──
+    const rgP = buildRig(JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-profile.json"), "utf8")));
+    const viewP = { profileFacing: 1 };
+    // canonical profile synthetic: legs down, feet FORWARD (+x); optional
+    // whole-leg swing forward; arms configurable (armAng absolute, rad)
+    const prof = (lift, armAng = Math.PI / 2) => {
+      const f = [];
+      const leg = (s, dx) => {
+        f[MP[`hip${s}`]] = [dx, 0.5]; f[MP[`knee${s}`]] = [dx, 0.75];
+        f[MP[`ankle${s}`]] = [dx, 1.0]; f[MP[`heel${s}`]] = [dx - 0.01, 1.02];
+        f[MP[`toe${s}`]] = [dx + 0.09, 1.02];               // feet point +x
+      };
+      leg("L", 0); leg("R", 0.02);
+      if (lift) {
+        f[MP[`knee${lift}`]] = [f[MP[`hip${lift}`]][0] + 0.16, 0.69];
+        f[MP[`ankle${lift}`]] = [f[MP[`knee${lift}`]][0] + 0.05, 0.93];
+        f[MP[`heel${lift}`]] = [f[MP[`ankle${lift}`]][0] - 0.01, 0.95];
+        f[MP[`toe${lift}`]] = [f[MP[`ankle${lift}`]][0] + 0.09, 0.95];
+      }
+      for (const [s, dx] of [["L", 0], ["R", 0.02]]) {
+        f[MP[`shoulder${s}`]] = [dx, 0.1];
+        f[MP[`elbow${s}`]] = [dx + 0.14 * Math.cos(armAng), 0.1 + 0.14 * Math.sin(armAng)];
+        f[MP[`wrist${s}`]] = [dx + 0.28 * Math.cos(armAng), 0.1 + 0.28 * Math.sin(armAng)];
+      }
+      f[MP.earL] = [0, 0]; f[MP.earR] = [0.02, 0]; f[MP.nose] = [0.05, 0.01];
+      return f;
+    };
+    // profile feet vs reference (palsy-foot heir): forward feet retargeted
+    // against the profile shape read near-flat; against the FRONT shape the
+    // off-side foot reads ~π (why the reference must be the view's body)
+    const stand = prof(null);
+    const thProf = retargetFrame(stand, rgP, false, viewP);
+    const thFront = retargetFrame(stand, rg, false);
     const maxProf = Math.max(Math.abs(thProf.ankleL), Math.abs(thProf.ankleR));
     const maxFront = Math.max(Math.abs(thFront.ankleL), Math.abs(thFront.ankleR));
-    console.log(`[self-test] profile foot rests: max |ankle| ${maxProf.toFixed(2)} rad under view (front rests read ${maxFront.toFixed(2)})`);
-    if (maxProf > 0.5) fails.push(`profile ankle theta ${maxProf.toFixed(2)} rad — view rests not applied`);
-    if (maxFront < 2) fails.push("front-rest control did not show the ~π off-side foot");
-    // measured-rest self-calibration (2026-09-21 tiptoes): a static clip
-    // calibrated on itself is its own rest — every theta must be ~0
-    // regardless of how the pose disagrees with any declared rest
-    const staticClip = Array.from({ length: 12 }, () => fake2);
-    const m = calibMasks(staticClip);
-    const c = measureRest(staticClip, rg, false, null, m);
-    const thCal = retargetFrame(fake2, rg, false, null, c.rests);
-    const maxCal = Math.max(...Object.values(thCal).map(Math.abs));
-    console.log(`[self-test] measured-rest self-calibration: max |theta| ${maxCal.toExponential(2)} rad, fallbacks [${c.fallbacks}]`);
-    if (maxCal > 1e-9) fails.push(`self-calibration theta ${maxCal} — measured rest broken`);
-    if (c.fallbacks.length) fails.push(`self-calibration fell back on [${c.fallbacks}]`);
-    // profile knee-lift, BOTH sides (2026-09-21 far-side flip): measured
-    // rest + per-side sign together — each side's lift must round-trip
-    // < 1° in the side-aware sense (rendered deviation × sideSign ==
-    // observed deviation). Pre-fix the far side erred at 2× the lift.
+    console.log(`[self-test] profile feet vs reference: |ankle| ${maxProf.toFixed(2)} rad on profile shape (front shape reads ${maxFront.toFixed(2)})`);
+    if (maxProf > 0.5) fails.push(`profile ankle theta ${maxProf.toFixed(2)} rad — profile-shape reference not applied`);
+    if (maxFront < 2) fails.push("front-shape control did not show the ~π off-side foot");
+    // HABITUAL POSE SURVIVES (2026-09-28 root cause): a clip whose MEAN pose
+    // is arms-FORWARD must retarget to arms-forward — NOT to the rig's rest.
+    // (measured-rest calibration subtracted exactly this and collapsed the
+    // arms; this is its anti-test.)
     {
-      const prof = (lift) => {
-        const f = [];
-        const leg = (s, dx) => {
-          f[MP[`hip${s}`]] = [dx, 0.5]; f[MP[`knee${s}`]] = [dx, 0.75];
-          f[MP[`ankle${s}`]] = [dx, 1.0]; f[MP[`heel${s}`]] = [dx + 0.01, 1.02];
-          f[MP[`toe${s}`]] = [dx - 0.09, 1.02];              // feet point LEFT (facing -1)
-        };
-        leg("L", 0); leg("R", 0.02);
-        if (lift) {
-          // swing the whole leg forward (screen left, facing -1): femur
-          // rotates +40°, shin follows, foot dangles
-          f[MP[`knee${lift}`]] = [f[MP[`hip${lift}`]][0] - 0.16, 0.69];
-          f[MP[`ankle${lift}`]] = [f[MP[`knee${lift}`]][0] - 0.05, 0.93];
-          f[MP[`heel${lift}`]] = [f[MP[`ankle${lift}`]][0] + 0.01, 0.95];
-          f[MP[`toe${lift}`]] = [f[MP[`ankle${lift}`]][0] - 0.09, 0.95];
-        }
-        for (const [s, dx] of [["L", 0], ["R", 0.02]]) {
-          f[MP[`shoulder${s}`]] = [dx, 0.1]; f[MP[`elbow${s}`]] = [dx, 0.3];
-          f[MP[`wrist${s}`]] = [dx, 0.45];
-        }
-        f[MP.earL] = [0, 0]; f[MP.earR] = [0.02, 0]; f[MP.nose] = [-0.03, 0.01];
-        return f;
-      };
-      const view2 = { profileFacing: -1 };
-      const stand = prof(null);
-      for (const lift of ["L", "R"]) {
-        const clip = [...Array.from({ length: 8 }, () => stand), prof(lift), prof(lift)];
-        const m2 = calibMasks(clip);
-        const c2 = measureRest(clip, rg, false, view2, m2);
-        const th2 = retargetFrame(prof(lift), rg, false, view2, c2.rests);
-        const pose2 = fkPose(rg, th2);
-        const sgn = (nm) => (Math.sign(rg.joints[`foot${nm.slice(-1)}`].x - rg.joints[`ankle${nm.slice(-1)}`].x) === -1 ? 1 : -1);
-        let worstS = 0, worstSB = "";
-        for (const [pa, ch, a, b] of [[`hip${lift}`, `knee${lift}`, MP[`hip${lift}`], MP[`knee${lift}`]],
-                                      [`knee${lift}`, `ankle${lift}`, MP[`knee${lift}`], MP[`ankle${lift}`]]]) {
-          const F = prof(lift);
-          const obsDev = Math.atan2(Math.sin(Math.atan2(F[b][1] - F[a][1], F[b][0] - F[a][0]) - c2.rests[pa]),
-                                    Math.cos(Math.atan2(F[b][1] - F[a][1], F[b][0] - F[a][0]) - c2.rests[pa]));
-          const rigRest2 = Math.atan2(rg.joints[ch].y - rg.joints[pa].y, rg.joints[ch].x - rg.joints[pa].x);
-          const renDev = Math.atan2(Math.sin(Math.atan2(pose2[ch][1] - pose2[pa][1], pose2[ch][0] - pose2[pa][0]) - rigRest2),
-                                    Math.cos(Math.atan2(pose2[ch][1] - pose2[pa][1], pose2[ch][0] - pose2[pa][0]) - rigRest2));
-          const d = Math.abs(Math.atan2(Math.sin(sgn(pa) * renDev - obsDev), Math.cos(sgn(pa) * renDev - obsDev)));
-          if (d > worstS) { worstS = d; worstSB = pa; }
-        }
-        console.log(`[self-test] profile knee-lift ${lift}: side-aware round-trip worst ${(worstS * 180 / Math.PI).toFixed(2)}° (${worstSB})`);
-        if (worstS > Math.PI / 180) fails.push(`profile lift ${lift}: ${(worstS * 180 / Math.PI).toFixed(1)}° > 1°`);
+      const fwd = prof(null, 0);                        // arms horizontal +x, all frames
+      const clip = Array.from({ length: 12 }, () => fwd);
+      const thF = clip.map((f) => retargetFrame(f, rgP, false, viewP));
+      const mean = thF.reduce((a2, t) => a2 + t.shoulderL, 0) / thF.length;
+      const poseF = fkPose(rgP, thF[0]);
+      const armAbs = Math.atan2(poseF.elbowL[1] - poseF.shoulderL[1], poseF.elbowL[0] - poseF.shoulderL[0]);
+      const ok = Math.abs(Math.atan2(Math.sin(armAbs), Math.cos(armAbs))) < 1e-6 && Math.abs(mean) > 1;
+      console.log(`[self-test] habitual pose survives: arms-forward clip renders arm at ${(armAbs * 180 / Math.PI).toFixed(2)}° abs (want 0° = forward, NOT the rig's ~93° rest; mean shoulder theta ${mean.toFixed(2)} rad)`);
+      if (!ok) fails.push("arms-forward clip must retarget to arms-forward, not the rig rest");
+    }
+    // measured rest as DIAGNOSTIC: on a static clip it must report the
+    // observed angles exactly (it feeds the explorer comparison), fallbacks 0
+    {
+      const staticClip = Array.from({ length: 12 }, () => stand);
+      const m = calibMasks(staticClip);
+      const c = measureRest(staticClip, rgP, false, m);
+      let worstD = 0;
+      const angOf = (a, b) => Math.atan2(stand[b][1] - stand[a][1], stand[b][0] - stand[a][0]);
+      for (const [nm, a, b] of [["hipL", MP.hipL, MP.kneeL], ["ankleR", MP.heelR, MP.toeR], ["shoulderL", MP.shoulderL, MP.elbowL]]) {
+        const d = Math.abs(Math.atan2(Math.sin(c.rests[nm] - angOf(a, b)), Math.cos(c.rests[nm] - angOf(a, b))));
+        if (d > worstD) worstD = d;
       }
+      console.log(`[self-test] measured rest (diagnostic): reports observed angles within ${worstD.toExponential(2)} rad, fallbacks [${c.fallbacks}]`);
+      if (worstD > 1e-9) fails.push("measured-rest diagnostic drifted from observed angles");
+      if (c.fallbacks.length) fails.push(`measured-rest diagnostic fell back on [${c.fallbacks}]`);
+    }
+    // profile knee-lift, BOTH sides: under absolute retarget on the profile
+    // shape every rendered bone's ABSOLUTE angle must equal the observed
+    // absolute angle exactly (sideSigns = identity on a same-facing shape)
+    for (const lift of ["L", "R"]) {
+      const F = prof(lift);
+      const th2 = retargetFrame(F, rgP, false, viewP);
+      const pose2 = fkPose(rgP, th2);
+      let worstS = 0, worstSB = "";
+      for (const [pa, ch, a, b] of [[`hip${lift}`, `knee${lift}`, MP[`hip${lift}`], MP[`knee${lift}`]],
+                                    [`knee${lift}`, `ankle${lift}`, MP[`knee${lift}`], MP[`ankle${lift}`]],
+                                    [`ankle${lift}`, `foot${lift}`, MP[`heel${lift}`], MP[`toe${lift}`]],
+                                    ["shoulderL", "elbowL", MP.shoulderL, MP.elbowL]]) {
+        const obsA = Math.atan2(F[b][1] - F[a][1], F[b][0] - F[a][0]);
+        const renA = Math.atan2(pose2[ch][1] - pose2[pa][1], pose2[ch][0] - pose2[pa][0]);
+        const d = Math.abs(Math.atan2(Math.sin(renA - obsA), Math.cos(renA - obsA)));
+        if (d > worstS) { worstS = d; worstSB = pa; }
+      }
+      console.log(`[self-test] profile knee-lift ${lift}: absolute-angle round-trip worst ${(worstS * 180 / Math.PI).toFixed(2)}° (${worstSB})`);
+      if (worstS > Math.PI / 180) fails.push(`profile lift ${lift}: ${(worstS * 180 / Math.PI).toFixed(1)}° > 1°`);
     }
   }
   // 4) outlier cycles dropped: 6 clean + 2 scaled

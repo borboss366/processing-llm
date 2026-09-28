@@ -100,18 +100,19 @@ ${abCard}
   </div>
 </section>
 
-<section id="s4"><h2>4 · MEASURED REST — the dancer's own neutral</h2>
+<section id="s4"><h2>4 · REST REFERENCE — habitual pose vs the rig's rest</h2>
   <div class="row">
     <div><canvas id="c4" width="640" height="90"></canvas><div class="note">calibration frames: ▮ global-quiet · ▮ legL planted · ▮ legR planted</div></div>
-    <div><canvas id="c4b" width="180" height="240"></canvas><div class="note">rest stickman (measured)</div></div>
+    <div><canvas id="c4b" width="180" height="240"></canvas><div class="note">HABITUAL pose (measured, diagnostic)</div></div>
+    <div><canvas id="c4c" width="180" height="240"></canvas><div class="note">RIG REST (the reference subtracted)</div></div>
     <div id="restTable"></div>
   </div>
-  <div class="haz"><b>can go wrong:</b> every DECLARED rest shipped a bias — the mirror-rest bug (side flip, 132°), the profile view-rest guesses, the ankle→toe foot slope (tiptoes). Measured rest (median over planted/quiet frames) replaced them; declared is only the fallback (fallbacks this clip: ${D.rests.fallbacks.length ? D.rests.fallbacks.join(', ') : 'none'}).</div>
+  <div class="haz"><b>can go wrong:</b> subtracting the MEASURED (habitual) pose as "the dancer's neutral" erased every sustained posture — arms held forward all clip retargeted to ≈0 and the rig showed its own rest (collapsed arms / paralytic legs, root-caused 2026-09-28). Since then retarget is ABSOLUTE: reference = the rig's own rest from the view shape's geometry; the Δ column below is what the old scheme silently deleted. (Measured survives for this comparison + bone lengths.)</div>
 </section>
 
-<section id="s5"><h2>5 · RETARGET — per bone at the scrubbed frame</h2>
+<section id="s5"><h2>5 · RETARGET (ABSOLUTE) — per bone at the scrubbed frame</h2>
   <div id="retTable"></div>
-  <div class="note">theta = sideSign × wrap(observed − restMeasured) − parentAcc &nbsp;·&nbsp; round-trip = chain-reconstruction error (0 unless something is mismapped)</div>
+  <div class="note">theta = sideSign × wrap(observedAbs − rigRestAbs) − parentAcc &nbsp;·&nbsp; the reference is the RIG's rest, so habitual pose transfers &nbsp;·&nbsp; round-trip = chain-reconstruction error (0 unless something is mismapped)</div>
   <div class="haz"><b>can go wrong:</b> the 2× SIDE-SIGN signature — every far-side bone erring at exactly twice its deviation (profile transfer is orientation-reversing for the side whose rig foot opposes the facing); a clamp hit here is a REST-REFERENCE smell before it is a data property.</div>
 </section>
 
@@ -245,23 +246,28 @@ function stage4() {
   });
   const x = 50 + 580*F/(D.times.length-1);
   g.strokeStyle = '#fd4'; g.beginPath(); g.moveTo(x, 2); g.lineTo(x, 86); g.stroke();
-  // rest stickman: draw each def bone at its measured rest angle, chained
-  const cv = $('c4b'), gg = cv.getContext('2d'); gg.clearRect(0,0,cv.width,cv.height);
-  const posOf = { pelvis: [0.5, 0.55] };
-  gg.strokeStyle = '#9ad'; gg.lineWidth = 2;
+  // two rest stickmen: the dancer's HABITUAL pose (measured, diagnostic)
+  // vs the RIG REST the absolute retarget actually references
+  const stick = (cvId, angles, col) => {
+    const cv = $(cvId), gg = cv.getContext('2d'); gg.clearRect(0,0,cv.width,cv.height);
+    const posOf = { pelvis: [0.5, 0.55] };
+    gg.strokeStyle = col; gg.lineWidth = 2;
+    for (const d of D.defs) {
+      const [name, parent] = d;
+      const from = posOf[parent ?? 'pelvis'] ?? posOf.pelvis;
+      const ang = angles[name];
+      const len = D.defLen[name] ?? 0.12;
+      const to = [from[0] + Math.cos(ang)*len, from[1] + Math.sin(ang)*len];
+      posOf[name] = to;
+      gg.beginPath(); gg.moveTo(from[0]*cv.width, from[1]*cv.height*0.9);
+      gg.lineTo(to[0]*cv.width, to[1]*cv.height*0.9); gg.stroke();
+    }
+  };
+  stick('c4b', D.rests.measured, '#c95');
+  stick('c4c', D.restRef ?? D.rests.declared, '#9ad');
+  let h = '<table><tr><th>bone</th><th>habitual</th><th>rig ref</th><th>Δ (transfers now)</th><th>frames</th></tr>';
   for (const d of D.defs) {
-    const [name, parent] = d;
-    const from = posOf[parent ?? 'pelvis'] ?? posOf.pelvis;
-    const ang = D.rests.measured[name];
-    const len = D.defLen[name] ?? 0.12;
-    const to = [from[0] + Math.cos(ang)*len, from[1] + Math.sin(ang)*len];
-    posOf[name] = to;
-    gg.beginPath(); gg.moveTo(from[0]*cv.width, from[1]*cv.height*0.9);
-    gg.lineTo(to[0]*cv.width, to[1]*cv.height*0.9); gg.stroke();
-  }
-  let h = '<table><tr><th>bone</th><th>measured</th><th>declared</th><th>Δ</th><th>frames</th></tr>';
-  for (const d of D.defs) {
-    const nm = d[0], m = D.rests.measured[nm], dec = D.rests.declared[nm];
+    const nm = d[0], m = D.rests.measured[nm], dec = (D.restRef ?? D.rests.declared)[nm];
     const dd = Math.atan2(Math.sin(m-dec), Math.cos(m-dec));
     h += '<tr><td class="name">' + nm + '</td><td>' + m.toFixed(2) + '</td><td>' + dec.toFixed(2) +
          '</td><td class="' + (Math.abs(dd) > 0.5 ? 'err1' : 'err0') + '">' + dd.toFixed(2) + '</td><td>' + D.rests.counts[nm] + '</td></tr>';
@@ -280,11 +286,11 @@ function stage5() {
   };
   const wrap = (x) => Math.atan2(Math.sin(x), Math.cos(x));
   const acc = {};
-  let h = '<table><tr><th>bone</th><th>observed</th><th>rest</th><th>side</th><th>parentAcc</th><th>theta</th><th>pipeline θ</th><th>round-trip</th><th></th></tr>';
+  let h = '<table><tr><th>bone</th><th>observed abs</th><th>reference abs</th><th>side</th><th>parentAcc</th><th>theta</th><th>pipeline θ</th><th>round-trip</th><th></th></tr>';
   for (const d of D.defs) {
     const [name, parent, a, b] = d;
     const obs = obsAng(D.frontal[F], a, b);
-    const rest = D.rests.measured[name];
+    const rest = (D.restRef ?? D.rests.declared)[name];
     const sgn = D.sideSigns[name] ?? 1;
     const accH = sgn * wrap(obs - rest);
     acc[name] = accH;

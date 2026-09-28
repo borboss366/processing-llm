@@ -1,14 +1,17 @@
-// Retarget MediaPipe pose landmarks → 15-joint rig rotations (brief 16).
+// Retarget pose landmarks → rig rotations (brief 16; absolute 2026-09-28).
 //
-// Principle: match WORLD BONE ORIENTATIONS. For each rig bone we take the
-// observed segment's angle (atan2, y-down screen convention — same as the
-// creature's FK), subtract the rig's rest-pose angle for that bone, subtract
-// the parent chain's accumulated rotation: what remains is the joint's table
-// `rot`. Signs come out right by construction because extraction and playback
-// share one rotation convention. Positions are DERIVED via FK, never copied —
-// bone lengths hold by construction. The rig has no hip DOF (thigh is rigid
-// pelvis→knee), so leg swing projects onto knee/ankle; the QA video shows
-// this honestly.
+// Principle: match ABSOLUTE BONE ORIENTATIONS vs gravity. For each rig bone
+// we take the observed segment's angle (atan2, y-down screen convention —
+// same as the creature's FK), subtract the RIG'S OWN rest-pose angle for
+// that bone (from the view shape's sidecar geometry — the body the table
+// will play on), subtract the parent chain's accumulated rotation: what
+// remains is the joint's table `rot`. The dancer's habitual pose is SIGNAL:
+// arms held forward all clip retarget to arms forward. (The 2026-09-21
+// measured-rest calibration subtracted the dancer's habitual pose as their
+// "neutral" — sustained postures collapsed to the rig's rest; reverted.
+// Measured rest survives as a DIAGNOSTIC and for bone lengths only.)
+// Positions are DERIVED via FK, never copied — bone lengths hold by
+// construction.
 
 // 18.1: the pipeline speaks the SCHEMA (lib/landmarks.mjs, 21 points) —
 // estimator-specific indexing never reaches this file. MP is kept as an
@@ -96,42 +99,26 @@ export function buildRig(sidecar) {
     [`knee${pr}`, `hip${pr}`, MP.kneeR, MP.ankleR, rest(`knee${pr}`, `ankle${pr}`)],
     [`ankle${pr}`, `knee${pr}`, MP.heelR, MP.toeR, rest(`ankle${pr}`, `foot${pr}`)],
   ];
-  // view-specific rest overrides (2026-09-20 "palsy foot"): the sidecar is
-  // a FRONT view — feet point outward on opposite sides, arms slope outward.
-  // In a PROFILE clip both feet point the facing direction and arms hang
-  // along the body; measuring against front rests parks ~π on one ankle
-  // (clamps at the rotLimit) and a constant on the shoulders. view =
-  // { profileFacing: -1 | +1 } swaps in profile rests: one shared forward
-  // foot neutral (the facing side's own rest) and straight-down arms.
-  const applyView = (rows, view) => {
-    if (!view?.profileFacing) return rows;
-    // heel→toe observation: a flat profile foot is HORIZONTAL in the facing
-    // direction (was: the rig foot's own sloped rest — the tiptoe bias)
-    const footNeutral = view.profileFacing < 0 ? Math.PI : 0;
-    const DOWN = Math.PI / 2;                          // y-down screen: hanging arm
-    return rows.map(([name, parent, a, b, r]) => {
-      if (/^ankle/.test(name)) return [name, parent, a, b, footNeutral];
-      if (/^(shoulder|elbow)/.test(name)) return [name, parent, a, b, DOWN];
-      return [name, parent, a, b, r];
-    });
-  };
+  // No view-specific rest OVERRIDES (2026-09-28): the caller builds the rig
+  // from the VIEW-CORRECT sidecar (biped-profile for profile clips), so the
+  // rest angles ARE the view's geometry — arms hang, legs down, feet flat
+  // toward the shape's facing. Clip facing is canonicalized upstream by
+  // x-flip (mirror canonicalization, never rotation).
   return {
     joints: J,
     order: sidecar.joints.map((j) => j.name),
     rest,
-    defs: (mirror, view) => applyView(mirror ? defs('R', 'L') : defs('L', 'R'), view),
+    defs: (mirror) => (mirror ? defs('R', 'L') : defs('L', 'R')),
   };
 }
 
-// ── Measured-rest calibration (2026-09-21) ─────────────────────────────────
-// Declared rest sets (front sidecar geometry, profile overrides) are GUESSES
-// about the human's neutral; every guess so far shipped a bias (opposing
-// feet, sloped arms, ankle→toe tiptoes). Measure instead: the median
-// observed bone angle over PLANTED, LOW-VELOCITY frames is the human's own
-// rest in this clip and view; thetas are deviations from it, applied onto
-// the rig's rest by FK. Declared rests remain only the fallback when a bone
-// never qualifies. QA/engine semantics: rendered = rigRest + (obs −
-// humanRest) — the calibration pose renders AS the rig's rest pose.
+// ── Measured-rest calibration (2026-09-21; DIAGNOSTIC-ONLY since 2026-09-28) ─
+// Median observed bone angle over PLANTED, LOW-VELOCITY frames = the
+// dancer's HABITUAL pose in this clip. It was briefly the theta reference —
+// which erased sustained postures (arms held forward all clip subtracted to
+// zero; the rig showed its own rest: collapsed arms, paralytic legs). Kept
+// for the explorer's habitual-vs-rig-rest comparison and for bone-length
+// calibration (foreshortening rest lengths); NEVER subtracted from thetas.
 
 // frame masks: global = lowest-30% whole-body velocity; legL/legR = frames
 // where that PERSON side's foot is planted (within 10% of its lowest point)
@@ -181,9 +168,9 @@ const LEG_R = new Set([MP.hipR, MP.kneeR, MP.ankleR, MP.heelR, MP.toeR]);
 // median observed angle per def bone over its calibration mask → human rest.
 // Leg bones calibrate on their own side's planted frames; everything else on
 // the global quiet mask. < 5 qualifying frames → declared rest (fallback).
-export function measureRest(frontalFrames, rig, mirror, view, masks) {
+export function measureRest(frontalFrames, rig, mirror, masks) {
   const rests = {}, counts = {}, fallbacks = [];
-  for (const [name, , a, b, declared] of rig.defs(mirror, view)) {
+  for (const [name, , a, b, declared] of rig.defs(mirror)) {
     const mask = (typeof a === "number" && LEG_L.has(a)) ? masks.legL
       : (typeof a === "number" && LEG_R.has(a)) ? masks.legR
       : masks.global;
@@ -231,12 +218,14 @@ export function sideSigns(rig, view) {
   };
 }
 
-export function retargetFrame(frame2d, rig, mirror, view = null, humanRest = null) {
+export function retargetFrame(frame2d, rig, mirror, view = null) {
   const thetas = {}, acc = {};
   const sign = sideSigns(rig, view);
-  for (const [name, parent, a, b, restAngle] of rig.defs(mirror, view)) {
+  for (const [name, parent, a, b, restAngle] of rig.defs(mirror)) {
     const obs = ang(point(frame2d, a), point(frame2d, b));
-    const accHere = sign(name) * wrap(obs - (humanRest?.[name] ?? restAngle));
+    // ABSOLUTE retarget: reference is the rig's own rest angle — habitual
+    // pose transfers; only the rig-vs-human skeleton difference is removed
+    const accHere = sign(name) * wrap(obs - restAngle);
     acc[name] = accHere;
     thetas[name] = wrap(accHere - (parent ? acc[parent] : 0));
   }
