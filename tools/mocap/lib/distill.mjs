@@ -4,6 +4,30 @@
 
 const TAU = Math.PI * 2;
 
+// Sample the distilled table at a loop phase — the engine's interpolation
+// shape (find surrounding keys; snap completes in the first quarter,
+// smooth = smoothstep, linear = linear). Shared by the R1 rung tool and
+// the explorer's table ghost.
+export function sampleTableAt(table, phase) {
+  const keys = table.keys;
+  if (!keys?.length) return {};
+  let i = keys.length - 1;
+  for (let k = 0; k < keys.length; k++) if (keys[k].phase <= phase) i = k;
+  const a = keys[i], b = keys[(i + 1) % keys.length];
+  const span = (((b.phase - a.phase) % 1) + 1) % 1 || 1;
+  let u = ((((phase - a.phase) % 1) + 1) % 1) / span;
+  const ease = a.ease ?? 'smooth';
+  if (ease === 'snap') u = Math.min(1, u * 4);
+  if (ease !== 'linear') u = u * u * (3 - 2 * u);
+  const th = {};
+  const names = new Set([...Object.keys(a.joints), ...Object.keys(b.joints)]);
+  for (const nm of names) {
+    const ra = a.joints[nm]?.rot ?? 0, rb = b.joints[nm]?.rot ?? 0;
+    th[nm] = ra + (rb - ra) * u;
+  }
+  return th;
+}
+
 // candidate key phases: per-channel local extrema of value AND of the first
 // difference (inflections), on the circular bin grid
 function candidatePhases(channels, bins, minRange) {
@@ -23,34 +47,45 @@ function candidatePhases(channels, bins, minRange) {
   return [...set].sort((a, b) => a - b);
 }
 
-// greedy thin: repeatedly remove the candidate whose removal introduces the
-// least reconstruction error (linear interp between circular neighbours),
-// until ≤ maxKeys. Deterministic.
-function thinKeys(phasesIdx, channels, bins, maxKeys) {
-  const idx = [...phasesIdx];
-  const errOf = (arr, k) => {
-    const prev = arr[(k - 1 + arr.length) % arr.length];
-    const next = arr[(k + 1) % arr.length];
-    const span = ((next - prev + bins) % bins) || bins;
-    let worst = 0;
-    for (const nm of Object.keys(channels)) {
-      const v = channels[nm];
-      for (let s = 1; s < span; s++) {
-        const b = (prev + s) % bins;
-        const interp = v[prev] + (v[next] - v[prev]) * (s / span);
-        worst = Math.max(worst, Math.abs(v[b] - interp));
-      }
+// per-bone reconstruction RMS of a key set (linear interp between circular
+// neighbours) — the thinning currency (brief 19 3.1c)
+function reconRms(idx, channels, bins) {
+  let worst = 0;
+  for (const nm of Object.keys(channels)) {
+    const v = channels[nm];
+    let s2 = 0;
+    for (let b = 0; b < bins; b++) {
+      // surrounding kept keys
+      let i = idx.length - 1;
+      for (let k = 0; k < idx.length; k++) if (idx[k] <= b) i = k;
+      const prev = idx[i], next = idx[(i + 1) % idx.length];
+      const span = ((next - prev + bins) % bins) || bins;
+      const s3 = (b - prev + bins) % bins;
+      const interp = v[prev] + (v[next] - v[prev]) * (s3 / span);
+      s2 += (v[b] - interp) ** 2;
     }
-    return worst;
-  };
-  while (idx.length > maxKeys) {
+    worst = Math.max(worst, Math.sqrt(s2 / bins));
+  }
+  return worst;
+}
+
+// ADAPTIVE greedy thin (brief 19 3.1c): candidates are extrema+inflections,
+// emitted EXACTLY (key value = curve value). Remove the least-damaging key
+// only while the worst-bone reconstruction RMS stays ≤ errBudget; maxKeys
+// is a hard cap enforced regardless. Deterministic.
+function thinKeys(phasesIdx, channels, bins, maxKeys, errBudget = null) {
+  const idx = [...phasesIdx];
+  while (idx.length > 1) {
     let bestK = -1, bestErr = Infinity;
     for (let k = 0; k < idx.length; k++) {
       if (idx[k] === 0) continue;               // phase 0 is the loop anchor
-      const e = errOf(idx, k);
+      const trial = idx.filter((_, j) => j !== k);
+      const e = reconRms(trial, channels, bins);
       if (e < bestErr) { bestErr = e; bestK = k; }
     }
     if (bestK < 0) break;
+    const overCap = idx.length > maxKeys;
+    if (!overCap && (errBudget == null || bestErr > errBudget)) break;
     idx.splice(bestK, 1);
   }
   return idx;
@@ -63,12 +98,21 @@ function thinKeys(phasesIdx, channels, bins, maxKeys) {
  *                     minRange (rad), snapSpeed (rad/loop-fraction) }
  */
 export function distillMove(avg, opts) {
-  const { bins = 64, bpl = 4, maxKeys = 16, minRange = 0.06 } = opts;
+  const { bins = 64, bpl = 4, maxKeys = 32, minRange = 0.06, errBudget = 0.04 } = opts;
   const joints = {};
+  // constant channels (2026-09-28, R1 catch): a bone can hold a LARGE
+  // habitual offset with tiny oscillation (tstep shoulder 0.94 rad, bodyroll
+  // elbow 1.0). Excluding it entirely replays the rig rest — the habitual-
+  // pose erasure reborn at the last stage. Emit its mean as a constant key.
+  const constants = {};
   for (const [nm, v] of Object.entries(avg.thetas)) {
     if (Math.max(...v) - Math.min(...v) >= minRange) joints[nm] = v;
+    else {
+      const m = v.reduce((a, b) => a + b, 0) / v.length;
+      if (Math.abs(m) >= 0.15) constants[nm] = +m.toFixed(3);
+    }
   }
-  const phases = thinKeys(candidatePhases(joints, bins, minRange), joints, bins, maxKeys);
+  const phases = thinKeys(candidatePhases(joints, bins, minRange), joints, bins, maxKeys, errBudget);
 
   // contacts: a foot is planted where its height is near the cycle low AND
   // its horizontal speed is low (image space carries the ground truth)
@@ -125,6 +169,7 @@ export function distillMove(avg, opts) {
   const keys = phases.map((b) => {
     const jk = {};
     for (const [nm, v] of Object.entries(joints)) jk[nm] = { rot: +v[b].toFixed(3) };
+    for (const [nm, m] of Object.entries(constants)) jk[nm] = { rot: m };
     // twist emission (17 B1): DEVIATION from the bone's habitual plane
     // (mean-removed — same principle as measured rest: a constant offset is
     // camera geometry, not motion, and would permanently foreshorten the

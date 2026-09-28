@@ -132,18 +132,73 @@ export function binCycles(channels, fs, period, anchorSec, bins = 64) {
 // drop outlier cycles by RMS distance to the per-bin MEDIAN cycle —
 // instructors demo slow-then-fast; averaging those smears timing. Returns
 // { mean, kept, dropped } with kept/dropped as cycle indices.
-export function averageCycles(cycles, { maxRatio = 2.5 } = {}) {
-  if (!cycles.length) return { mean: {}, kept: [], dropped: [] };
+// mean RMS distance of each cycle to the per-bin median — the number the
+// octave guard compares: reps only agree when the loop length is right
+export function cycleSpread(cycles) {
+  if (cycles.length < 2) return 0;
   const names = Object.keys(cycles[0]);
   const bins = cycles[0][names[0]].length;
-  const median = {};
+  const med = {};
   for (const nm of names) {
-    median[nm] = new Float64Array(bins);
+    med[nm] = new Float64Array(bins);
     for (let b = 0; b < bins; b++) {
       const vals = cycles.map((c) => c[nm][b]).sort((a, z) => a - z);
-      median[nm][b] = vals[Math.floor(vals.length / 2)];
+      med[nm][b] = vals[Math.floor(vals.length / 2)];
     }
   }
+  let s = 0, k = 0;
+  for (const c of cycles) for (const nm of names) for (let b = 0; b < bins; b++) {
+    s += (c[nm][b] - med[nm][b]) ** 2; k++;
+  }
+  return Math.sqrt(s / k);
+}
+
+export function averageCycles(cycles, { maxRatio = 2.5, align = true, maxShiftFrac = 0.5 } = {}) {
+  if (!cycles.length) return { mean: {}, kept: [], dropped: [], shifts: [] };
+  const names = Object.keys(cycles[0]);
+  const bins = cycles[0][names[0]].length;
+  const medianOf = (cys) => {
+    const med = {};
+    for (const nm of names) {
+      med[nm] = new Float64Array(bins);
+      for (let b = 0; b < bins; b++) {
+        const vals = cys.map((c) => c[nm][b]).sort((a, z) => a - z);
+        med[nm][b] = vals[Math.floor(vals.length / 2)];
+      }
+    }
+    return med;
+  };
+  // ── cycle ALIGNMENT (brief 19 3.1b): instructors drift tempo — a fixed
+  // phase grid lands each rep early/late and the mean smears amplitude. The
+  // canonical failure on L/R-alternating loops is the HALF-LOOP swap (the
+  // slicer starts a rep on the wrong half; kneeL amps read strong/weak/
+  // strong and average to half the stride — the runningman ghost). Search
+  // the FULL circle: shift each cycle to the SSE-argmin against the
+  // (unaligned) median, then re-median.
+  let shifts = cycles.map(() => 0);
+  if (align && cycles.length >= 2) {
+    const med0 = medianOf(cycles);
+    const S = Math.max(1, Math.round(bins * maxShiftFrac));
+    const shiftCycle = (c, s) => {
+      const out = {};
+      for (const nm of names) out[nm] = Float64Array.from({ length: bins }, (_, b) => c[nm][(b + s + bins) % bins]);
+      return out;
+    };
+    shifts = cycles.map((c) => {
+      let best = 0, bestE = Infinity;
+      for (let s = -S; s <= S; s++) {
+        let e = 0;
+        for (const nm of names) for (let b = 0; b < bins; b++) {
+          const d = c[nm][(b + s + bins) % bins] - med0[nm][b];
+          e += d * d;
+        }
+        if (e < bestE) { bestE = e; best = s; }
+      }
+      return best;
+    });
+    cycles = cycles.map((c, i) => shiftCycle(c, shifts[i]));
+  }
+  const median = medianOf(cycles);
   const dist = cycles.map((c) => {
     let s = 0, k = 0;
     for (const nm of names) for (let b = 0; b < bins; b++) { s += (c[nm][b] - median[nm][b]) ** 2; k++; }
@@ -162,5 +217,5 @@ export function averageCycles(cycles, { maxRatio = 2.5 } = {}) {
       mean[nm][b] = s / kept.length;
     }
   }
-  return { mean, kept, dropped };
+  return { mean, kept, dropped, shifts };
 }

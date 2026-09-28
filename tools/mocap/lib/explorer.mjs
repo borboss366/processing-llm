@@ -169,6 +169,7 @@ ${abCard}
     <div><canvas id="cHM" width="660" height="200" style="cursor:crosshair"></canvas>
       <div class="note">bone × time heatmap · metric <select id="hmSel">
         <option value="rt">round-trip error</option>
+        <option value="tvr">table vs raw (distill loss)</option>
         <option value="r1">R1: |smoothed − raw θ|</option>
         <option value="fore">foreshortening ratio (dark = collapsed)</option>
         <option value="score">endpoint score (dark = guessing)</option>
@@ -449,7 +450,15 @@ function computeMetrics() {
       ab[name].push(Math.abs(pipe ?? 0));
     }
   }
-  METRICS = { bones, rt, r1, fore: fr, score: sc, abs: ab };
+  // table-vs-raw (brief 19 3.1d): the distilled table sampled at each
+  // frame's phase against the per-frame retarget — distill loss per bone
+  const tv = {};
+  for (const b2 of bones) tv[b2] = [];
+  for (let f = 0; f < NF; f++) {
+    const th = sampleTable(phaseOf(f));
+    for (const b2 of bones) tv[b2].push(D.theta[b2] ? Math.abs(wrapA((th[b2] ?? 0) - D.theta[b2][f])) : 0);
+  }
+  METRICS = { bones, rt, r1, fore: fr, score: sc, abs: ab, tvr: tv };
 }
 function ptOf(fr, k) {
   if (typeof k === 'number') return fr[k];
@@ -620,14 +629,14 @@ function stageHM() {
   const cv = $('cHM'), g = cv.getContext('2d');
   g.clearRect(0, 0, cv.width, cv.height);
   const metric = $('hmSel').value;
-  const dat = METRICS[metric === 'fore' ? 'fore' : metric === 'score' ? 'score' : metric === 'r1' ? 'r1' : metric === 'abs' ? 'abs' : 'rt'];
+  const dat = METRICS[metric] ?? METRICS.rt;
   const bones = METRICS.bones;
   const cellW = (cv.width - 70) / NF, cellH = (cv.height - 16) / bones.length;
   let worst = { v: -1, b: '', f: 0 };
   const inv = metric === 'fore' || metric === 'score';   // dark = LOW is bad
   // FIXED absolute scales — color = severity, not rank (a clean clip stays
   // dark; rt buckets match stage 5's green/yellow/red thresholds)
-  const SCALE = { rt: 0.2, r1: 0.3, abs: 2.0, fore: 1, score: 1 }[metric] ?? 1;
+  const SCALE = { rt: 0.2, r1: 0.3, abs: 2.0, fore: 1, score: 1, tvr: 0.4 }[metric] ?? 1;
   bones.forEach((b, r) => {
     g.fillStyle = '#667'; g.font = '9px monospace'; g.fillText(b, 2, 10 + r * cellH + cellH / 2);
     for (let f = 0; f < NF; f++) {

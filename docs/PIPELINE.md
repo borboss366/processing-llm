@@ -7,6 +7,16 @@ parameters, the failure we hit and how it was caught, and where the
 code lives. Return every sentence you cannot verify in the explorer —
 each becomes a revision.
 
+**How to read a stage since 18.2:** every stage is also DRAWN ON THE
+VIDEO — the explorer's "OV" section. Overlay 1 (rig-on-source) is
+stages 1–5 as one picture; overlay 2 (rest ghost) is stage 4's
+reference; overlay 4 is the depth channel; overlay 5 is stage 7's
+contacts; overlay 8 (table ghost) is stage 8 played back. The DIAG
+section's bone×time heatmap answers "which bone, when" for any of
+round-trip / smoothing / foreshortening / score / table-vs-raw; the
+flag filmstrip marks gates, clamps, sign decisions, dropped cycles and
+keys on the timeline.
+
 ---
 
 ## 0 · Input
@@ -100,44 +110,53 @@ must round-trip through twist, never through the in-plane angle.
 **Code:** frontness in `lib/foreshorten.mjs` (frontnessRatio); view
 choice + `reinterpretKeys` in `extract.mjs` stage 3/8.
 
-## 4 · Measured rest
+## 4 · Rest reference (absolute, 2026-09-28)
 
-**In:** the projected frames. **Out:** the dancer's own NEUTRAL angle
-per bone — the reference every theta is measured from.
-**Formula:** calibration frames = the quietest 30 % (whole-body
-velocity) for torso/arms; for each leg's bones, frames where THAT foot
-is planted (within 10 % of its lowest point). Rest per bone = circular
-median of the observed bone angle over its calibration frames.
-< 5 qualifying frames → the DECLARED rest (sidecar geometry / profile
-overrides) as fallback, logged.
-**Failure we hit:** every hand-declared rest shipped a bias — the
-mirror-rest bug (rest of the wrong SIDE: every mirrored chain off by
-exactly rest(L)−rest(R), worst 132°), the profile view-rest guesses,
-and the ankle→toe foot slope (~27° "plantarflexion" on flat feet →
-tiptoes). All replaced by measurement; the explorer's measured-vs-
-declared Δ column shows what the guesses would have cost (the elbow
-was off −1.2 rad — his bent-arm carriage).
-**Code:** `lib/retarget.mjs` calibMasks + measureRest (~50 lines).
+**In:** the projected frames. **Out:** two things kept firmly apart:
+the RIG'S OWN rest angles (the reference every theta is measured from)
+and the dancer's measured HABITUAL pose (a diagnostic + bone lengths —
+NEVER subtracted).
+**Formula:** reference = the angle of each bone in the VIEW shape's
+sidecar geometry (profile clips → `biped-profile.json`: arms hang
+~93°, legs down, feet flat toward the +x facing; front clips → the
+front sidecar). Habitual pose = circular median of the observed bone
+angle over calibration frames (quietest 30 % whole-body; per-leg,
+frames where that foot is planted) — shown in the explorer's stage-4
+pair of stickmen; its lengths calibrate the foreshortening channel.
+**Failure we hit (both directions):** hand-DECLARED human rests
+shipped biases (mirror-rest 132°, tiptoe slope) — so 2026-09-21
+switched the reference to the MEASURED pose… which then subtracted
+every sustained posture: a dancer holding his arms pumped forward all
+clip retargeted to deviations ≈ 0 and the rig showed its own rest
+(collapsed arms / paralytic legs, root-caused 2026-09-28). The Δ
+column (habitual − rig ref) is exactly what that scheme erased — the
+runningman's elbows read −1.4 rad there. Overlay 2 vs overlay 1 is
+this stage's picture: the ghost is the reference, the rig is the
+dancer's pose ON that reference.
+**Code:** `buildRig` rest geometry + `measureRest` (diagnostic) in
+`lib/retarget.mjs`.
 
-## 5 · Retarget
+## 5 · Retarget (absolute angles vs gravity)
 
-**In:** projected frames + measured rests. **Out:** per frame, a theta
-for each of the 12 articulated rig joints.
+**In:** projected frames + the view shape's rest angles. **Out:** per
+frame, a theta for each of the 13 articulated rig joints.
 **Formula (the line that IS the pipeline):**
-`acc(bone) = sideSign × wrap(observed − restMeasured)`
+`acc(bone) = sideSign × wrap(observedAbs − rigRestAbs(view))`
 `theta(joint) = wrap(acc(bone) − acc(parentBone))`
-where `observed` is the atan2 angle of the landmark segment (feet:
-HEEL→TOE — horizontal when flat), and `sideSign` is −1 in profile for
-the side whose rig rest foot points AGAINST the facing (that side's
-human→rig mapping is a reflection = orientation-reversing).
-The engine replays it in reverse: rendered bone = rigRest + acc — so
-the calibration pose renders AS the rig's rest pose.
-**Failure we hit:** the 2× SIDE-SIGN signature — before the sign, every
-far-side bone erred at exactly TWICE its deviation (hipL 95.4° on a
-47.7° lift) while near-side bones read 0. The explorer's round-trip
-column recomputes the transfer in-page; anything non-green is a
-mismapping (yellow on ankles during held foot-gate frames is the gate,
-not a bug). A CLAMP flag here is a rest-reference smell first.
+where `observedAbs` is the atan2 angle of the landmark segment against
+gravity (feet: HEEL→TOE — horizontal when flat). The dancer's habitual
+pose TRANSFERS: only the rig-vs-human skeleton difference is removed.
+Profile clips are x-flipped so the dancer faces +x like the profile
+shape — on a same-facing shape `sideSign` resolves to identity by
+construction (the far-side-flip machinery self-neutralizes).
+**Failure we hit:** the 2× SIDE-SIGN signature (mirrored-rest era) and
+the habitual-pose erasure (measured-rest era) — both are stage-4/5
+reference choices, and both are visible as the rig sitting AT the rest
+ghost while the dancer isn't. The explorer's stage-5 table recomputes
+the transfer in-page (observed abs / reference abs / theta /
+round-trip); anything non-green is a mismapping. Self-test: an
+arms-forward clip must render arms forward (0.00° abs), never the rig
+rest.
 **Code:** `lib/retarget.mjs` retargetFrame + sideSigns (~40 lines).
 
 ## 6 · Period & cycles
@@ -145,41 +164,55 @@ not a bug). A CLAMP flag here is a rest-reference smell first.
 **In:** theta series. **Out:** the loop period + phase-normalized
 cycles with outliers dropped.
 **Formula:** autocorrelate the summed |dθ/dt|; base period = smallest
-local peak ≥ 0.85 × the global max, then SUBHARMONIC DESCENT (halving
-is safe — the ×2 test corrects it; doubling is not). Loop = base × 2 if
-folding the SIGNED channels at 2× matches consecutive cycles clearly
-better (L/R-alternating moves: |speed| erases the asymmetry, signed
-channels keep it). Cycles binned to 64, outliers dropped at 2.5× the
-median RMS distance to the median cycle.
-**Parameters:** `--bpl`, `--cycles N` (logged cycle count → search only
-±43 % of window/N and OWN the octave), `--anchor`.
-**Failure we hit:** octave lock — the body roll's search latched a
-0.217 s micro-bounce on a 1.486 s roll (×6.9) and 27 wrong-period
-cycles averaged the move to a single surviving joint. Caught by "joints
-1+" in the table log; fixed by the `--cycles` prior. The explorer draws
-the whole autocorrelation with every candidate peak — the chosen dot
-should sit on YOUR count of the move.
+local peak ≥ 0.85 × the global max, then SUBHARMONIC DESCENT. Loop =
+base × 2 if folding the SIGNED channels at 2× matches consecutive
+cycles clearly better. Then three consistency defenses (19 3.1):
+(1) OCTAVE GUARD — re-bin at period×2; if the theta-channel cycle
+spread collapses (< 0.6×), the "loop" was a single half; when the
+window fits only one doubled cycle, the PARITY test decides (same-
+parity halves agree, cross-parity don't → the loop is evenMean ++
+oddMean). (2) ALIGNMENT — each cycle circularly shifted to the SSE-
+argmin against the median (full circle) before averaging, so tempo
+drift and half-swaps can't smear amplitude. (3) outliers dropped at
+2.5× the median RMS distance.
+**Parameters:** `--bpl`, `--cycles N` (prior owns the octave),
+`--anchor`.
+**Failures we hit:** octave lock — the body roll latched a 0.217 s
+micro-bounce on a 1.486 s roll (×6.9, fixed by `--cycles`); and the
+runningman's 0.665 s "loop" was ONE STEP — L-steps averaged with
+R-steps and the stride halved (kneeL 1.8 rad raw → 0.70 in the loop;
+the parity guard restored 1.75). The DIAG onion-skin shows the cycles
+at any phase; alternating strong/weak ghosts on one joint IS the
+octave signature.
 **Code:** `lib/timing.mjs` detectPeriod/decideLoop/binCycles/
 averageCycles (~120 lines).
 
 ## 7 · Distill
 
-**In:** the averaged 64-bin loop. **Out:** ≤ maxKeys keys.
+**In:** the averaged 64-bin loop. **Out:** an ADAPTIVE key set under
+an error budget.
 **Formula:** candidates at every extremum AND inflection of every
-kept joint (range ≥ 0.06 rad); greedily remove the candidate whose
-removal costs the least linear-interp reconstruction error until the
-budget holds. Contacts from the RIG'S OWN FK foot height (planted =
-within 25 % of the foot's own swing range of its lowest point + slow;
-range < 0.04 u = pivot foot, always planted). Twist emitted as
-DEVIATION from the bone's habitual plane (mean-removed) where the
-oscillation is real (> 0.15 rad). Travel from the pelvis drift
-derivative.
-**Parameters:** `--max-keys 16`, `--keep-drift`, `--foot-gate`.
+moving joint (range ≥ 0.06 rad), emitted EXACTLY (key value = curve
+value); greedily remove the least-damaging key only while the
+worst-bone reconstruction RMS stays ≤ the budget (`--err-budget`
+0.04 rad; `--max-keys` 32 is a hard cap). Ease interpolates only
+between keys. A bone with a LARGE habitual offset but tiny oscillation
+becomes a CONSTANT key (|mean| ≥ 0.15 rad) — excluding it would replay
+the rig rest (the habitual-erasure reborn; caught by R1 at 0.94 rad on
+the tstep shoulder). Contacts from the RIG'S OWN FK foot height;
+twist as mean-removed deviation (> 0.15 rad); travel from pelvis
+drift.
+**Measurement (the R1 rung):** `tools/mocap/table-vs-raw.mjs` — per-
+bone RMS of the table sampled at each frame's phase vs the raw
+retarget, decomposed into the AVERAGING FLOOR (cycle-to-cycle
+variation, irreducible for a loop) and what DISTILL adds (the
+controllable part — ≤ 0.012 rad on all three clips). The heatmap's
+"table vs raw" metric shows the loss per bone per phase; overlay 8 vs
+overlay 1 is the same thing on the video.
 **Failures we hit:** image-space contacts flagged the occluded foot
-planted through its whole swing (the stance lock then ATE the lift on
-stage — "only the far leg moves"); and averaging + few keys smears
-accents (watch the RMS number and the key dots against the curve).
-**Code:** `lib/distill.mjs` (~150 lines).
+planted (stance lock ate the lift); the fixed 16-key cap smeared
+accents; and the constant-channel exclusion above.
+**Code:** `lib/distill.mjs` (~200 lines).
 
 ## 8 · Table
 

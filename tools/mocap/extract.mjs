@@ -38,6 +38,9 @@
  *                               and smoother raw, kept for fast passes)
  *     --explorer-json           also dump the explorer dataset as JSON
  *                               (input for tools/mocap/explorer-ab.mjs)
+ *     --max-keys N              hard key cap (default 32; budget governs)
+ *     --err-budget F            distill error budget, worst-bone RMS rad of
+ *                               table vs averaged loop (default 0.04)
  *     --no-qa                   skip the QA video render
  *     --self-test               run synthetic math checks and exit
  *
@@ -55,8 +58,8 @@ import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
 import { S } from "./lib/landmarks.mjs";
 import { foreshortenAll, frontnessRatio } from "./lib/foreshorten.mjs";
 import { MP, buildRig, detectYSign, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
-import { angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
-import { distillMove } from "./lib/distill.mjs";
+import { cycleSpread, angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
+import { distillMove, sampleTableAt } from "./lib/distill.mjs";
 import { renderExplorer } from "./lib/explorer.mjs";
 import { sideSigns } from "./lib/retarget.mjs";
 
@@ -82,7 +85,7 @@ if (flag("self-test")) { selfTest(); process.exit(0); }
 
 const VALUE_OPTS = new Set(["loop-window", "audio-bpm", "grid", "bpl", "rig", "name",
                             "min-cutoff", "beta", "anchor", "max-keys", "out",
-                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views", "cycles", "estimator", "estimator-model"]);
+                            "filter", "sg-window", "sg-order", "foot-gate", "enhance", "view", "emit-views", "cycles", "estimator", "estimator-model", "err-budget"]);
 let video = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i].startsWith("--")) { if (VALUE_OPTS.has(argv[i].slice(2))) i++; continue; }
@@ -491,13 +494,81 @@ async function processView(vk, primary) {
   }
   let calmBin = 0;
   for (let b = 0; b < BINS; b++) if (foldN[b] && fold[b] / foldN[b] < fold[calmBin] / Math.max(1, foldN[calmBin])) calmBin = b;
-  const anchorSec = ((calmBin / BINS) + (+opt("anchor", 0))) % 1 * period;
+  let anchorSec = ((calmBin / BINS) + (+opt("anchor", 0))) % 1 * period;
 
   // ── stage 6: cycle average with outlier drop ─────────────────────────────
-  const cycles = binCycles(channels, fsHz, period, anchorSec, BINS);
-  const { mean, kept, dropped } = averageCycles(cycles);
+  let cycles = binCycles(channels, fsHz, period, anchorSec, BINS);
+  // OCTAVE GUARD (19 3.1b follow-through): if reps only agree when the loop
+  // is DOUBLED, the detected loop caught a single half — the runningman's
+  // 0.665 s "loop" was one STEP, so L-steps averaged with R-steps and the
+  // stride halved (the table ghost's lost amplitude). Direct evidence test:
+  // re-bin at 2× and adopt it when the cycle spread collapses.
+  if (cycles.length >= 2) {
+    // judge on the THETA channels only — footVX/pelvisU are different units
+    // and dilute the ratio
+    const thOnly = (cys) => cys.map((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k.startsWith("th:"))));
+    const s1 = cycleSpread(thOnly(cycles));
+    // anchor mod the base period — a late anchor leaves too little window
+    // for 2 doubled cycles; which HALF leads is then ambiguous, and the
+    // full-circle alignment resolves it
+    const anchor2 = anchorSec % period;
+    const cyc2 = binCycles(channels, fsHz, period * 2, anchor2, BINS);
+    if (cyc2.length >= 2) {
+      const s2 = cycleSpread(thOnly(cyc2));
+      if (s2 < 0.6 * s1) {
+        console.log(`[mocap] loop DOUBLED by cycle-consistency: spread ${s1.toFixed(3)} → ${s2.toFixed(3)} rad · period ${period.toFixed(3)} → ${(period * 2).toFixed(3)} s · anchor ${anchorSec.toFixed(3)} → ${anchor2.toFixed(3)}`);
+        period *= 2;
+        anchorSec = anchor2;
+        cycles = cyc2;
+      }
+    } else if (cycles.length >= 3) {
+      // window fits only ONE doubled cycle — use the PARITY signature
+      // instead: if consecutive half-cycles are the two halves of a bigger
+      // loop (L-step vs R-step), same-parity cycles agree and cross-parity
+      // don't. Then the doubled loop IS meanEven ++ meanOdd.
+      const chNames = Object.keys(cycles[0]);
+      const dist = (a2, b2) => {
+        let s3 = 0, k3 = 0;
+        for (const nm of chNames) { if (!nm.startsWith("th:")) continue;
+          for (let b3 = 0; b3 < BINS; b3++) { s3 += (a2[nm][b3] - b2[nm][b3]) ** 2; k3++; } }
+        return Math.sqrt(s3 / k3);
+      };
+      let same = 0, cross = 0, nS = 0, nC = 0;
+      for (let i2 = 0; i2 < cycles.length; i2++) for (let j2 = i2 + 1; j2 < cycles.length; j2++) {
+        if ((j2 - i2) % 2 === 0) { same += dist(cycles[i2], cycles[j2]); nS++; }
+        else { cross += dist(cycles[i2], cycles[j2]); nC++; }
+      }
+      same = nS ? same / nS : 0; cross = nC ? cross / nC : 0;
+      var parityMerged = false;
+      if (nS && nC && cross > 1.8 * same) {
+        parityMerged = true;
+        const half = (par) => {
+          const m = {};
+          const members = cycles.filter((_, i2) => i2 % 2 === par);
+          for (const nm of chNames) m[nm] = Float64Array.from({ length: BINS }, (_, b3) =>
+            members.reduce((a2, c3) => a2 + c3[nm][b3], 0) / members.length);
+          return m;
+        };
+        const E = half(0), O = half(1);
+        const merged = {};
+        for (const nm of chNames) merged[nm] = Float64Array.from({ length: BINS }, (_, b3) => {
+          const src2 = b3 < BINS / 2 ? E : O;
+          return src2[nm][(b3 % (BINS / 2)) * 2];
+        });
+        console.log(`[mocap] loop DOUBLED by parity: cross-parity spread ${cross.toFixed(3)} vs same-parity ${same.toFixed(3)} rad (${cycles.length} half-cycles → evenMean ++ oddMean) · period ${period.toFixed(3)} → ${(period * 2).toFixed(3)} s`);
+        period *= 2;
+        cycles = [merged];
+      }
+    }
+  }
+  const { mean, kept, dropped, shifts } = averageCycles(cycles);
+  if (shifts?.some((s2) => s2 !== 0)) {
+    console.log(`[mocap] cycle alignment (3.1b): shifts ${JSON.stringify(shifts)} bins (xcorr vs median before averaging)`);
+  }
   console.log(`[mocap] cycles: ${cycles.length} → kept ${kept.length}, dropped [${dropped.join(",")}]`);
-  if (kept.length < 2) { console.error("[mocap] fewer than 2 clean cycles — widen the loop window"); process.exit(1); }
+  if (kept.length < 2 && !(typeof parityMerged !== "undefined" && parityMerged)) {
+    console.error("[mocap] fewer than 2 clean cycles — widen the loop window"); process.exit(1);
+  }
 
   // ── stage 7: distill to the standard table ────────────────────────────────
   const thetasAvg = {};
@@ -537,7 +608,8 @@ async function processView(vk, primary) {
     pelvisU: pelvisAvg,
     footY: { L: fkFY.L, R: fkFY.R },
     footVX: { L: circD(fkFX.L), R: circD(fkFX.R) },
-  }, { bins: BINS, bpl, maxKeys: +opt("max-keys", 16), name: vName, keepDrift: flag("keep-drift") });
+  }, { bins: BINS, bpl, maxKeys: +opt("max-keys", 32), errBudget: +opt("err-budget", 0.04),
+       name: vName, keepDrift: flag("keep-drift") });
   // pelvis lateral sway rides as dx (shape units around the loop mean)
   for (const k of table.keys) {
     const b = Math.round(k.phase * BINS) % BINS;
@@ -584,6 +656,28 @@ async function processView(vk, primary) {
     })),
   };
   fs.writeFileSync(`${vBase}.poses.json`, JSON.stringify(poses));
+  // R1 rung (brief 19 3.1a): per-bone RMS of the TABLE sampled at each
+  // frame's phase vs the raw per-frame retarget, plus the AVERAGING FLOOR
+  // (avg loop vs raw) — the part no loop table can beat (cycle variation)
+  {
+    const wrapR = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+    const accT = {}, accA = {};
+    for (let i = 0; i < thetaFrames.length; i++) {
+      const ph = ((((times[i] - times[0] - anchorSec) / period) % 1) + 1) % 1;
+      const th = sampleTableAt(table, ph);
+      const b = Math.min(BINS - 1, Math.floor(ph * BINS));
+      for (const nm of ARTICULATED) {
+        const raw2 = thetaFrames[i][nm];
+        accT[nm] = (accT[nm] ?? 0) + wrapR((th[nm] ?? 0) - raw2) ** 2;
+        accA[nm] = (accA[nm] ?? 0) + wrapR(thetasAvg[nm][b] - raw2) ** 2;
+      }
+    }
+    const rms = (acc2) => Object.fromEntries(Object.entries(acc2).map(([nm, v]) => [nm, Math.sqrt(v / thetaFrames.length)]));
+    const rT = rms(accT), rA = rms(accA);
+    const all = (r) => Math.sqrt(Object.values(r).reduce((a2, v) => a2 + v * v, 0) / Object.keys(r).length);
+    const worst = Object.entries(rT).sort((a2, b2) => b2[1] - a2[1])[0];
+    console.log(`[mocap] R1 table-vs-raw: ALL ${all(rT).toFixed(3)} rad (avg-floor ${all(rA).toFixed(3)}, distill adds ${(all(rT) - all(rA)).toFixed(3)}) · worst ${worst[0]} ${worst[1].toFixed(3)} · keys ${table.keys.length}`);
+  }
   const { _netDriftUnits, ...moveOut } = table;
   moveOut.view = vk;
   moveOut.estimator = estimator;
@@ -692,7 +786,7 @@ async function processView(vk, primary) {
     const Dx = {
       meta: { clip: path.basename(video), view: vk, window: [winA, winB], mirror,
         params: { estimator, filter: filterMode, sgWindow: sg.window, sgOrder: sg.order, enhance,
-                  footGate: FOOT_GATE, bpl, maxKeys: +opt("max-keys", 16), cycles: opt("cycles", null) } },
+                  footGate: FOOT_GATE, bpl, maxKeys: +opt("max-keys", 32), errBudget: +opt("err-budget", 0.04), cycles: opt("cycles", null) } },
       crop: frames0.crop, vidW: raw.meta.w, vidH: raw.meta.h, scale: raw.meta.cropScale ?? 1,
       jitter: raw.meta.jitterPx ?? 0,
       jitterPost: raw.meta.jitterPostPx ?? 0,
@@ -1026,6 +1120,30 @@ function selfTest() {
     console.log(`[self-test] outlier drop: kept ${kept.length}/8, dropped [${dropped.join(",")}]`);
     if (dropped.length !== 2 || !dropped.includes(6) || !dropped.includes(7)) fails.push(`outlier drop got [${dropped}]`);
   }
+  // 4b) cycle ALIGNMENT (19 3.1b): reps landing ±5 bins off the phase grid
+  //     must average to full amplitude — unaligned they smear
+  {
+    const bins = 64;
+    const mkS = (shift) => ({ a: Float64Array.from({ length: bins }, (_, b) => Math.sin(2 * Math.PI * ((b + shift) % bins) / bins)) });
+    const cyc = [mkS(0), mkS(5), mkS(-5), mkS(3), mkS(-3)];
+    const amp = (m) => Math.max(...m.a) - Math.min(...m.a);
+    const aligned = averageCycles(cyc, { align: true });
+    const unaligned = averageCycles(cyc, { align: false });
+    console.log(`[self-test] cycle alignment: amp ${amp(aligned.mean).toFixed(3)} aligned vs ${amp(unaligned.mean).toFixed(3)} unaligned (true 2.0) · shifts [${aligned.shifts}]`);
+    if (amp(aligned.mean) < 1.97) fails.push(`aligned amplitude ${amp(aligned.mean).toFixed(3)} < 1.97`);
+    if (amp(unaligned.mean) > amp(aligned.mean) - 0.02) fails.push("alignment did not beat the unaligned mean");
+    // half-loop swap (the runningman stride-loss case): alternate reps
+    // sliced on the wrong half must snap back
+    const asym = (shift) => ({ a: Float64Array.from({ length: bins }, (_, b) => {
+      const u = ((b + shift) % bins) / bins;
+      return u < 0.5 ? Math.sin(2 * Math.PI * u * 2) : 0.25 * Math.sin(2 * Math.PI * (u - 0.5) * 2);
+    }) });
+    const cyc2 = [asym(0), asym(bins / 2), asym(0)];
+    const fixed = averageCycles(cyc2, { align: true });
+    const broken = averageCycles(cyc2, { align: false });
+    console.log(`[self-test] half-loop swap: amp ${amp(fixed.mean).toFixed(2)} aligned vs ${amp(broken.mean).toFixed(2)} unaligned (true 2.00) · shifts [${fixed.shifts}]`);
+    if (amp(fixed.mean) < 1.9) fails.push(`half-loop swap not recovered: amp ${amp(fixed.mean).toFixed(2)}`);
+  }
   // 5) distill: known smooth loop → table whose linear interp reconstructs
   //    the loop within tolerance, zero net travel on a symmetric drift
   {
@@ -1036,13 +1154,14 @@ function selfTest() {
         kneeL: th((u) => 0.6 * Math.sin(2 * Math.PI * u)),
         ankleR: th((u) => 0.25 * Math.sin(4 * Math.PI * u + 1)),
         chest: th(() => 0.01),                     // below minRange → excluded
+        shoulderL: th(() => 0.8),                  // flat HABITUAL hold → constant keys
       },
       pelvisU: th((u) => 0.03 * Math.sin(2 * Math.PI * u)),
       footY: { L: th((u) => 0.9 - 0.05 * Math.max(0, Math.sin(2 * Math.PI * u))),
                R: th((u) => 0.9 - 0.05 * Math.max(0, -Math.sin(2 * Math.PI * u))) },
       footVX: { L: th(() => 0), R: th(() => 0) },
     };
-    const t = distillMove(avg, { bins, bpl: 4, maxKeys: 12, name: "self-test" });
+    const t = distillMove(avg, { bins, bpl: 4, maxKeys: 12, errBudget: 0.04, name: "self-test" });
     let worst = 0;
     for (let b = 0; b < bins; b++) {
       const lp = b / bins;
@@ -1059,8 +1178,27 @@ function selfTest() {
     const netTravel = t.keys.reduce((s, k) => s + k.travel, 0) / t.keys.length;
     console.log(`[self-test] distill: ${t.keys.length} keys, worst linear-interp err ${worst.toFixed(3)} rad, mean travel ${netTravel.toFixed(4)} u/beat, chest excluded=${!("chest" in t.keys[0].joints)}`);
     if (t.keys.length > 12) fails.push(`distill keys ${t.keys.length} > 12`);
-    if (worst > 0.08) fails.push(`distill reconstruction err ${worst.toFixed(3)} rad > 0.08`);
+    // budget contract (19 3.1c): thinning is RMS-governed (0.04); the worst
+    // POINTWISE sag of linear recon on a sine sits higher — sanity-bound it
+    let rmsAcc2 = 0, rmsN2 = 0;
+    for (const nm of ["kneeL", "ankleR"]) {
+      const v = avg.thetas[nm];
+      for (let b = 0; b < bins; b++) {
+        const ph = b / bins;
+        const th3 = t.keys; let i2 = th3.length - 1;
+        for (let k = 0; k < th3.length; k++) if (th3[k].phase <= ph) i2 = k;
+        const a2 = th3[i2], b2 = th3[(i2 + 1) % th3.length];
+        const span = (((b2.phase - a2.phase) % 1) + 1) % 1 || 1;
+        const u = ((((ph - a2.phase) % 1) + 1) % 1) / span;
+        const interp = (a2.joints[nm]?.rot ?? 0) + ((b2.joints[nm]?.rot ?? 0) - (a2.joints[nm]?.rot ?? 0)) * u;
+        rmsAcc2 += (v[b] - interp) ** 2; rmsN2++;
+      }
+    }
+    const rms2 = Math.sqrt(rmsAcc2 / rmsN2);
+    if (rms2 > 0.045) fails.push(`distill recon RMS ${rms2.toFixed(3)} rad > budget 0.045`);
+    if (worst > 0.12) fails.push(`distill pointwise err ${worst.toFixed(3)} rad > 0.12 sanity bound`);
     if ("chest" in t.keys[0].joints) fails.push("sub-range joint not excluded");
+    if (Math.abs((t.keys[0].joints.shoulderL?.rot ?? 0) - 0.8) > 0.01) fails.push("constant habitual channel dropped by distill");
     // keepDrift seam regression: constant-rate drift must give a FLAT travel
     // channel — the wrap-sign bug multiplied the seam key by ~bins
     const drift = -0.12;
