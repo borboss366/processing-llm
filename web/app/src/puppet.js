@@ -216,6 +216,29 @@ $('btn-snap').addEventListener('click', async () => {
   setTimeout(() => { $('snap-status').textContent = ''; }, 2500);
 });
 
+// ── judgment hotkeys (2026-09-29): mirror the render window's keys over
+// OSC — 'm' cycles renderMode, 'o' toggles onion-skin ghosts ─────────────
+{
+  const MODES = ['goo', 'goo-bones', 'bones', 'silhouette', 'wire'];
+  const toast = (t) => {
+    $('snap-status').textContent = t;
+    setTimeout(() => { if ($('snap-status').textContent === t) $('snap-status').textContent = ''; }, 1800);
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (e.key === 'm' || e.key === 'M') {
+      const cur = String(creatureMod?.params?.renderMode || 'goo').replace('+', '-');
+      const next = MODES[(MODES.indexOf(cur) + (e.key === 'M' ? MODES.length - 1 : 1)) % MODES.length];
+      osc('/creature/renderMode', next);
+      toast(`renderMode → ${next}`);
+    } else if (e.key === 'o' || e.key === 'O') {
+      const cur = Number(creatureMod?.params?.onion) || 0;
+      osc('/creature/onion', cur > 0 ? 0 : 12);
+      toast(`onion → ${cur > 0 ? 'off' : '12 ghosts'}`);
+    }
+  });
+}
+
 // ── live feed ────────────────────────────────────────────────────────────
 const ws = createWs({
   url: `ws://${location.host}/ws`,

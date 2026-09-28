@@ -539,6 +539,28 @@ function startBuild(state, params, shapeName = null) {
 }
 
 // ── Shaded metaball layer (brief 8 Task 1) ────────────────────────────────
+// judgment hotkeys (2026-09-29): on the RENDER window, 'm' cycles the
+// render mode, 'o' toggles onion-skin ghosts. Mutates the live params via
+// the __creatureParams seam; the puppet page mirrors via /osc.
+if (typeof window !== 'undefined' && !window.__creatureHotkeys) {
+  window.__creatureHotkeys = true;
+  const MODES = ['goo', 'goo-bones', 'bones', 'silhouette', 'wire'];
+  window.addEventListener('keydown', (e) => {
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const P = window.__creatureParams;
+    if (!P) return;
+    if (e.key === 'm' || e.key === 'M') {
+      const cur = String(P.renderMode || 'goo').replace('+', '-');
+      const next = MODES[(MODES.indexOf(cur) + (e.key === 'M' ? MODES.length - 1 : 1)) % MODES.length];
+      P.renderMode = next;
+      console.log(`[creature] renderMode → ${next}`);
+    } else if (e.key === 'o' || e.key === 'O') {
+      P.onion = Number(P.onion) > 0 ? 0 : 12;
+      console.log(`[creature] onion → ${P.onion}`);
+    }
+  });
+}
+
 const SHADE_VS = `#version 300 es
 layout(location=0) in vec2 aPos;
 out vec2 vUv;
@@ -566,6 +588,7 @@ out vec4 outColor;
 // G = armL, B = armR. Additive stacking stays WITHIN a channel; a crossing
 // arm takes max, so no weld-flash and no normal smear at the overlap.
 uniform float uUnion;
+uniform float uFlat;
 float dmax(vec2 uv) {
   vec3 g = texture(uDens, uv).rgb;
   // uUnion 0 = legacy additive field (A/B evidence for the weld fix only)
@@ -575,6 +598,12 @@ void main() {
   vec4 f = texture(uField, vUv);
   float d = dmax(vUv);
   if (d < uD0 - 0.06) discard;
+  // silhouette (18.x judgment view): flat thresholded density, no shading
+  if (uFlat > 0.5) {
+    float a2 = smoothstep(uD0 - 0.015, uD0 + 0.015, d) * uAlpha;
+    outColor = vec4(uSecondary * 0.9 * a2, a2);
+    return;
+  }
   vec3 base = f.rgb / max(f.a, 1e-4);
   float dl = dmax(vUv - vec2(uTexel.x, 0.0));
   float dr = dmax(vUv + vec2(uTexel.x, 0.0));
@@ -651,7 +680,7 @@ function ensureShadeLayer(state) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const u = {};
-    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha', 'uBgAmb', 'uAmbient']) {
+    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha', 'uBgAmb', 'uAmbient', 'uFlat']) {
       u[name] = gl.getUniformLocation(prog, name);
     }
     // ambient-pickup source: the background canvas downsampled to a few
@@ -952,7 +981,8 @@ export default {
     phraseBars: 8,             // every Nth bar gets lifted variation
     swatches: 0,               // diag: render the three palette swatches
     sweep: -1,                 // weld test: 0..1 drags the left arm across the torso
-    renderMode: 'goo',         // 'goo' (shaded metaball) | 'wire' (diagnostic)
+    renderMode: 'goo',         // goo | goo-bones (skin 60%, skeleton through) | bones | silhouette (flat) | wire — hotkey 'm' cycles
+    onion: 0,                  // onion-skin ghost frames (0 = off; hotkey 'o' toggles 0↔12), any renderMode
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
     shadeNz: 0.6,              // pseudo-normal flatness
@@ -2166,7 +2196,68 @@ export default {
       p.pop();
     };
 
-    if (params.renderMode === 'goo') {
+    // judgment render modes (2026-09-29): goo-bones = skin at 60% with the
+    // skeleton through it; silhouette = flat thresholded density; bones =
+    // skeleton only. 'goo+bones' accepted as an alias. Hotkey 'm' cycles.
+    const rMode = String(params.renderMode || 'goo').replace('+', '-');
+    window.__creatureParams = params;      // hotkey seam (render window)
+    const drawSkeleton = (kA) => {
+      p.push();
+      p.colorMode(p.HSB, 360, 100, 100, 1);
+      for (const pass of [{ w: 5, al: 0.35 * kA, br: 10 }, { w: 2, al: 0.95 * kA, br: 100 }]) {
+        p.stroke(140, 10, pass.br, pass.al * alpha);
+        p.strokeWeight(pass.w);
+        p.beginShape(p.LINES);
+        for (const B of state.bones) {
+          const J = joints[B.j], P2 = joints[B.p];
+          p.vertex(mapX(P2.ax), mapY(P2.ay));
+          p.vertex(mapX(J.ax), mapY(J.ay));
+        }
+        p.endShape();
+      }
+      p.noStroke();
+      p.fill(50, 80, 100, 0.95 * kA * alpha);
+      for (const J of joints) p.circle(mapX(J.ax), mapY(J.ay), 5);
+      p.pop();
+    };
+    // onion skin: ring of past joint poses, drawn oldest-faintest (any mode)
+    const onionN = Math.max(0, Math.min(30, Number(params.onion) || 0));
+    if (onionN > 0) {
+      (state.onionBuf ??= []).push(joints.map((J) => [J.ax, J.ay]));
+      while (state.onionBuf.length > onionN) state.onionBuf.shift();
+    } else if (state.onionBuf) state.onionBuf.length = 0;
+    const drawOnion = () => {
+      if (!state.onionBuf?.length) return;
+      p.push();
+      p.colorMode(p.HSB, 360, 100, 100, 1);
+      const m2 = state.onionBuf.length;
+      for (let k = 0; k < m2 - 1; k += 2) {
+        const snap = state.onionBuf[k];
+        const a2 = 0.05 + 0.30 * (k / m2);
+        p.stroke(200, 40, 90, a2 * alpha);
+        p.strokeWeight(1.2);
+        p.beginShape(p.LINES);
+        for (const B of state.bones) {
+          p.vertex(mapX(snap[B.p][0]), mapY(snap[B.p][1]));
+          p.vertex(mapX(snap[B.j][0]), mapY(snap[B.j][1]));
+        }
+        p.endShape();
+      }
+      p.pop();
+    };
+    if (rMode === 'bones') {
+      if (state.shade) {
+        const { gl } = state.shade;
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      drawOnion();
+      drawSkeleton(1);
+      drawEyes();
+      state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
+      window.__creaturePerf = { ms: state.perfMs, nodes: n, edges: restLen.length, state: st, z: +z.toFixed(2), slidePx: +state.slidePx.toFixed(2) };
+      return;
+    }
+    if (rMode === 'goo' || rMode === 'goo-bones' || rMode === 'silhouette') {
       const sh = ensureShadeLayer(state);
       const sprites = ensureSprites(state, params);
       const dens = ensureDensSprites(state);
@@ -2349,7 +2440,8 @@ export default {
       const sec = hue2rgb(paletteHue('secondary', params, state.palette));
       gl.uniform3f(sh.u.uAccent, acc[0], acc[1], acc[2]);
       gl.uniform3f(sh.u.uSecondary, sec[0], sec[1], sec[2]);
-      gl.uniform1f(sh.u.uAlpha, alpha);
+      gl.uniform1f(sh.u.uAlpha, alpha * (rMode === 'goo-bones' ? 0.6 : 1));
+      gl.uniform1f(sh.u.uFlat, rMode === 'silhouette' ? 1 : 0);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -2362,6 +2454,8 @@ export default {
       }
       sh.passMs = sh.passMs * 0.9 + (performance.now() - tPass) * 0.1;
 
+      drawOnion();                                  // ghosts above the skin
+      if (rMode === 'goo-bones') drawSkeleton(1);   // skeleton through the 60% skin
       drawEyes();   // p5 canvas sits above the shade layer
 
       state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
@@ -2434,6 +2528,7 @@ export default {
     }
     p.pop();
 
+    drawOnion();
     drawEyes();
 
     state.perfMs = state.perfMs * 0.95 + (performance.now() - t0) * 0.05;
