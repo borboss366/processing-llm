@@ -821,6 +821,38 @@ const farDim = (lab, st) => {
 // documented in MODULE_ABI.md. Playback layers UNDER the procedural
 // bounce/lean/Perlin/simmer (scaled by the move's `overlay`): rot keys join
 // the FK chain (bone lengths hold by construction), dx/dy add after.
+// Captured-table convention remap (2026-10-03, A7 root cause): the
+// EXTRACTOR names a limb rot by the bone LEAVING the joint (hip = thigh,
+// knee = shin, ankle = foot), the ENGINE's FK bends the bone ENTERING it
+// (rot = P.accRot + J.theta on the parent→J offset). Spine channels are
+// distal-named in both (why the torso always worked); limbs are one slot
+// off — the running man's 1.8 rad knee swung the THIGH and the leg drew
+// straight (A7 FAIL). Captured tables (provenance.pipeline tools/mocap/*)
+// shift limb rots one joint distally at load; authored tables were built
+// on the engine's convention and pass through. dx/dy/twist/yaw stay put
+// (twist is consumed as the leaving bone in both).
+const LIMB_SHIFT = { hipL: 'kneeL', kneeL: 'ankleL', ankleL: 'footL',
+                     hipR: 'kneeR', kneeR: 'ankleR', ankleR: 'footR',
+                     shoulderL: 'elbowL', elbowL: 'handL',
+                     shoulderR: 'elbowR', elbowR: 'handR' };
+function remapCapturedTable(j) {
+  if (!j?.provenance?.pipeline?.startsWith?.('tools/mocap')) return j;
+  j.keys = j.keys.map((k) => {
+    const out = {};
+    for (const [nm, ch] of Object.entries(k.joints)) {
+      const { rot, ...other } = ch;
+      if (Object.keys(other).length) out[nm] = { ...(out[nm] ?? {}), ...other };
+      if (rot != null) {
+        const tgt = LIMB_SHIFT[nm] ?? nm;
+        (out[tgt] ??= {}).rot = +(((out[tgt]?.rot ?? 0) + rot).toFixed(3));
+      }
+    }
+    return { ...k, joints: out };
+  });
+  j.remapped = true;
+  return j;
+}
+
 function ensureMove(state, name) {
   state.moveCache ??= {};
   const e = state.moveCache[name];
@@ -831,7 +863,7 @@ function ensureMove(state, name) {
     .then((j) => {
       if (!Array.isArray(j.keys) || !j.keys.length) throw new Error('no keys');
       j.keys.sort((k1, k2) => k1.phase - k2.phase);
-      state.moveCache[name].data = j;
+      state.moveCache[name].data = remapCapturedTable(j);
       // view tag (17 A3): untagged tables are front
       (state.moveViews ??= {})[name] = j.view === 'profile' ? 'profile' : 'front';
     })
@@ -1116,7 +1148,7 @@ export default {
           .then((j) => {
             if (!Array.isArray(j.keys) || !j.keys.length) throw new Error('no keys');
             j.keys.sort((k1, k2) => k1.phase - k2.phase);
-            entry.data = j;
+            entry.data = remapCapturedTable(j);
             state.moveHotSwap = true;   // re-pose through the blend layer
           })
           .catch((e) => console.error(`[creature] move "${mc.name}" reload failed, keeping last good:`, e));
@@ -1579,17 +1611,22 @@ export default {
       // sidecar's per-chain-position limit; beyond it, clamp + warn once
       let tRot = tk?.rot ?? 0;
       if (tRot) {
-        const lk = J.role === 'knee' ? (J.limb >= 2 ? 'elbow' : 'knee')
+        let lk = J.role === 'knee' ? (J.limb >= 2 ? 'elbow' : 'knee')
           : J.role === 'limb' ? (J.limb >= 2 ? 'wrist' : 'toe') : J.role;
+        // remapped captured table: the SLOT holds the next-proximal bone's
+        // value — check against that bone's limit, not the slot's
+        if (move?.remapped) lk = ({ knee: 'hip', ankle: 'knee', toe: 'ankle', wrist: 'elbow', elbow: 'shoulder' })[lk] ?? lk;
         const lim = Number(state.rotLimits?.[lk]) || 0;
         if (lim && Math.abs(tRot) > lim) {
           if (!(state.limWarned ??= new Set()).has(J.name)) {
             state.limWarned.add(J.name);
             console.warn(`[creature] table rot ${tRot.toFixed(2)} on ${J.name} clamped to ±${lim} (rotLimits.${lk})`);
           }
+          (state.clampHits ??= {})[J.name] = ((state.clampHits ??= {})[J.name] ?? 0) + 1;   // A7: loud, countable
           tRot = Math.sign(tRot) * lim;
         }
       }
+      (state.tableRot ??= {})[J.name] = tRot;   // A7 trace: what the table commands
       // twist + body yaw channels (17 B1/B2): twist is the bone's axial
       // rotation (±1.2, render-mapped — no physics); yaw is a body-yaw
       // squeeze on pelvis/chest (±0.6). Stored on the joint; consumed
@@ -1787,6 +1824,17 @@ export default {
         const target = (mvPose?.contacts.has(T.name) && !tableLifts) ? 1 : 0;
         const w = Math.max(0, Math.min(1, springStep(s2, target, MV_WN, dt)));
         if (w <= 0.001) continue;
+        // CAPTURED tables (2026-10-03): the chain carries real hip/knee/
+        // ankle/foot channels — FK is authoritative. The lock's only job
+        // is holding a flagged foot to the GROUND PLANE (y); the authored-
+        // era rewrite below (flat-foot ankle pin + knee IK) assumed tables
+        // without leg content and drew straight legs over real data (the
+        // A7 toe-drag at phase 0.58: ankle lifted, toe down — the flat
+        // pin forced the ankle to the floor and the knee went straight).
+        if (move?.remapped) {
+          T.ay += (T.y - T.ay) * w;
+          continue;
+        }
         T.ax += (T.x - T.ax) * w;
         T.ay += (T.y - T.ay) * w;
         T.theta *= 1 - w;
@@ -1797,7 +1845,7 @@ export default {
         // pivots while the contact point never slides.
         const A = joints.find((q) => q.role === 'ankle' && q.limb === T.limb);
         if (A) {
-          const phi = mvPose?.joints[A.name]?.rot ?? 0;
+          const phi = mvPose?.joints[move?.remapped ? T.name : A.name]?.rot ?? 0;
           const ox = A.x - T.x, oy = A.y - T.y;
           const cp = Math.cos(phi), sp = Math.sin(phi);
           A.ax += (T.ax + ox * cp - oy * sp - A.ax) * w;
@@ -1807,10 +1855,29 @@ export default {
         }
         const K = joints.find((q) => q.role === 'knee' && q.limb === T.limb);
         if (K) {
+          // two-bone IK (2026-10-03, A7 fix): the old hip↔ankle MIDPOINT
+          // construction drew a straight leg regardless of bone lengths —
+          // hip dips compressed the leg and ERASED the table's knee
+          // (runningman kneeL: table 1.79 rad rendered as −0.13 on stage).
+          // Solve the knee from the real rest bone lengths with the foot
+          // pinned; the bend SIDE follows the pre-lock FK knee, so the
+          // table's own bend direction survives the lock.
           const R = joints[K.parent];
-          const M = A ?? T;   // knee midpoints toward the ankle when present
-          K.ax += ((R.ax + M.ax) / 2 + 0.02 - K.ax) * w;
-          K.ay += ((R.ay + M.ay) / 2 - K.ay) * w;
+          const M = A ?? T;
+          const L1 = Math.hypot(K.x - R.x, K.y - R.y);
+          const L2 = Math.hypot(M.x - K.x, M.y - K.y);
+          const dx2 = M.ax - R.ax, dy2 = M.ay - R.ay;
+          const d = Math.max(Math.abs(L1 - L2) + 1e-4,
+                    Math.min(L1 + L2 - 1e-4, Math.hypot(dx2, dy2)));
+          const a1 = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))));
+          const base = Math.atan2(dy2, dx2);
+          const cA = [R.ax + Math.cos(base + a1) * L1, R.ay + Math.sin(base + a1) * L1];
+          const cB = [R.ax + Math.cos(base - a1) * L1, R.ay + Math.sin(base - a1) * L1];
+          const dA = (cA[0] - K.ax) ** 2 + (cA[1] - K.ay) ** 2;
+          const dB = (cB[0] - K.ax) ** 2 + (cB[1] - K.ay) ** 2;
+          const [kx2, ky2] = dA <= dB ? cA : cB;
+          K.ax += (kx2 - K.ax) * w;
+          K.ay += (ky2 - K.ay) * w;
           K.theta *= 1 - w;
           K.accRot = (K.accRot ?? 0) * (1 - w);
         }
@@ -1835,6 +1902,33 @@ export default {
           J.ay = F.ay + (J.ay - F.ay) * sm;
           J.theta = F.th + (J.theta - F.th) * sm;
           J.accRot = F.acc + ((J.accRot ?? 0) - F.acc) * sm;
+        }
+      }
+    }
+    // A7 trace (2026-10-03): effective ENGINE angle per leg/arm joint from
+    // FINAL positions (post lock/blend) in the same hierarchical convention
+    // as the table — wrap(childBoneDev − parentBoneDev). The stance lock
+    // rewrites positions and zeroes theta, so J.theta alone would lie.
+    {
+      const wrapT = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+      const dev = (A2, B2) => Math.atan2(B2.ay - A2.ay, B2.ax - A2.ax) - Math.atan2(B2.y - A2.y, B2.x - A2.x);
+      const byName = (nm) => joints.find((q) => q.name === nm);
+      const tr = (state.jointTrace ??= {});
+      // both columns in EXTRACTOR semantics (bone leaving the joint): for a
+      // remapped captured table the slot one joint DOWN holds the value
+      const rm = !!move?.remapped;
+      const tRotOf = (nm) => state.tableRot?.[rm ? (LIMB_SHIFT[nm] ?? nm) : nm] ?? 0;
+      for (const side of ['L', 'R']) {
+        const hip = byName('hip' + side), knee = byName('knee' + side), ank = byName('ankle' + side);
+        if (hip && knee && ank) {
+          const thigh = dev(hip, knee), shin = dev(knee, ank);
+          tr['hip' + side] = { t: +tRotOf('hip' + side).toFixed(3), e: +wrapT(thigh).toFixed(3) };
+          tr['knee' + side] = { t: +tRotOf('knee' + side).toFixed(3), e: +wrapT(shin - thigh).toFixed(3) };
+        }
+        const sh2 = byName('shoulder' + side), el = byName('elbow' + side), ha = byName('hand' + side);
+        if (sh2 && el && ha) {
+          const up = dev(sh2, el), fo = dev(el, ha);
+          tr['elbow' + side] = { t: +tRotOf('elbow' + side).toFixed(3), e: +wrapT(fo - up).toFixed(3) };
         }
       }
     }
@@ -2070,6 +2164,7 @@ export default {
       entryOk: state.entry.ok,
     };
     // bench observer (brief 12.6): creature strip values, all pre-computed
+    window.__creatureStateDbg = state;   // read-only harness seam (A7 forensics)
     window.__creatureBench = {
       st, move: state.activeMove ?? null,
       view: state.viewCur ?? 'front', viewSwitching: !!state.viewSw,   // 17 A4
@@ -2090,6 +2185,8 @@ export default {
       worldX: +(state.world?.x ?? 0).toFixed(1),
       facingVis: +(state.world?.facingVis ?? 1).toFixed(3),
       walkEase: +(state.walkEase ?? 0).toFixed(3),
+      jointTrace: state.jointTrace ?? null,       // A7: table vs engine per joint
+      clampHits: state.clampHits ?? null,         // A7: rotLimit clamps, counted
     };
     if (alpha <= 0.001) {
       if (state.shade) {

@@ -34,8 +34,13 @@ verdict moves to the report and gets a ✓ + date here.
    CHANNEL'S ACCEPTANCE TEST when brief 17 lands. No further T-step
    polishing. No promotion; economics note still lands after move #2.
 
-3. **Running man in PROFILE (brief 17 A7 — supersedes the 2026-09-20
-   HOLD; the first Route B stage verdict)** — `runningman-captured`
+3. **Running man in PROFILE (brief 17 A7)** → **2026-10-03: FAIL,
+   root-caused same day, FIXED, awaiting re-view.** Knees didn't bend
+   on stage (table carried 1.8 rad): engine FK convention was one slot
+   off for captured limb channels + the stance lock rewrote real leg
+   data (reports/2026-10-03-a7-engine-knees.md; engine now tracks the
+   table within 0.04 rad, amplitude rung added to moves-x-shapes).
+   RE-VIEW with the original protocol below. — `runningman-captured`
    (profile-tagged, rebuilt through the full 2026-09-21 pipeline:
    measured rest, heel→toe feet, per-side sign, plane-select) is in the
    groove rotation at 0.1; picking it switches the stage to the PROFILE

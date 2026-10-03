@@ -93,8 +93,11 @@ try {
         await sleep(550);
         const m = await page.evaluate(() => ({
           nan: (window.__creatureJoints ?? []).some((j) => !Number.isFinite(j.sx + j.sy + j.theta)),
-          hip: Math.max(...(window.__creatureJoints ?? [])
-            .filter((j) => /^hip/.test(j.name)).map((j) => Math.abs(j.theta ?? 0)), 0),
+          // hip articulation via the TRACE (extractor semantics): the
+          // 2026-10-03 convention remap moved captured hip content one
+          // slot distally, so the raw hip joint theta is 0 by design
+          hip: Math.max(Math.abs(window.__creatureBench?.jointTrace?.hipL?.e ?? 0),
+                        Math.abs(window.__creatureBench?.jointTrace?.hipR?.e ?? 0)),
         }));
         if (m.nan) failures.push(`NaN: ${mv} on ${shape}`);
         maxHip = Math.max(maxHip, m.hip);
@@ -131,7 +134,30 @@ try {
     }
     const s1 = await page.evaluate(() => window.__creatureBench?.spikesFlagged ?? -1);
     const comps = await page.evaluate(componentsSnippet);
-    console.log(`[mxs] biped-profile × ${mv}: view=${view}, spikes +${s1 - s0}, components ${comps}`);
+    // per-joint angle AMPLITUDE fidelity (2026-10-03, A7 follow-through):
+    // sample the engine-vs-table trace over ~2 loops; any joint whose
+    // table amplitude exceeds 0.3 rad must render ≥60 % of it. This is
+    // the loud version of the chain-travel check — the FK-convention
+    // slot-shift drew straight legs for a year of chain-travel passes.
+    const samples = [];
+    for (let t = 0; t < 30; t++) {
+      await sleep(120);
+      const tr = await page.evaluate(() => window.__creatureBench?.jointTrace ?? null);
+      if (tr) samples.push(tr);
+    }
+    const ampRows = [];
+    if (samples.length > 10) {
+      for (const nm of Object.keys(samples[0])) {
+        const tv = samples.map((s2) => s2[nm]?.t ?? 0), ev = samples.map((s2) => s2[nm]?.e ?? 0);
+        const amp = (a) => Math.max(...a) - Math.min(...a);
+        const at = amp(tv), ae = amp(ev);
+        if (at > 0.3) {
+          ampRows.push(`${nm} ${ae.toFixed(2)}/${at.toFixed(2)}`);
+          if (ae < 0.6 * at) failures.push(`amplitude lost: ${mv} ${nm} engine ${ae.toFixed(2)} < 60% of table ${at.toFixed(2)}`);
+        }
+      }
+    }
+    console.log(`[mxs] biped-profile × ${mv}: view=${view}, spikes +${s1 - s0}, components ${comps}, amp e/t ${ampRows.join(" ") || "n/a"}`);
     if (view !== "profile") failures.push(`${mv}: view is ${view}, wanted profile`);
     if (s1 - s0 !== 0) failures.push(`spikes +${s1 - s0}: ${mv} (profile)`);
     if (comps !== 1) failures.push(`components=${comps}: ${mv} (profile)`);
