@@ -58,6 +58,13 @@ verdict moves to the report and gets a ✓ + date here.
    flipped in extract.mjs; all three corpus clips re-extracted on
    rtmpose = brief 19's R0 baseline.
 
+5. **Engine explorer (brief 19.1)** — open any
+   `reports/engine-*.engine.explorer.html` (or the puppet's Engine view
+   live): can you find the stage that loses a given joint WITHOUT
+   reading any report? (The ladder names R2 = springs at 0.355 rad on
+   the running man — judge whether that softness is what you still see,
+   and judge R4 in the render-mode strip.) → ____
+
 ## Standing re-check triggers
 
 - **Captured T-step = depth-channel acceptance test** — when brief 17

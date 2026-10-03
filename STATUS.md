@@ -67,6 +67,7 @@ creature rig). Full guide in `README.md`.
 | QA stickman view-correct (user catch) | profile QAs FK'd the FRONT body (fake-front look) → FK over biped-profile; knee lift/planted leg now track the dancer 1:1; tables byte-identical | reports/2026-09-28-qa-profile-body.md + strip |
 | ABSOLUTE retarget (root cause: collapsed arms) | measured rest erased habitual pose (elbows −1.4 rad!) → theta = obsAbs − rigRestAbs(view); arms-forward anti-test renders 0.00° abs; QA overlay panel tracks dancer bone-for-bone; 0 clamps (runningman) | reports/2026-09-28-absolute-retarget.md + self-test |
 | Brief 18.2 overlays + diagnostics | 8 on-frame layers (rig/rest/gonio/foreshorten/contacts/raw/velocity/table) + heatmap/onion/filmstrip/key-ghosts; PNG+webm export; smoke 0 errors; 3 acceptance stills | reports/2026-09-28-brief-18-2-overlays.md + 182-still-*.png |
+| Engine explorer (19.1) | taps after every stage → ladder/heatmap/filmstrip explorers ×7 + live puppet view; ladder names R2 springs 0.355 rad (elbowL 0.588); knee fix verified in-tool (BEFORE amp 0.25/1.66 dead → 1.04); engine-fidelity verify row + clamp whitelist (caught tstep feet) | reports/2026-10-03-brief-19-1-engine-explorer.md |
 | A7 engine knees (FAIL → fixed same day) | captured-table FK convention one slot off + stance lock rewrote real legs → load-time remap + ground-plane-only lock; kneeL 1.785→1.761 on stage (was −0.134); amplitude rung in moves-x-shapes | reports/2026-10-03-a7-engine-knees.md + knee-fix-ab.png |
 | R1 rung: distill fidelity (19 3.1) | octave/parity guard restored the stride (kneeL loop 0.70→1.75 rad); budgeted keys + constant channels → distill adds ≤0.011 rad all clips (PASS); floor = rep variation, DTW = next rung | table-vs-raw.mjs + reports/2026-09-28-r1-distill-fidelity.md |
 | Shape-load degrade (live path) | bad shape name resumes old body (was: frozen at n=0 forever) | moves-x-shapes (found) + probe |
@@ -120,5 +121,7 @@ Brief 18 Task 3 + acceptance: WAITING ON USER (the reading loop —
 can't-follow list + three predictions; PIPELINE.md refreshed
 2026-09-28 to absolute retarget / no de-yaw / 2D depth / rtmpose /
 overlays-as-reading-instrument specifically for this). A7 FIRST VIEWING: FAIL
-(knees) → engine convention remap + lock fix landed same day; A7
-RE-VIEW is the open gate (item 3).
+(knees) → engine convention remap + lock fix landed same day; brief
+19.1 (engine explorer) BUILT on top — taps, explorers, live puppet
+view, engine-fidelity verify row. OPEN: A7 RE-VIEW (item 3) + engine-
+explorer gate (item 5); R2 springs (0.355 rad) is the named next rung.

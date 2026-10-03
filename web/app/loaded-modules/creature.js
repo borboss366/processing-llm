@@ -831,6 +831,22 @@ const farDim = (lab, st) => {
 // shift limb rots one joint distally at load; authored tables were built
 // on the engine's convention and pass through. dx/dy/twist/yaw stay put
 // (twist is consumed as the leaving bone in both).
+// engine-trace tap domain (brief 19.1): everything reported in EXTRACTOR
+// bone semantics. Engine slot J bends the bone ENTERING J, so the thigh =
+// hip+knee slots summed, shin = ankle slot, foot = foot slot — one rule
+// for captured (remapped) AND authored tables.
+function extRotsOf(slot) {
+  const g = (nm) => slot[nm] ?? 0;
+  const r3e = (v) => +v.toFixed(3);
+  return {
+    chest: r3e(g('chest')), neck: r3e(g('neck')),
+    hipL: r3e(g('hipL') + g('kneeL')), kneeL: r3e(g('ankleL')), ankleL: r3e(g('footL')),
+    hipR: r3e(g('hipR') + g('kneeR')), kneeR: r3e(g('ankleR')), ankleR: r3e(g('footR')),
+    shoulderL: r3e(g('shoulderL') + g('elbowL')), elbowL: r3e(g('handL')),
+    shoulderR: r3e(g('shoulderR') + g('elbowR')), elbowR: r3e(g('handR')),
+  };
+}
+
 const LIMB_SHIFT = { hipL: 'kneeL', kneeL: 'ankleL', ankleL: 'footL',
                      hipR: 'kneeR', kneeR: 'ankleR', ankleR: 'footR',
                      shoulderL: 'elbowL', elbowL: 'handL',
@@ -1015,6 +1031,7 @@ export default {
     sweep: -1,                 // weld test: 0..1 drags the left arm across the torso
     renderMode: 'goo',         // goo | goo-bones (skin 60%, skeleton through) | bones | silhouette (flat) | wire — hotkey 'm' cycles
     onion: 0,                  // onion-skin ghost frames (0 = off; hotkey 'o' toggles 0↔12), any renderMode
+    engineTrace: 0,            // 19.1: per-stage engine taps (offline/judging only — ~1KB/frame)
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
     shadeNz: 0.6,              // pseudo-normal flatness
@@ -1434,6 +1451,16 @@ export default {
     state.activeMoveObj = move;
     state.activeMoveBpl = move ? Math.max(0.25, move.beatsPerLoop ?? 1) : 1;
     let mvPose = move ? sampleMove(move, accW) : null;
+    // engine taps (brief 19.1): per-stage theta/position record, OFF unless
+    // params.engineTrace — the live path pays one boolean check
+    const tracing = Number(params.engineTrace) === 1;
+    const engRow = tracing ? { t: Math.round(t0), ph: +((((state.moveAcc % (state.activeMoveBpl ?? 1)) + (state.activeMoveBpl ?? 1)) % (state.activeMoveBpl ?? 1)) / (state.activeMoveBpl ?? 1)).toFixed(4) } : null;
+    const slotRots = (mp) => {
+      const o = {};
+      if (mp) for (const [nm, ch] of Object.entries(mp.joints)) if (ch.rot) o[nm] = ch.rot;
+      return o;
+    };
+    if (engRow) engRow.s1 = extRotsOf(slotRots(mvPose));
     let ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
     let vc = move ? Math.max(0, Math.min(1, move.verticalContent ?? 0)) : 0;
     // rhythm crossfade (brief 14 Task 2.1): the pose blend keeps POSITIONS
@@ -1479,6 +1506,7 @@ export default {
         }
       }
     }
+    if (engRow) engRow.s2 = extRotsOf(slotRots(mvPose));
     state.moveOverlay = ov;   // render-side simmer reads this
     // move-driven travel (brief 15 D, user sculpt session): a table's
     // `travel` channel (shape-units/beat, signed, interpolated per key)
@@ -1521,6 +1549,8 @@ export default {
         }
       }
     }
+
+    if (engRow) engRow.s3 = extRotsOf(slotRots(mvPose));
 
     // ── skeleton targets per state (gait resolved above, with the rotation) ─
     const amp = params.amplitude * lvl * (stEff === 'idle' ? 0 : 1) * ov;
@@ -1705,6 +1735,16 @@ export default {
       if (tk) { J.ax += (tk.dx || 0) * accentK * vA; J.ay += (tk.dy || 0) * accentK * vA; }
     }
 
+    if (engRow) {
+      // s5: table slots post-clamp (state.tableRot); s4: J.theta after gait
+      // + liveness + lag (pre-FK); fk: positions after FK, before the lock
+      engRow.s5 = extRotsOf(state.tableRot ?? {});
+      const s4slots = {};
+      for (const J of joints) if (J.theta) s4slots[J.name] = J.theta;
+      engRow.s4 = extRotsOf(s4slots);
+      engRow.fkP = joints.map((J) => [+J.ax.toFixed(3), +J.ay.toFixed(3)]);
+    }
+
     // per-limb twist render factors (17 B1): dim (out-of-plane depth cue,
     // max 0.15) + foot-fan widen (toes toward the viewer read as a wider
     // density profile). Consumed at node/bone-splat draw.
@@ -1823,6 +1863,7 @@ export default {
         const tableLifts = (T.y - T.ay) > 0.025;
         const target = (mvPose?.contacts.has(T.name) && !tableLifts) ? 1 : 0;
         const w = Math.max(0, Math.min(1, springStep(s2, target, MV_WN, dt)));
+        if (engRow) ((engRow.flags ??= {}).lock ??= {})[T.name] = { w: +w.toFixed(3), lift: tableLifts ? 1 : 0 };
         if (w <= 0.001) continue;
         // CAPTURED tables (2026-10-03): the chain carries real hip/knee/
         // ankle/foot channels — FK is authoritative. The lock's only job
@@ -1914,6 +1955,52 @@ export default {
       const dev = (A2, B2) => Math.atan2(B2.ay - A2.ay, B2.ax - A2.ax) - Math.atan2(B2.y - A2.y, B2.x - A2.x);
       const byName = (nm) => joints.find((q) => q.name === nm);
       const tr = (state.jointTrace ??= {});
+      if (engRow) {
+        // lock-stage tap: positions after lock/blend + effective ext thetas
+        engRow.lockP = joints.map((J) => [+J.ax.toFixed(3), +J.ay.toFixed(3)]);
+        const devE = (A2, B2) => Math.atan2(B2.ay - A2.ay, B2.ax - A2.ax) - Math.atan2(B2.y - A2.y, B2.x - A2.x);
+        const wrapE = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+        const byNm = (nm) => joints.find((q) => q.name === nm);
+        const eff = {};
+        const pelv = byNm('pelvis'), che = byNm('chest'), nec = byNm('neck');
+        if (pelv && che) eff.chest = +wrapE(devE(pelv, che)).toFixed(3);
+        if (che && nec) eff.neck = +wrapE(devE(che, nec) - devE(pelv, che)).toFixed(3);
+        for (const sd of ['L', 'R']) {
+          const h2 = byNm('hip' + sd), k2 = byNm('knee' + sd), a2 = byNm('ankle' + sd), f2 = byNm('foot' + sd);
+          if (h2 && k2 && a2) {
+            const th2 = devE(h2, k2), sh3 = devE(k2, a2);
+            eff['hip' + sd] = +wrapE(th2).toFixed(3);
+            eff['knee' + sd] = +wrapE(sh3 - th2).toFixed(3);
+            if (f2) eff['ankle' + sd] = +wrapE(devE(a2, f2) - sh3).toFixed(3);
+          }
+          const s3b = byNm('shoulder' + sd), e3 = byNm('elbow' + sd), ha2 = byNm('hand' + sd);
+          if (s3b && e3 && ha2) {
+            const up2 = devE(s3b, e3), fo2 = devE(e3, ha2);
+            eff['shoulder' + sd] = +wrapE(up2).toFixed(3);
+            eff['elbow' + sd] = +wrapE(fo2 - up2).toFixed(3);
+          }
+        }
+        engRow.lockE = eff;
+        (engRow.flags ??= {});
+        engRow.flags.clamps = state.clampHits ? { ...state.clampHits } : null;
+        engRow.flags.blend = state.blend ? 1 : 0;
+        engRow.flags.accent = +((state.accentEnv ?? 0) + (state.dropBurst ?? 0)).toFixed(3);
+        engRow.flags.spikes = state.jm?.spikesFlagged ?? 0;
+        engRow.depth = { twistFx: JSON.parse(JSON.stringify(state.twistFx ?? {})) };
+        engRow.goo = { d0: Math.max(0.05, Math.min(0.9, Number(params.gooThreshold) || 0.18)) };
+        const buf = (state.engTr ??= { meta: null, frames: [] });
+        if (!buf.meta) {
+          buf.meta = { jointNames: joints.map((J) => J.name),
+                       rigJoints: Object.fromEntries(joints.map((J) => [J.name, [+J.x.toFixed(3), +J.y.toFixed(3)]])),
+                       rigParent: Object.fromEntries(joints.map((J) => [J.name, J.parent >= 0 ? joints[J.parent].name : null])),
+                       ground: state.bbox?.maxY ?? 0.9,
+                       move: state.activeMove ?? null, remapped: !!move?.remapped, bpl: state.activeMoveBpl ?? 1 };
+        }
+        buf.frames.push(engRow);
+        if (buf.frames.length > 1200) buf.frames.shift();
+        window.__engineTraceDump = () => state.engTr;
+        window.__engineTraceReset = () => { state.engTr = null; };
+      }
       // both columns in EXTRACTOR semantics (bone leaving the joint): for a
       // remapped captured table the slot one joint DOWN holds the value
       const rm = !!move?.remapped;
@@ -2187,6 +2274,8 @@ export default {
       walkEase: +(state.walkEase ?? 0).toFixed(3),
       jointTrace: state.jointTrace ?? null,       // A7: table vs engine per joint
       clampHits: state.clampHits ?? null,         // A7: rotLimit clamps, counted
+      engineRow: Number(params.engineTrace) === 1 ? (state.engTr?.frames.at(-1) ?? null) : null,   // 19.1 live strip
+      engineMeta: Number(params.engineTrace) === 1 ? (state.engTr?.meta ?? null) : null,
     };
     if (alpha <= 0.001) {
       if (state.shade) {

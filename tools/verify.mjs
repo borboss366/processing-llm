@@ -128,6 +128,13 @@ const CHECKS = [
     desc: "brief 17 C: grid-tier drops precomputed, pre-arm ≤1 bar out, boundary fires re-pick + fill, spikes 0",
   },
   {
+    name: "engine-fidelity",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/engine-fidelity.mjs"],
+    desc: "brief 19.1: per-stage |engine−table| RMS budgets (blend/spring/liveness/limits/lock) + clamp whitelist — the A7 knee class fails loudly",
+  },
+  {
     name: "moves-x-shapes",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

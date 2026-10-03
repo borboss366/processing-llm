@@ -239,6 +239,103 @@ $('btn-snap').addEventListener('click', async () => {
   });
 }
 
+// ── engine view (brief 19.1 Task 3): skeleton as of a chosen stage with
+// the table ghost, live joint×time deviation strip, clamp/yield flags ────
+const ENG = { rows: [], max: 150, meta: null };   // ~10 s at 15 Hz
+{
+  let traceOn = false;
+  $('eng-on').addEventListener('click', () => {
+    traceOn = !traceOn;
+    osc('/creature/engineTrace', traceOn ? 1 : 0);
+    $('eng-on').textContent = 'trace: ' + (traceOn ? 'ON' : 'off');
+    if (!traceOn) { ENG.rows.length = 0; }
+  });
+  $('eng-stage').addEventListener('change', drawEngine);
+  $('eng-png').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.download = 'engine-strip-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+    const cv = document.createElement('canvas');
+    cv.width = $('eng-skel').width + $('eng-strip').width + 8; cv.height = 300;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#0c0c16'; g.fillRect(0, 0, cv.width, cv.height);
+    g.drawImage($('eng-skel'), 0, 0); g.drawImage($('eng-strip'), $('eng-skel').width + 8, 0);
+    a.href = cv.toDataURL('image/png');
+    a.click();
+  });
+}
+const wrapA = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+function engFeed(row, joints) {
+  if (!row) return;
+  if (!ENG.meta && joints?.length) {
+    // rig geometry arrives via __creatureJoints mirror in render-state? —
+    // no: the engine row carries positions; rest geometry comes with it
+  }
+  ENG.rows.push(row);
+  while (ENG.rows.length > ENG.max) ENG.rows.shift();
+  drawEngine();
+}
+function drawEngine() {
+  const row = ENG.rows.at(-1);
+  if (!row) return;
+  const stage = $('eng-stage').value;
+  const BONES = Object.keys(row.s1 ?? {});
+  // strip: joint × time deviation
+  const cv = $('eng-strip'), g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  const key = stage === 'lockP' ? 'lockE' : stage;
+  const cw = (cv.width - 70) / ENG.max, ch = (cv.height - 24) / BONES.length;
+  BONES.forEach((b, r) => {
+    g.fillStyle = '#667'; g.font = '9px monospace'; g.fillText(b, 2, 12 + r * ch + ch / 2);
+    ENG.rows.forEach((f, i) => {
+      const v = Math.abs(wrapA(((f[key] ?? {})[b] ?? 0) - (f.s1?.[b] ?? 0)));
+      const c2 = Math.round(210 * Math.min(1, v / 0.4));
+      g.fillStyle = 'rgb(' + (30 + c2) + ',' + Math.round(60 - c2 * 0.2) + ',' + Math.round(90 - c2 * 0.3) + ')';
+      g.fillRect(64 + i * cw, 6 + r * ch, Math.ceil(cw), Math.ceil(ch) - 1);
+    });
+  });
+  // flag line along the bottom
+  ENG.rows.forEach((f, i) => {
+    const lk = f.flags?.lock ?? {};
+    if (Object.values(lk).some((l) => l.lift)) { g.fillStyle = '#fd4'; g.fillRect(64 + i * cw, cv.height - 14, Math.max(1, cw), 5); }
+    const tot = f.flags?.clamps ? Object.values(f.flags.clamps).reduce((a, b2) => a + b2, 0) : 0;
+    if (tot) { g.fillStyle = '#e66'; g.fillRect(64 + i * cw, cv.height - 8, Math.max(1, cw), 5); }
+  });
+  // skeleton: positions when available; ghost from table thetas needs rig
+  // geometry — use the positions pair (fkP vs lockP) when a position stage
+  // is chosen, else just final positions colored by the chosen stage's Δ
+  const cs = $('eng-skel'), gs = cs.getContext('2d');
+  gs.clearRect(0, 0, cs.width, cs.height);
+  const pts = row.lockP, pts0 = row.fkP;
+  if (pts && creatureMod) {
+    const fit = (p) => [20 + p[0] * (cs.width - 40), 8 + p[1] * (cs.height - 24)];
+    const names = ENG.jointNames ?? [];
+    const parent = ENG.rigParent ?? {};
+    const drawP = (P, col, w, al) => {
+      gs.globalAlpha = al;
+      names.forEach((nm, i) => {
+        const pn = parent[nm];
+        const pi2 = names.indexOf(pn);
+        if (pn == null || pi2 < 0) return;
+        gs.strokeStyle = typeof col === 'function' ? col(nm) : col;
+        gs.lineWidth = w;
+        gs.beginPath();
+        gs.moveTo(...fit(P[pi2])); gs.lineTo(...fit(P[i])); gs.stroke();
+      });
+      gs.globalAlpha = 1;
+    };
+    if (pts0) drawP(pts0, '#8899cc', 2, 0.35);           // pre-lock ghost
+    const eff = row.lockE ?? {};
+    drawP(pts, (nm) => {
+      const d = Math.abs(wrapA((eff[nm] ?? 0) - (row.s1?.[nm] ?? 0)));
+      return d < 0.05 ? '#5c5' : d < 0.2 ? '#cc6' : '#e66';
+    }, 3, 0.95);
+  }
+  const lk = row.flags?.lock ?? {};
+  const totC = row.flags?.clamps ? Object.values(row.flags.clamps).reduce((a, b2) => a + b2, 0) : 0;
+  $('eng-flags').textContent =
+    `locks ${Object.entries(lk).map(([k, v]) => k + ':' + v.w + (v.lift ? '(yield)' : '')).join(' ') || '—'} · clamps ${totC || 0}`;
+}
+
 // ── live feed ────────────────────────────────────────────────────────────
 const ws = createWs({
   url: `ws://${location.host}/ws`,
@@ -253,6 +350,8 @@ const ws = createWs({
         visSynced = true;
       }
       const c = msg.creature;
+      if (c?.engineMeta && !ENG.jointNames) { ENG.jointNames = c.engineMeta.jointNames; ENG.rigParent = c.engineMeta.rigParent; }
+      if (c?.engineRow) engFeed(c.engineRow, null);
       if (c) {
         $('cState').textContent = c.st;
         $('cMove').textContent = c.move ?? '(procedural)';

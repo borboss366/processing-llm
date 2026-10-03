@@ -66,6 +66,26 @@
       </section>
 
       <section>
+        <div class="title">Engine view (19.1) — skeleton as of stage
+          <select id="eng-stage">
+            <option value="s2">s2 blend</option>
+            <option value="s3">s3 spring</option>
+            <option value="s4">s4 +gait/liveness</option>
+            <option value="s5">s5 limits</option>
+            <option value="lockP" selected>after lock (final)</option>
+          </select>
+          <button id="eng-on">trace: off</button>
+          <button id="eng-png">strip → PNG</button>
+          <span id="eng-flags" class="lbl"></span>
+        </div>
+        <div class="row">
+          <canvas id="eng-skel" width="240" height="300" style="background:#0c0c16;border-radius:4px"></canvas>
+          <canvas id="eng-strip" width="520" height="300" style="background:#0c0c16;border-radius:4px"></canvas>
+        </div>
+        <div class="lbl">ghost = table pose (s1) · solid = engine after the chosen stage, bones colored by |Δ| · strip = joint × last 10 s |engine − table|, clamp/yield marks on top</div>
+      </section>
+
+      <section>
         <div class="title">Creature params (auto-enumerated · live)</div>
         <div id="params"><span class="lbl">waiting for the render window…</span></div>
       </section>
