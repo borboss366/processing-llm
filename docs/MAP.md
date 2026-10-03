@@ -6,34 +6,39 @@ diagram stays the canonical component map; this one trades precision
 for the story. Every box names its doc page and its instrument.
 
 ```mermaid
-flowchart LR
-  subgraph CAPTURE["capture (offline) — docs/PIPELINE.md · corpus/*.explorer.html"]
-    V[dancer video] --> E[estimator rtmpose<br/>21-pt schema] --> S[SavGol smooth]
-    S --> VS[view select<br/>no rotation in 2D] --> RT[absolute retarget<br/>vs rig rest]
-    RT --> CY[period · octave guard<br/>align · average] --> DI[distill: budgeted keys<br/>+ constants · contacts]
-    DI --> T[(moves/*.json<br/>view-tagged tables)]
+flowchart TB
+  subgraph CAP["capture (offline) — docs/PIPELINE.md · corpus/*.explorer.html"]
+    direction LR
+    V[dancer video] --> E[landmarks rtmpose<br/>+ SavGol smooth] --> VS[view select<br/>no rotation in 2D]
+    VS --> RT[absolute retarget<br/>vs rig rest] --> CY[cycles: octave guard<br/>align · average] --> DI[distill: budgeted keys<br/>constants · contacts]
   end
 
-  subgraph CLOCKS["clocks — core/audio.js · bench.html"]
-    A[audio file/mic] --> G[beatgrid GRID tier] & P[PLL fallback]
-    G --> BC[beat/bar phase + drops]
-    P --> BC
+  DI --> T[(moves/*.json<br/>view-tagged tables)]
+
+  subgraph LIVE["live inputs"]
+    direction LR
+    subgraph CLK["clocks — core/audio.js · bench.html"]
+      A[audio file/mic] --> BC[beat/bar phase + drops<br/>GRID tier · PLL fallback]
+    end
+    subgraph BR["direction — src/controller · controller.html"]
+      DJ[LLM director qwen3] --> FSM[FSM idle/walk/groove/hop<br/>+ move rotation]
+    end
+    subgraph AUDP["audience"]
+      AUD[phone draw] --> SH[(shapes/*.json)]
+    end
   end
 
-  subgraph BRAIN["direction — src/controller · controller.html"]
-    DJ[LLM director qwen3] --> FSM[FSM idle/walk/groove/hop<br/>+ move rotation]
+  subgraph ENG["engine — creature.js · docs/ENGINE.md · reports/engine-*.explorer.html"]
+    direction LR
+    S12["1 table sample<br/>2 blend/crossfade"] --> S34["3 spring (R2)<br/>4 liveness"] --> S56["5 limits & signs<br/>6 stance lock"] --> S78["7 FK<br/>8 depth mapping"] --> S90["9 tissue<br/>10 density & goo"]
   end
 
-  subgraph ENGINE["engine — creature.js · docs/ENGINE.md · reports/engine-*.explorer.html"]
-    T --> S1[1 table sample] --> S2[2 blend] --> S3[3 spring R2] --> S4[4 liveness]
-    S4 --> S5[5 limits/signs] --> S6[6 stance lock] --> S7[7 FK] --> S8[8 depth]
-    S8 --> S9[9 tissue] --> S10[10 goo]
-  end
-
-  BC --> FSM & S1
-  FSM --> S1
-  S10 --> C[compositor + post] --> STAGE[stage pixels]
-  AUD[audience phone draw] --> SHAPES[(shapes/*.json)] --> S7
+  T --> S12
+  BC --> FSM
+  BC --> S12
+  FSM --> S12
+  SH --> S78
+  S90 --> C[compositor + post] --> STAGE[stage pixels]
 ```
 
 Where each judgment lives:
