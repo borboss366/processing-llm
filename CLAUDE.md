@@ -4,6 +4,21 @@ You are the implementer. The user holds aesthetic judgment; a reviewer
 model writes the briefs in `docs/briefs/`. Execute the newest brief,
 task by task, under these permanent rules.
 
+## The explain-it gate (brief 19.2 — permanent)
+
+Nothing enters the party set (the halloween-freeze branch) unless the
+owner has written, HIMSELF, a paragraph explaining what it does and
+how — stored as `docs/explained/<feature>.md`. Not your summary; his
+words. When a feature is proposed for the set: ask for the paragraph,
+refuse the merge without it. Features already in the set (director,
+PLL/grid clocks, goo render, authored moves, FSM, audience pipeline)
+are being backfilled; missing ones are flagged in docs/explained/,
+never silently removed.
+
+Every brief's acceptance is phrased as "Boris can…" (point at,
+predict, explain) alongside the verify rows, and every feature task
+ships its doc page and explorer tap in the same commit.
+
 ## Process
 
 - Do tasks in the brief's order. STOP and report after each task.

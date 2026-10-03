@@ -1032,6 +1032,7 @@ export default {
     renderMode: 'goo',         // goo | goo-bones (skin 60%, skeleton through) | bones | silhouette (flat) | wire — hotkey 'm' cycles
     onion: 0,                  // onion-skin ghost frames (0 = off; hotkey 'o' toggles 0↔12), any renderMode
     engineTrace: 0,            // 19.1: per-stage engine taps (offline/judging only — ~1KB/frame)
+    moveSpringWn: 10,          // table-channel spring stiffness (R2 rung; halve it to feel the lag)
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
     shadeNz: 0.6,              // pseudo-normal flatness
@@ -1538,7 +1539,7 @@ export default {
     // first-order-filtered step still lands a one-frame velocity jump that
     // the spike metric's growth test rightly flags — a spring builds
     // velocity from zero, so attacks stay hiccup-free at any frame rate
-    const MV_WN = 10;                    // ≈100 ms response
+    const MV_WN = Math.max(2, Number(params.moveSpringWn) || 10);   // ≈100 ms at 10; the 19.2 prediction knob
     if (mvPose) {
       const mvS = (state.mvSpring ??= {});
       for (const nm of new Set([...Object.keys(mvS), ...Object.keys(mvPose.joints)])) {

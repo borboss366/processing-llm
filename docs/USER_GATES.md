@@ -65,6 +65,12 @@ verdict moves to the report and gets a ✓ + date here.
    the running man — judge whether that softness is what you still see,
    and judge R4 in the render-mode strip.) → ____
 
+6. **Explain-it gate (brief 19.2, PERMANENT)** — the party set only
+   contains features with an owner-written paragraph in
+   `docs/explained/`. Backfill queue: director · PLL/grid clocks ·
+   goo render · authored moves · FSM · audience pipeline. First
+   paragraph (your pick) opens the gate. → ____
+
 ## Standing re-check triggers
 
 - **Captured T-step = depth-channel acceptance test** — when brief 17
