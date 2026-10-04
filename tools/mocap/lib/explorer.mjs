@@ -523,7 +523,11 @@ function stageOV() {
     const rj = D.rigJoints;
     const rigHS = Math.max(1e-6, Math.hypot(rj.chest[0] - rj.pelvis[0], rj.chest[1] - rj.pelvis[1]));
     const K = personHS / rigHS;
-    const M = (pt) => [hm[0] + (pt[0] - rj.pelvis[0]) * K, hm[1] + (pt[1] - rj.pelvis[1]) * K];
+    // the analysis runs x-flipped to the canonical +x facing; the video is
+    // NOT — mirror the rig back about the hip anchor so the overlay walks
+    // the same way as the dancer (left-facing clips, facing-camera fronts)
+    const mx = D.xFlip ? -1 : 1;
+    const M = (pt) => [hm[0] + (pt[0] - rj.pelvis[0]) * K * mx, hm[1] + (pt[1] - rj.pelvis[1]) * K];
     const drawSkel = (pose, colFn, w, alpha) => {
       g.globalAlpha = alpha;
       for (const [nm, p] of Object.entries(D.rigParent)) {
@@ -577,9 +581,10 @@ function stageOV() {
         const [name, , a] = d;
         const anch = typeof a === 'number' ? P(D.img[F][a][0], D.img[F][a][1]) : null;
         if (!anch) continue;
-        const obsA = (() => { const [ , , aa, bb] = d; const A0 = ptOf(D.frontal[F], aa), B0 = ptOf(D.frontal[F], bb); return Math.atan2(B0[1] - A0[1], B0[0] - A0[0]); })();
-        const ref = REF[name];
-        g.strokeStyle = '#667'; g.beginPath(); g.arc(anch[0], anch[1], 12, ref, obsA, wrapA(obsA - ref) < 0); g.stroke();
+        let obsA = (() => { const [ , , aa, bb] = d; const A0 = ptOf(D.frontal[F], aa), B0 = ptOf(D.frontal[F], bb); return Math.atan2(B0[1] - A0[1], B0[0] - A0[0]); })();
+        let ref = REF[name];
+        if (D.xFlip) { obsA = Math.PI - obsA; ref = Math.PI - ref; }   // display in VIDEO space
+        g.strokeStyle = '#667'; g.beginPath(); g.arc(anch[0], anch[1], 12, ref, obsA, wrapA(obsA - ref) < 0 !== !!D.xFlip); g.stroke();
         g.fillStyle = rtColor(METRICS.rt[name]?.[F] ?? 0);
         g.fillText((D.theta[name]?.[F] ?? 0).toFixed(2), anch[0] + 13, anch[1] - 3);
       }

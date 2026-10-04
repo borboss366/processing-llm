@@ -836,6 +836,7 @@ async function processView(vk, primary) {
       lag: lagX ?? { whole: 0, thirds: [] },
       frontness: +frontRatio.toFixed(2),
       natural, reinterpret,
+      xFlip,   // analysis is x-flipped to canonical +x facing; OV must mirror back
       // per-frame frontness (shoulder width / spine length) — stage 3's trace
       frontSeries: imgIso.map((f) => {
         const sw = Math.hypot(f[S.shoulderR][0] - f[S.shoulderL][0], f[S.shoulderR][1] - f[S.shoulderL][1]);
