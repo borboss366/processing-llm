@@ -1,6 +1,9 @@
 # The capture pipeline, stage by stage (brief 18 Task 2)
 
-**How to run this:** `npm run capture -- <video> [--window A-B]` — the
+**How to run this:** `npm run fetch -- <url> [--section M:SS-M:SS]`
+pulls a clip into `corpus/<slug>-h264.mp4` (OpenCV-safe re-encode) and
+stubs its MOTION_SOURCES.md line; then `npm run capture -- <video>
+[--window A-B]` — the
 owner command: extract → distill → stitch into `moves/<name>-captured
 .json`, prints the stage summary, opens the explorer; window and
 mirror are read from MOTION_SOURCES.md when omitted; `--help` for all

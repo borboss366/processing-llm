@@ -12,7 +12,8 @@
     "submit": "tsx --env-file-if-exists=.env services/submit/server.ts",
     "capture": "node tools/capture.mjs",
     "engine-report": "node tools/engine-report.mjs",
-    "move": "node tools/move.mjs"
+    "move": "node tools/move.mjs",
+    "fetch": "node tools/fetch.mjs"
   },
   "keywords": [],
   "author": "",
