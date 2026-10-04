@@ -1,5 +1,11 @@
 # The engine, stage by stage (brief 19.2 Task 1)
 
+**How to run this:** `npm run engine-report -- --move <name> --shape
+<shape> [--open]` — captures a live trace, prints the per-stage ladder
+(the rung that eats the radians, worst joint, clamps/yields) and the
+fidelity verdict, opens the engine explorer; `--help` for flags, and
+it prints the underlying engine-trace command.
+
 Written for the owner, to be read WITH an engine explorer open
 (`reports/engine-<move>-<shape>.engine.explorer.html`, written by
 `tools/engine-trace.mjs`) or the puppet page's live Engine view. One

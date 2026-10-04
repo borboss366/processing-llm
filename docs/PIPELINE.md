@@ -1,5 +1,13 @@
 # The capture pipeline, stage by stage (brief 18 Task 2)
 
+**How to run this:** `npm run capture -- <video> [--window A-B]` — the
+owner command: extract → distill → stitch into `moves/<name>-captured
+.json`, prints the stage summary, opens the explorer; window and
+mirror are read from MOTION_SOURCES.md when omitted; `--help` for all
+flags, and it prints every underlying command it hides. One further
+step, `npm run move -- <video> …`, chains capture + the engine report
+on both bipeds.
+
 Written for the owner, to be read WITH a clip's explorer open
 (`corpus/<clip>.explorer.html` — written by every extract run). One page
 per stage: what goes in, what comes out, the actual formula, the

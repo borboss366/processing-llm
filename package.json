@@ -9,7 +9,10 @@
     "modgen": "node tools/modgen/gen.mjs",
     "verify": "node tools/verify.mjs",
     "build": "tsc",
-    "submit": "tsx --env-file-if-exists=.env services/submit/server.ts"
+    "submit": "tsx --env-file-if-exists=.env services/submit/server.ts",
+    "capture": "node tools/capture.mjs",
+    "engine-report": "node tools/engine-report.mjs",
+    "move": "node tools/move.mjs"
   },
   "keywords": [],
   "author": "",
