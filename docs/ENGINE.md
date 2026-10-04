@@ -1,5 +1,7 @@
 # The engine, stage by stage (brief 19.2 Task 1)
 
+Plain-words version (no math, same stages): [ENGINE_PLAIN.md](ENGINE_PLAIN.md).
+
 **How to run this:** `npm run engine-report -- --move <name> --shape
 <shape> [--open]` — captures a live trace, prints the per-stage ladder
 (the rung that eats the radians, worst joint, clamps/yields) and the

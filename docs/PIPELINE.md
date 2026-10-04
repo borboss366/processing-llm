@@ -1,5 +1,7 @@
 # The capture pipeline, stage by stage (brief 18 Task 2)
 
+Plain-words version (no math, same stages): [PIPELINE_PLAIN.md](PIPELINE_PLAIN.md).
+
 **How to run this:** `npm run fetch -- <url> [--section M:SS-M:SS]`
 pulls a clip into `corpus/<slug>-h264.mp4` (OpenCV-safe re-encode) and
 stubs its MOTION_SOURCES.md line; then `npm run capture -- <video>
