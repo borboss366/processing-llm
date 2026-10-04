@@ -1033,6 +1033,7 @@ export default {
     onion: 0,                  // onion-skin ghost frames (0 = off; hotkey 'o' toggles 0↔12), any renderMode
     engineTrace: 0,            // 19.1: per-stage engine taps (offline/judging only — ~1KB/frame)
     moveSpringWn: 10,          // table-channel spring stiffness (R2 rung; halve it to feel the lag)
+    viewForce: 0,              // 1 = keep the active view even for mismatched tables (inspect reinterpretation)
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
     shadeNz: 0.6,              // pseudo-normal flatness
@@ -1386,13 +1387,27 @@ export default {
     state.viewCur ??= 'front';
     const forcedView = params.view && params.view !== 'auto'
       ? (params.view === 'profile' ? 'profile' : 'front') : null;
-    const moveView = moveName ? state.moveViews?.[moveName] ?? null : null;
+    // viewForce=1 (19.2 review finding 5): deliberately KEEP the active
+    // view and play a mismatched table as-is — the inspection mode. The
+    // default is honest: a forced move switches views like the FSM would.
+    const moveView = Number(params.viewForce) === 1 ? null
+      : (moveName ? state.moveViews?.[moveName] ?? null : null);
     const wantView = forcedView ?? moveView ?? state.viewCur;
-    if (!state.viewSw && wantView !== state.viewCur && (wrapped || forcedView)) {
-      state.viewSw = { acc0: accW, to: wantView, swapped: false };
-      state.declaredSnapUntil = Math.max(state.declaredSnapUntil ?? 0,
-        t0 + (60 / Math.max(60, bpmUsed)) * 4 * 1000 + 400);
-      try { window.__ws?.send({ type: 'creature-view', from: state.viewCur, to: wantView }); } catch {}
+    // bar-quantized live (wrapped); manual scrub has no bars and a frozen
+    // squeeze clock — swap instantly there (finding 5: forced moves in the
+    // workbench played on the wrong body forever)
+    if (!state.viewSw && wantView !== state.viewCur && (wrapped || forcedView || manual)) {
+      if (manual) {
+        state.viewCur = wantView;
+        state.viewWidth = 1;
+        state.declaredSnapUntil = Math.max(state.declaredSnapUntil ?? 0, t0 + 600);
+        try { window.__ws?.send({ type: 'creature-view', from: wantView === 'front' ? 'profile' : 'front', to: wantView, instant: true }); } catch {}
+      } else {
+        state.viewSw = { acc0: accW, to: wantView, swapped: false };
+        state.declaredSnapUntil = Math.max(state.declaredSnapUntil ?? 0,
+          t0 + (60 / Math.max(60, bpmUsed)) * 4 * 1000 + 400);
+        try { window.__ws?.send({ type: 'creature-view', from: state.viewCur, to: wantView }); } catch {}
+      }
     }
     if (state.viewSw) {
       const u = (accW - state.viewSw.acc0) / 4;

@@ -373,6 +373,10 @@ const ws = createWs({
           { min: 0, max: Math.max(1, ...speedHist.map((h) => h[1])), color: '#5ee89a' });
         $('spikes').textContent = String(c.spikesFlagged ?? 0);
       }
+    } else if (msg.type === 'creature-view') {
+      // finding 5: the switch must be VISIBLE — toast + persistent label
+      $('snap-status').textContent = `view switch → ${msg.to}${msg.instant ? ' (instant: manual)' : ''}`;
+      setTimeout(() => { if ($('snap-status').textContent.startsWith('view switch')) $('snap-status').textContent = ''; }, 4000);
     } else if (msg.type === 'render-state') {
       const mod = (msg.modules ?? []).find((m) => m.id === 'creature');
       if (mod) { creatureMod = mod; buildParams(mod); }
