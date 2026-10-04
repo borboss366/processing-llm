@@ -10,9 +10,14 @@ export function runShown(cmd, args) {
     const p = spawn(cmd, args, { stdio: ["inherit", "pipe", "inherit"] });
     let buf = "";
     p.stdout.on("data", (d) => { process.stdout.write(d); buf += d; });
-    p.on("close", (code) => code === 0
-      ? resolve(buf.split("\n"))
-      : reject(new Error(`${cmd} ${args[0] ?? ""} exited ${code}`)));
+    p.on("close", (code) => {
+      if (code === 0) return resolve(buf.split("\n"));
+      // owner CLI: fail CLEAN — the wrapped tool already printed its
+      // diagnosis; a JS stack trace on top only buries it
+      console.error(`\n✗ step failed (exit ${code}): ${cmd} ${args.filter((a) => !a.startsWith("/")).join(" ")}`);
+      console.error("  the tool's last lines above say why; fix and rerun the same command");
+      process.exit(code);
+    });
   });
 }
 

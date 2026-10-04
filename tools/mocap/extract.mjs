@@ -475,6 +475,18 @@ async function processView(vk, primary) {
   const signedCh = Object.fromEntries(ARTICULATED.map((nm) => [nm, channels[`th:${nm}`]]));
   const loop = decideLoop(signedCh, fsHz, per.period);
   let period = per.period * loop.mult;
+  // --cycles N declares the FULL-loop count for the window: when the ×2
+  // L/R test would break that count, the human wins — on weak-ac clips
+  // (running_man_3: ac 0.23) the halves-differ test misfires and the
+  // doubled loop no longer fits the window
+  if (cyclesPrior && loop.mult > 1) {
+    const target = (winB - winA) / +cyclesPrior;
+    if (Math.abs(per.period - target) < Math.abs(period - target)) {
+      console.log(`[mocap] ×${loop.mult} overridden by --cycles ${cyclesPrior}: base ${per.period.toFixed(3)}s already matches window/${cyclesPrior} = ${target.toFixed(3)}s`);
+      period = per.period;
+      loop.mult = 1;
+    }
+  }
   let bpl = +opt("bpl", 4);
   if (beatSec) {
     const beats = period / beatSec;
@@ -567,7 +579,12 @@ async function processView(vk, primary) {
   }
   console.log(`[mocap] cycles: ${cycles.length} → kept ${kept.length}, dropped [${dropped.join(",")}]`);
   if (kept.length < 2 && !(typeof parityMerged !== "undefined" && parityMerged)) {
-    console.error("[mocap] fewer than 2 clean cycles — widen the loop window"); process.exit(1);
+    console.error(`[mocap] fewer than 2 clean cycles in the window. Detected loop ${period.toFixed(3)}s`
+      + ` (autocorrelation strength ${per.strength.toFixed(2)}${per.strength < 0.4 ? " — WEAK, likely an octave/period miss" : ""}).`);
+    console.error("[mocap] fixes, in order: (1) count the full L+R loops you see in the window and pass"
+      + " --cycles N (pins the period search); (2) check --bpl matches the move's musical rate;"
+      + " (3) widen or tighten the --window to clean repetitions only.");
+    process.exit(1);
   }
 
   // ── stage 7: distill to the standard table ────────────────────────────────

@@ -17,3 +17,4 @@ SHUFFLE kick tutorial https://www.youtube.com/watch?v=qGwD5mrZv3M
 SHUFFLE spin tutorial https://www.youtube.com/watch?v=tKKetlxEeoA
 ALL shuffle movements https://www.youtube.com/watch?v=p2JrE6JICKk&t=25s
 BODYROLL tutorial (own family, different dancer) corpus/bodyroll.mp4 loop: 0:08.5–0:14.5; cycles: 4; mirror: n/a (profile); WINDOW EYEBALLED BY IMPLEMENTER 2026-09-23 — confirm or correct
+FETCHED 2026-10-04 https://www.youtube.com/watch?v=HUOjOJvPJc8 corpus/running_man_3-h264.mp4 loop: ____–____; cycles: ____; mirror: ____
