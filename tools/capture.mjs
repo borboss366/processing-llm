@@ -34,25 +34,40 @@ const video = argv.find((a, i) => !a.startsWith("--") && !VALUED.has(argv[i - 1]
 if (!video || !fs.existsSync(video)) { console.error(`video not found: ${video}\n${HELP}`); process.exit(1); }
 
 const name = opt("name", path.basename(video).replace(/\.[^.]+$/, "").replace(/-h264$/, ""));
+// MOTION_SOURCES is the clip's flag sheet: ANY of window/cycles/bpl/mirror
+// not passed explicitly defaults from the clip's line — once the line is
+// filled, `npm run move -- corpus/<clip>.mp4` needs no flags at all
 let window = opt("window", null);
-if (!window) {
-  // MOTION_SOURCES lookup: the line mentioning this clip, `loop: A–B`
+{
   const ms = fs.readFileSync(path.join(ROOT, "docs/MOTION_SOURCES.md"), "utf8");
   const line = ms.split("\n").find((l) => l.includes(path.basename(video)) || l.includes(name));
-  const m = line && /loop:\s*([\d:.]+)\s*[–-]\s*([\d:.]+)/.exec(line);
   const toSec = (s) => s.split(":").reduce((a, p2) => a * 60 + +p2, 0);
-  if (m) {
-    window = `${toSec(m[1])}-${toSec(m[2])}`;
-    console.log(`[capture] window from MOTION_SOURCES.md: ${window}  (${line.trim().slice(0, 90)}…)`);
+  if (line) {
+    const m = /loop:\s*([\d:.]+)\s*[–-]\s*([\d:.]+)/.exec(line);
+    if (!window && m) {
+      window = `${toSec(m[1])}-${toSec(m[2])}`;
+      console.log(`[capture] window from MOTION_SOURCES.md: ${window}`);
+    }
+    const take = (key, flagName) => {
+      const mm = new RegExp(`${key}:\\s*(\\d+)`).exec(line);
+      if (mm && !opt(flagName, null)) {
+        argv.push(`--${flagName}`, mm[1]);
+        console.log(`[capture] ${flagName}: ${mm[1]} from MOTION_SOURCES.md`);
+      }
+    };
+    take("cycles", "cycles");
+    take("bpl", "bpl");
     if (/mirror:\s*yes/.test(line) && !flag("mirror")) {
       argv.push("--mirror");
       console.log("[capture] mirror: yes from MOTION_SOURCES.md");
     }
-  } else if (line && /loopL|loopR/.test(line)) {
-    console.error(`[capture] ${name} has loopL/loopR halves in MOTION_SOURCES.md — pass --window explicitly for the half you want`);
-    process.exit(1);
-  } else {
-    console.error(`[capture] no --window and no MOTION_SOURCES.md loop entry for ${name}`);
+  }
+  if (!window) {
+    if (line && /loopL|loopR/.test(line)) {
+      console.error(`[capture] ${name} has loopL/loopR halves in MOTION_SOURCES.md — pass --window explicitly for the half you want`);
+    } else {
+      console.error(`[capture] no --window and no filled MOTION_SOURCES.md loop entry for ${name}`);
+    }
     process.exit(1);
   }
 }
