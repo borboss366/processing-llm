@@ -21,13 +21,18 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { posRms } from "./lib/fk-ext.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CASES = [
   { move: "runningman-captured", shape: "biped-profile", captured: true },
   { move: "tstep-captured", shape: "biped-1", captured: true },
 ];
-const BUDGET = { s2: 0.05, s3: 0.50, liveDelta: 0.20, limitDelta: 0.02, lockDelta: 0.15 };
+const BUDGET = { s2: 0.05, s3: 0.50, liveDelta: 0.20, limitDelta: 0.02, lockDelta: 0.15,
+  // position rung (19.2 review): pelvis-normalized |tableFK − engine| —
+  // catches FK sign/pivot errors that theta ladders cannot (measured:
+  // runningman ~0.04, basic_kick 0.055 incl. its clamped foot)
+  posU: 0.10 };
 const wrap = (x) => Math.atan2(Math.sin(x), Math.cos(x));
 const failures = [];
 
@@ -82,6 +87,9 @@ for (const c of CASES) {
   if (Math.abs(r5 - r3ok) > BUDGET.limitDelta) failures.push(`${c.move}: limits add ${(r5 - r3ok).toFixed(3)} > ${BUDGET.limitDelta} (non-whitelisted bones)`);
   if (rl - r4 > BUDGET.lockDelta) failures.push(`${c.move}: lock/FK adds ${(rl - r4).toFixed(3)} > ${BUDGET.lockDelta} (the A7 class)`);
   if (badClamps.length) failures.push(`${c.move}: unwhitelisted clamps on ${badClamps.join(",")} — whitelist with a reason in the table header or fix the channel`);
+  const pr = posRms(F, D.meta, "lockP");
+  console.log(`[engine-fidelity]   position rung: ${pr.all.toFixed(3)} u (budget ${BUDGET.posU})`);
+  if (pr.all > BUDGET.posU) failures.push(`${c.move}: FK position RMS ${pr.all.toFixed(3)} u > ${BUDGET.posU}`);
 }
 
 for (const f of failures) console.error(`[engine-fidelity] FAIL: ${f}`);

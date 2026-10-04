@@ -293,6 +293,27 @@ function ladder() {
     }
     return { k, label, rms: Math.sqrt(s / n), worstB, worstV };
   });
+  // POSITION rung (19.2 review): pelvis-normalized table-FK vs engine
+  {
+    const names = D.meta.jointNames, pi = names.indexOf('pelvis');
+    let acc = {}, worstB = '', worstV = -1;
+    for (const f of F0) {
+      const ghost = fkExt(f.s1 ?? {});
+      const g0 = ghost.pelvis ?? [0, 0], e0 = f.lockP?.[pi] ?? [0, 0];
+      names.forEach((nm, i) => {
+        const gpt = ghost[nm], e = f.lockP?.[i];
+        if (!gpt || !e) return;
+        acc[nm] = (acc[nm] ?? 0) + ((gpt[0] - g0[0]) - (e[0] - e0[0])) ** 2 + ((gpt[1] - g0[1]) - (e[1] - e0[1])) ** 2;
+      });
+    }
+    let s = 0, n = 0;
+    for (const nm of names) {
+      const v = Math.sqrt((acc[nm] ?? 0) / F0.length);
+      if (v > worstV) { worstV = v; worstB = nm; }
+      s += v * v; n++;
+    }
+    rows.push({ k: 'POS', label: 'FK position (u)', rms: Math.sqrt(s / n), worstB, worstV });
+  }
   const cv = $('cLAD'), g = cv.getContext('2d');
   g.clearRect(0, 0, cv.width, cv.height);
   const hi = Math.max(0.15, ...rows.map((r) => r.rms));

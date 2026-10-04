@@ -14,6 +14,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runShown } from "./lib/run.mjs";
+import { posRms } from "./lib/fk-ext.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
@@ -52,6 +53,11 @@ for (const f of F) {
   for (const [nm, n2] of Object.entries(f.flags?.clamps ?? {})) clamps[nm] = Math.max(clamps[nm] ?? 0, n2);
   for (const [nm, l] of Object.entries(f.flags?.lock ?? {})) if (l.lift) yields.add(nm);
 }
+// POSITION rung (19.2 review): table FK'd vs engine joints, pelvis-
+// normalized — theta ladders can read ~0 while FK sign/pivot errors splay
+const pr = posRms(F, D.meta, "lockP");
+const worstP = Object.entries(pr.perJoint).sort((a, b) => b[1] - a[1])[0];
+console.log(`  FK POSITION      RMS ${pr.all.toFixed(3)} u (pelvis-normalized)  worst ${worstP[0]} ${worstP[1].toFixed(3)} u`);
 console.log(`  clamps ${Object.keys(clamps).length ? JSON.stringify(clamps) : "0"} · lift-yields ${[...yields].join(",") || "none"}`);
 console.log(`  the rung that eats the radians: ${tallest.label} (+${tallest.step.toFixed(3)} rad)`);
 
