@@ -22,6 +22,19 @@ const VALUED = new Set(["--window", "--name", "--cycles", "--view", "--estimator
 const video = argv.find((a, i) => !a.startsWith("--") && !VALUED.has(argv[i - 1]));
 const name = opt("name", path.basename(video ?? "").replace(/\.[^.]+$/, "").replace(/-h264$/, ""));
 
+// preflight BEFORE the multi-minute capture: the engine reports need the
+// live stack, and finding that out after capture wastes the whole run
+for (const [what, url, start] of [["controller server", "http://localhost:3000/status", "npm run server"],
+                                  ["vite", "http://localhost:5173/", "cd web/app && npm run dev"]]) {
+  try { await fetch(url); }
+  catch {
+    console.error(`✗ ${what} is not running (${url}) — the engine-report step needs it.`);
+    console.error(`  start it in another terminal:  ${start}   then rerun this command`);
+    console.error(`  (or run just the capture half:  npm run capture -- ${argv.join(" ")})`);
+    process.exit(1);
+  }
+}
+
 await runShown("node", [path.join(ROOT, "tools/capture.mjs"), ...argv, "--no-open"]);
 
 const moveName = `${name}-captured`;
