@@ -1555,13 +1555,21 @@ export default {
     // the spike metric's growth test rightly flags — a spring builds
     // velocity from zero, so attacks stay hiccup-free at any frame rate
     const MV_WN = Math.max(2, Number(params.moveSpringWn) || 10);   // ≈100 ms at 10; the 19.2 prediction knob
+    // per-table follow (finding 1, 2026-10-13): CAPTURED tables carry their
+    // own dynamics (SavGol-smoothed upstream, keys dense) — the 100 ms
+    // anti-snap spring only smears them (runningman s3 0.35 rad). Header
+    // `followWn` wins; default by provenance: captured 60 (≈17 ms, still
+    // builds velocity from zero so snap keys can't step), authored keeps
+    // the moveSpringWn default. The stance-lock weight keeps MV_WN.
+    const FOLLOW_WN = Number(move?.followWn) > 0 ? Number(move.followWn)
+      : move?.remapped ? 60 : MV_WN;
     if (mvPose) {
       const mvS = (state.mvSpring ??= {});
       for (const nm of new Set([...Object.keys(mvS), ...Object.keys(mvPose.joints)])) {
         const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, yaw: 0 });  // unkeyed → spring back to 0
         const sp = (mvS[nm] ??= {});
         for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) {
-          tk[ch] = springStep((sp[ch] ??= { x: 0, v: 0 }), tk[ch], MV_WN, dt);
+          tk[ch] = springStep((sp[ch] ??= { x: 0, v: 0 }), tk[ch], FOLLOW_WN, dt);
         }
       }
     }

@@ -49,6 +49,36 @@ than authored ones (per-table `follow`, or moveSpringWn tuned for
 captured). Prediction 1 above IS the before/after test for this.
 → next engine brief, task 1.
 
+**FIXED 2026-10-13.** Table-header field `followWn` (spring frequency for
+the table channels); default by provenance — captured tables (provenance
+tools/mocap/*) 60 ≈ 17 ms, authored tables keep `moveSpringWn` 10 ≈ 100 ms.
+Kept a spring rather than bypassing: it still builds velocity from zero, so
+`snap` keys can't land a one-frame step. Stance-lock weight keeps the old
+rate (unchanged behaviour there).
+
+| engine ladder s3 (spring) step | before | after |
+|---|---|---|
+| runningman-captured × biped-profile | 0.346 (worst elbowL 0.581) | **0.034** (elbowL 0.058) |
+| basic_kick_1-captured-front × biped-1 | 0.191 (elbowL 0.317) | **0.017** (elbowL 0.029) |
+| basic_kick_1-captured-front × biped-2 | 0.194 (elbowR 0.330) | **0.016** (elbowL 0.028) |
+
+Hiccups: spikes +0 during every trace above; captured↔captured and
+captured↔authored live switches (kick → armwave → kick → runningman →
+kick → tstep) +0; `transition-check` PASS (spikesFlagged 0);
+`moves-x-shapes` PASS (runningman engine/table amplitude now ~1.0, e.g.
+kneeL 1.70/1.59). Position rung: runningman 0.039 → 0.018 u.
+
+Exhibit: `reports/2026-10-13-kick-arms-after-spring.png` — kick-arm frame
+(f56): left = after spring, all bones green (arm deviation ≤ 0.005 rad);
+right = final, arms green/yellow (≤ 0.095, liveness wander) — the red is
+the FEET (ankle clamps, below).
+
+Still open on basic_kick_1 (not this finding): fidelity FAILs on the foot
+clamps (footL 185 / footR 69 frames) — the front-view foot-convention gap;
+with the spring no longer masking it, the lock+FK delta reads 0.153/0.169
+(> 0.15 budget), all of it ankleL. Owner's call per table (whitelist vs
+raise rotLimits.ankle) until the front-view ankle reference is fixed.
+
 ### 2. Rig proportions ≠ dancer proportions; step reads even shorter — MINE + TOOL
 
 What I see: the biped is elongated in Y compared to the man (torso

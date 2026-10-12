@@ -30,6 +30,16 @@ await runShown("node", [path.join(ROOT, "tools/engine-trace.mjs"),
 
 const D = JSON.parse(fs.readFileSync(`${base}.engine-trace.json`, "utf8"));
 const F = D.frames, BONES = Object.keys(F[0].s1 ?? {});
+// a table that never loaded leaves s1 all-zero and the ladder silently
+// measures procedural motion against nothing — refuse instead
+const refAmp = Math.max(0, ...BONES.map((b) => {
+  const v = F.map((f) => f.s1?.[b] ?? 0);
+  return Math.max(...v) - Math.min(...v);
+}));
+if (!D.meta.move || refAmp < 0.05) {
+  console.error(`✗ no table reference in the trace (move=${D.meta.move ?? "none"}, amplitude ${refAmp.toFixed(3)} rad) — is "${MOVE}" a table in web/app/moves/?`);
+  process.exit(1);
+}
 const wrap = (x) => Math.atan2(Math.sin(x), Math.cos(x));
 const perBone = (key) => BONES.map((b) => {
   let s = 0;

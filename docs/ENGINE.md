@@ -71,8 +71,12 @@ response. Exists so `snap` keys can't land a one-frame velocity step
 (worst elbowL 0.588), 0.235 on the t-step — the LARGEST engine rung
 by an order of magnitude. This is the "softness" that survives a
 perfect table.
-**Knob:** `moveSpringWn` (puppet param; halve to 5 to feel the lag
-double, raise toward 20 to chase the table — watch the spike count).
+**Per table (2026-10-13):** header `followWn` sets the spring rate for
+that table; default by provenance — captured tables 60 (≈17 ms; they're
+already smoothed upstream), authored tables `moveSpringWn`. Fixed the
+captured-table softness: runningman s3 0.346 → 0.034 rad, spikes 0.
+**Knob:** `moveSpringWn` (puppet param, authored tables; halve to 5 to
+feel the lag double — watch the spike count).
 **Explorer:** the s3 ladder step; s3−s1 per joint in the heatmap.
 
 ## 4 · Liveness
