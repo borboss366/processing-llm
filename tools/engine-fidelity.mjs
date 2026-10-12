@@ -27,6 +27,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CASES = [
   { move: "runningman-captured", shape: "biped-profile", captured: true },
   { move: "tstep-captured", shape: "biped-1", captured: true },
+  // front captured kick — the front-view foot-reference witness (2026-10-13)
+  { move: "basic_kick_1-captured-front", shape: "biped-1", captured: true },
 ];
 const BUDGET = { s2: 0.05, s3: 0.50, liveDelta: 0.20, limitDelta: 0.02, lockDelta: 0.15,
   // position rung (19.2 review): pelvis-normalized |tableFK − engine| —

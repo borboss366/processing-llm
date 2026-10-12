@@ -329,7 +329,12 @@ async function processView(vk, primary) {
   const twistWorldFrames = hasWorld
     ? worldN.map((f) => boneTwists(deYaw3(f, 0), rigV, mirror)) : null;
 
-  const thetaFrames = frontal.map((f) => retargetFrame(f, rigV, mirror, view));
+  // front-view feet: the dancer's own standing foot is the ankle reference
+  // (retargetFrame footRef); profile feet stay gravity-referenced
+  const footRef = natural === "front"
+    ? { ankleL: cal.rests.ankleL, ankleR: cal.rests.ankleR } : null;
+  if (footRef) console.log(`[mocap] front-view foot reference (dancer's standing foot, rad): ankleL ${footRef.ankleL.toFixed(2)} · ankleR ${footRef.ankleR.toFixed(2)}`);
+  const thetaFrames = frontal.map((f) => retargetFrame(f, rigV, mirror, view, footRef));
 
   // foot-length gating (16.2 item 1; 18.1 made 2D-only): where the
   // projected heel→toe length collapses vs the MEASURED rest length (the
@@ -387,7 +392,7 @@ async function processView(vk, primary) {
   // Reported whole-window + per-third (constant vs drifting).
   {
     const rawFrontal = flipF(rawImgIso);
-    const rawTheta = rawFrontal.map((f) => retargetFrame(f, rigV, mirror, view));
+    const rawTheta = rawFrontal.map((f) => retargetFrame(f, rigV, mirror, view, footRef));
     rawThetaX = rawTheta;
     const fps = raw.meta.fps;
     const xlag = (i0, i1) => {
@@ -656,7 +661,7 @@ async function processView(vk, primary) {
       rests: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, +v.toFixed(4)])),
       counts: cal.counts, fallbacks: cal.fallbacks,
     },
-    restRef: Object.fromEntries(rigV.defs(mirror).map((d) => [d[0], +d[4].toFixed(4)])),
+    restRef: Object.fromEntries(rigV.defs(mirror).map((d) => [d[0], +(footRef?.[d[0]] ?? d[4]).toFixed(4)])),
     // 18.2: per-frame/bin debug for on-frame overlays — offline only
     debug: { signSrc: Object.fromEntries(Object.entries(fore.twistSrcs ?? {}).map(([nm, s2]) => [nm, Array.from(s2)])),
              gateMasks: typeof gateMasks !== "undefined" ? gateMasks : null,
@@ -849,7 +854,9 @@ async function processView(vk, primary) {
       // rest angles actually subtracted (absolute retarget 2026-09-28)
       rests: { measured: Object.fromEntries(Object.entries(cal.rests).map(([k, v]) => [k, r3(v)])),
                declared, counts: cal.counts, fallbacks: cal.fallbacks },
-      restRef: declared,
+      // the reference actually subtracted — front-view ankles use the
+      // dancer's standing foot (footRef), everything else the rig rest
+      restRef: Object.fromEntries(Object.entries(declared).map(([k, v]) => [k, footRef?.[k] != null ? r3(footRef[k]) : v])),
       defs: defRows.map(([nm, parent, a, b]) => [nm, parent, a, b]),
       defLen,
       sideSigns: Object.fromEntries(defRows.map(([nm]) => [nm, sgnFn(nm)])),
@@ -1077,6 +1084,56 @@ function selfTest() {
     console.log(`[self-test] profile feet vs reference: |ankle| ${maxProf.toFixed(2)} rad on profile shape (front shape reads ${maxFront.toFixed(2)})`);
     if (maxProf > 0.5) fails.push(`profile ankle theta ${maxProf.toFixed(2)} rad — profile-shape reference not applied`);
     if (maxFront < 2) fails.push("front-shape control did not show the ~π off-side foot");
+    // FRONT-VIEW FOOT REFERENCE (2026-10-13): (a) a frontal standing
+    // dancer whose feet splay ±0.6 rad must retarget to ZERO foot deviation
+    // (rendered foot = the rig's rest foot) — the drawing-vs-dancer splay
+    // offset (~1.3 rad on tstep/basic_kick) is no longer a theta; (b) a
+    // side kick (leg abducted 0.5, foot flexed 0.8 past standing) must reach
+    // the full 0.8 foot deviation with |ankle theta| inside the ±1.0 limit.
+    {
+      const frontStand = (abd = 0, flex = 0) => {
+        const f = [];
+        const leg = (s, x, dir) => {
+          const a0 = Math.PI / 2 + dir * abd;            // leg axis (down), abducted outward
+          const hip = [x, 0.5], knee = [x + 0.25 * Math.cos(a0), 0.5 + 0.25 * Math.sin(a0)];
+          const ank = [knee[0] + 0.25 * Math.cos(a0), knee[1] + 0.25 * Math.sin(a0)];
+          const fa = (dir > 0 ? 0 : Math.PI) - dir * 0.6 + dir * flex;   // splayed outward ±0.6
+          f[MP[`hip${s}`]] = hip; f[MP[`knee${s}`]] = knee; f[MP[`ankle${s}`]] = ank;
+          f[MP[`heel${s}`]] = [ank[0], ank[1] + 0.02];
+          f[MP[`toe${s}`]] = [ank[0] + 0.09 * Math.cos(fa), ank[1] + 0.02 + 0.09 * Math.sin(fa)];
+        };
+        leg("L", 0.45, -1); leg("R", 0.55, 1);
+        for (const [s, x] of [["L", 0.4], ["R", 0.6]]) {
+          f[MP[`shoulder${s}`]] = [x, 0.2]; f[MP[`elbow${s}`]] = [x, 0.33]; f[MP[`wrist${s}`]] = [x, 0.45];
+        }
+        f[MP.earL] = [0.47, 0.08]; f[MP.earR] = [0.53, 0.08]; f[MP.nose] = [0.5, 0.1];
+        return f;
+      };
+      const stand = frontStand();
+      const clip = Array.from({ length: 12 }, () => stand);
+      const cal = measureRest(clip, rg, false, calibMasks(clip));
+      const footRef = { ankleL: cal.rests.ankleL, ankleR: cal.rests.ankleR };
+      const footDev = (th) => {                         // rendered foot vs rig rest foot
+        const pose = fkPose(rg, th);
+        return ["L", "R"].map((s) => {
+          const r0 = Math.atan2(rg.joints[`foot${s}`].y - rg.joints[`ankle${s}`].y, rg.joints[`foot${s}`].x - rg.joints[`ankle${s}`].x);
+          const r1 = Math.atan2(pose[`foot${s}`][1] - pose[`ankle${s}`][1], pose[`foot${s}`][0] - pose[`ankle${s}`][0]);
+          return Math.atan2(Math.sin(r1 - r0), Math.cos(r1 - r0));
+        });
+      };
+      const thNew = retargetFrame(stand, rg, false, null, footRef);
+      const thOld = retargetFrame(stand, rg, false, null);
+      const devNew = footDev(thNew), maxOld = Math.max(Math.abs(thOld.ankleL), Math.abs(thOld.ankleR));
+      console.log(`[self-test] front foot ref, splayed stance: foot deviation L ${devNew[0].toFixed(4)} R ${devNew[1].toFixed(4)} rad (want 0; rig-rest reference read |ankle| ${maxOld.toFixed(2)})`);
+      if (Math.max(...devNew.map(Math.abs)) > 1e-6) fails.push("front-view splayed stance must retarget feet to 0 deviation");
+      const kick = frontStand(0.5, 0.8);
+      const thK = retargetFrame(kick, rg, false, null, footRef);
+      const devK = footDev(thK);
+      const lim = 1.0;
+      console.log(`[self-test] front side kick: foot deviation L ${devK[0].toFixed(3)} R ${devK[1].toFixed(3)} (want ±0.8) · |ankle θ| L ${Math.abs(thK.ankleL).toFixed(3)} R ${Math.abs(thK.ankleR).toFixed(3)} (limit ${lim})`);
+      if (devK.some((d) => Math.abs(Math.abs(d) - 0.8) > 1e-6)) fails.push("front side kick must reach its full 0.8 foot deviation");
+      if (Math.abs(thK.ankleL) > lim || Math.abs(thK.ankleR) > lim) fails.push("front side kick ankle theta exceeds the ±1.0 limit");
+    }
     // HABITUAL POSE SURVIVES (2026-09-28 root cause): a clip whose MEAN pose
     // is arms-FORWARD must retarget to arms-forward — NOT to the rig's rest.
     // (measured-rest calibration subtracted exactly this and collapsed the

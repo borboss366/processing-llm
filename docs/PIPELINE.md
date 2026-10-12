@@ -170,6 +170,13 @@ the transfer in-page (observed abs / reference abs / theta /
 round-trip); anything non-green is a mismapping. Self-test: an
 arms-forward clip must render arms forward (0.00° abs), never the rig
 rest.
+**Front-view feet (2026-10-13):** the ankle's zero is the dancer's OWN
+standing foot direction (median heel→toe over planted frames), not the
+drawing's splayed foot — the ~1.3 rad drawing-vs-dancer offset that parked
+every front ankle against its limit is gone (basic_kick engine clamps
+185/69 → 0). Profile feet stay gravity-referenced. The T-step fan (toes
+swivelling from camera-facing to sideways) still clamps: floor-plane
+rotation, the depth problem.
 **Code:** `lib/retarget.mjs` retargetFrame + sideSigns (~40 lines).
 
 ## 6 · Period & cycles
