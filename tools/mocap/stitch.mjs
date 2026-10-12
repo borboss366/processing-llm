@@ -46,6 +46,7 @@ const mirrorKey = (k) => ({
     // x-reflection: twist = atan2(dz, planar) with planar ≥ 0 — sign holds;
     // yaw rotates about the vertical axis — sign flips
     ...(ch.twist != null ? { twist: ch.twist } : {}),
+    ...(ch.depth != null ? { depth: ch.depth } : {}),     // toward/away holds under x-reflection
     ...(ch.yaw != null ? { yaw: -ch.yaw } : {}),
   }])),
   contacts: (k.contacts ?? []).map(swapSide),
@@ -73,6 +74,7 @@ const scaleKey = (k) => (!exagMap && exag === 1) ? k : {
     return [nm, {
       ...(ch.rot != null ? { rot: +(ch.rot * f).toFixed(3) } : {}),
       ...(ch.twist != null ? { twist: +(ch.twist * f).toFixed(3) } : {}),
+      ...(ch.depth != null ? { depth: +Math.max(-1, Math.min(1, ch.depth * f)).toFixed(4) } : {}),
       ...(ch.dx != null ? { dx: +(ch.dx * f).toFixed(4) } : {}),
       ...(ch.dy != null ? { dy: +(ch.dy * f).toFixed(4) } : {}),
     }];
@@ -92,15 +94,15 @@ function symmetrizeLoop(keys, view, pick) {
     (ch) => ch.rot == null && ch.dx == null && ch.dy == null));
   if (view !== "profile" && !twistOnly) throw new Error("--symmetrize implemented for profile and reinterpreted (twist-only) tables (a rot-carrying front table needs the negating mirror)");
   const amp = (side) => Math.max(...keys.map((k) =>
-    Math.abs(k.joints[`knee${side}`]?.rot ?? k.joints[`knee${side}`]?.twist ?? 0) +
-    Math.abs(k.joints[`hip${side}`]?.rot ?? k.joints[`hip${side}`]?.twist ?? 0)));
+    Math.abs(k.joints[`knee${side}`]?.rot ?? k.joints[`knee${side}`]?.depth ?? k.joints[`knee${side}`]?.twist ?? 0) +
+    Math.abs(k.joints[`hip${side}`]?.rot ?? k.joints[`hip${side}`]?.depth ?? k.joints[`hip${side}`]?.twist ?? 0)));
   const strong = pick === "auto" ? (amp("R") >= amp("L") ? "R" : "L") : pick;
   const inWin = (p, s0) => ((p - s0 + 1) % 1) < 0.5;
   let best = 0, bestScore = -1;
   for (const cand of keys.map((k) => k.phase)) {
     let sc = 0;
     for (const k of keys) {
-      if (inWin(k.phase, cand)) sc += Math.abs(k.joints[`knee${strong}`]?.rot ?? k.joints[`knee${strong}`]?.twist ?? 0) + Math.abs(k.joints[`hip${strong}`]?.rot ?? k.joints[`hip${strong}`]?.twist ?? 0);
+      if (inWin(k.phase, cand)) sc += Math.abs(k.joints[`knee${strong}`]?.rot ?? k.joints[`knee${strong}`]?.depth ?? k.joints[`knee${strong}`]?.twist ?? 0) + Math.abs(k.joints[`hip${strong}`]?.rot ?? k.joints[`hip${strong}`]?.depth ?? k.joints[`hip${strong}`]?.twist ?? 0);
     }
     if (sc > bestScore) { bestScore = sc; best = cand; }
   }
@@ -117,6 +119,18 @@ function symmetrizeLoop(keys, view, pick) {
   return [...half, ...swapped];
 }
 
+// owner-written header fields (clampWhitelist + reason, followWn) live in
+// the STAGE table, not the extraction — a rebuild must carry them forward
+// (2026-10-13: a tstep rebuild silently dropped its whitelist)
+const KEEP_HEADER = ["clampWhitelist", "clampWhitelistReason", "followWn"];
+const carried = (() => {
+  try {
+    const prev = JSON.parse(fs.readFileSync(outPath, "utf8"));
+    return Object.fromEntries(KEEP_HEADER.filter((k) => prev[k] != null).map((k) => [k, prev[k]]));
+  } catch { return {}; }
+})();
+if (Object.keys(carried).length) console.log(`[stitch] carrying header fields from the existing table: ${Object.keys(carried).join(", ")}`);
+
 // single-table mode (16.2 move #2): one input, no --mirror — the clip's
 // window already covers the full alternating loop; just rename/scale
 if (files.length === 1 && !flag("mirror")) {
@@ -127,7 +141,7 @@ if (files.length === 1 && !flag("mirror")) {
     provenance: { ...(L.provenance ?? {}), mode: "single full loop",
                   exaggerate: exagMap ?? exag, pipeline: "tools/mocap/stitch.mjs" },
   };
-  fs.writeFileSync(outPath, JSON.stringify(table, null, 2));
+  fs.writeFileSync(outPath, JSON.stringify({ ...table, ...carried }, null, 2));
   const net1 = table.keys.reduce((s, k) => s + (k.travel ?? 0), 0) / table.keys.length;
   console.log(`[stitch] wrote ${outPath}: bpl ${table.beatsPerLoop}, ${table.keys.length} keys, mean travel ${net1.toFixed(4)} u/beat (single-table mode)`);
   process.exit(0);
@@ -176,5 +190,5 @@ const table = {
   },
 };
 const net = table.keys.reduce((s, k) => s + (k.travel ?? 0), 0) / table.keys.length;
-fs.writeFileSync(outPath, JSON.stringify(table, null, 2));
+fs.writeFileSync(outPath, JSON.stringify({ ...table, ...carried }, null, 2));
 console.log(`[stitch] wrote ${outPath}: bpl ${table.beatsPerLoop}, ${table.keys.length} keys, mean travel ${net.toFixed(4)} u/beat (mirror mode nets ~0 by construction)`);

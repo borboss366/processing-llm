@@ -112,7 +112,13 @@ export function distillMove(avg, opts) {
       if (Math.abs(m) >= 0.15) constants[nm] = +m.toFixed(3);
     }
   }
-  const phases = thinKeys(candidatePhases(joints, bins, minRange), joints, bins, maxKeys, errBudget);
+  // depth (17.5) is a channel like any other: its extrema/inflections are
+  // key candidates and its reconstruction counts against the same budget
+  const keyed = { ...joints };
+  for (const [nm, dp] of Object.entries(avg.depths ?? {})) {
+    if (Math.max(...dp) - Math.min(...dp) > 0.03) keyed[`dp:${nm}`] = dp;
+  }
+  const phases = thinKeys(candidatePhases(keyed, bins, minRange), keyed, bins, maxKeys, errBudget);
 
   // contacts: a foot is planted where its height is near the cycle low AND
   // its horizontal speed is low (image space carries the ground truth)
@@ -170,15 +176,16 @@ export function distillMove(avg, opts) {
     const jk = {};
     for (const [nm, v] of Object.entries(joints)) jk[nm] = { rot: +v[b].toFixed(3) };
     for (const [nm, m] of Object.entries(constants)) jk[nm] = { rot: m };
-    // twist emission (17 B1): DEVIATION from the bone's habitual plane
-    // (mean-removed — same principle as measured rest: a constant offset is
-    // camera geometry, not motion, and would permanently foreshorten the
-    // bone), only where the oscillation is real (range > 0.15 rad)
-    for (const [nm, tw] of Object.entries(avg.twists ?? {})) {
-      const rng = Math.max(...tw) - Math.min(...tw);
-      if (rng <= 0.15) continue;
-      const mean = tw.reduce((a, v) => a + v, 0) / tw.length;
-      (jk[nm] ??= {}).twist = +Math.max(-2.0, Math.min(2.0, tw[b] - mean)).toFixed(3);
+    // depth emission (17.5 — replaces twist; one channel for one quantity):
+    // NOT mean-removed — depth is already relative to the calibrated rest
+    // length (standing = 0), and a foot thrown at the camera for most of
+    // the loop is the move, not camera geometry. Emitted where the channel
+    // really moves (range > 0.03 ≈ 14° out of plane); keys at the same
+    // extrema/inflection phases as everything else.
+    for (const [nm, dp] of Object.entries(avg.depths ?? {})) {
+      const rng = Math.max(...dp) - Math.min(...dp);
+      if (rng <= 0.03) continue;
+      (jk[nm] ??= {}).depth = +Math.max(-1, Math.min(1, dp[b])).toFixed(4);
     }
     // body yaw emission (18.1): pelvis/chest yaw from width foreshortening,
     // clamped to the engine's ±0.6, only where the oscillation is real

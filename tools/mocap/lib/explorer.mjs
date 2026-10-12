@@ -161,7 +161,7 @@ ${abCard}
 
 <section id="s8"><h2>8 · TABLE — what the stage will play</h2>
   <div id="tableView"></div>
-  <div class="note">view=${D.table.view} · bpl ${D.table.beatsPerLoop} · contacts drive the stance lock (a wrongly-planted foot loses its lift — the near-leg bug); twist = out-of-plane deviation (fan / elbow flip)</div>
+  <div class="note">view=${D.table.view} · bpl ${D.table.beatsPerLoop} · contacts drive the stance lock (a wrongly-planted foot loses its lift — the near-leg bug); depth = signed out-of-plane channel ∈ [−1,1] (toward +)</div>
 </section>
 
 <section id="sDIAG"><h2>DIAG · WHOLE-CLIP DIAGNOSTICS — where and when (18.2)</h2>
@@ -381,9 +381,9 @@ function stage7() {
   tracePlot($('c7'), [avg], ['#59f'], null, marks);
 }
 function stage8() {
-  let h = '<table><tr><th>phase</th><th>ease</th><th>contacts</th><th>joints keyed</th><th>twist bones</th><th>travel</th></tr>';
+  let h = '<table><tr><th>phase</th><th>ease</th><th>contacts</th><th>joints keyed</th><th>depth bones</th><th>travel</th></tr>';
   for (const k of D.table.keys) {
-    const tw = Object.entries(k.joints).filter(([,c]) => c.twist).map(([n]) => n);
+    const tw = Object.entries(k.joints).filter(([,c]) => c.depth || c.twist).map(([n]) => n);
     h += '<tr><td>' + k.phase.toFixed(3) + '</td><td>' + k.ease + '</td><td class="name">' + (k.contacts.join(',') || '—') +
       '</td><td>' + Object.keys(k.joints).length + '</td><td class="name">' + (tw.join(',') || '—') + '</td><td>' + (k.travel ?? 0).toFixed(3) + '</td></tr>';
   }

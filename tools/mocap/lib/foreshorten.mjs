@@ -117,3 +117,32 @@ export function frontnessRatio(imgIso, S) {
   }
   return median(sw) / (median(sp) || 1e-6);
 }
+
+// ── depth (brief 17.5): the ONE out-of-plane channel ───────────────────────
+// signed twist normalized to [−1, 1]: magnitude 1 − cos(twist) ≈ 1 − ratio/
+// DEAD (0 inside the deadband, so no step at its edge; 1 = bone end-on),
+// sign = toward (+) / away (−) from the continuity + score resolution.
+// The engine recovers the angle as sign·acos(1 − |depth|).
+export function depthFromTwist(tw) {
+  if (!tw) return 0;
+  const m = 1 - Math.cos(Math.min(Math.PI / 2, Math.abs(tw)));
+  return Math.sign(tw) * Math.min(1, m);
+}
+
+// degenerate in-plane (17.5 T1.3): per frame, the def bones whose projected
+// length fell below `gate` × rest length — their in-plane angle is atan2 of
+// noise, so retarget treats them as REST and the motion lives in depth
+export function gatedBones(frontal, defs, restLens, gate, S) {
+  const pt = (f, k) => typeof k === 'number' ? f[k]
+    : k === 'hipMid' ? [(f[S.hipL][0] + f[S.hipR][0]) / 2, (f[S.hipL][1] + f[S.hipR][1]) / 2]
+    : k === 'shoulderMid' ? [(f[S.shoulderL][0] + f[S.shoulderR][0]) / 2, (f[S.shoulderL][1] + f[S.shoulderR][1]) / 2]
+    : [(f[S.earL][0] + f[S.earR][0]) / 2, (f[S.earL][1] + f[S.earR][1]) / 2];
+  return frontal.map((f) => {
+    const g = new Set();
+    for (const [name, , a, b] of defs) {
+      const A = pt(f, a), B = pt(f, b);
+      if (Math.hypot(B[0] - A[0], B[1] - A[1]) / (restLens[name] || 1) < gate) g.add(name);
+    }
+    return g;
+  });
+}

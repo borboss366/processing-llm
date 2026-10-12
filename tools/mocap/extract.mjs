@@ -26,7 +26,7 @@
  *                               table is ALWAYS built from the camera plane —
  *                               2D has no rotation (a "de-yaw" is x·cos(yaw),
  *                               a squash). Requesting the other view emits a
- *                               REINTERPRETATION: rot keys become twist keys.
+ *                               REINTERPRETATION: rot keys become depth keys.
  *     --emit-views a,b          emit several views in one run (first = primary)
  *     --anchor F                extra phase shift 0..1 after auto-anchor
  *     --keep-drift              keep net pelvis drift in `travel` (single-side
@@ -56,7 +56,7 @@ import { fileURLToPath } from "node:url";
 import { filterLandmarks, oneEuro } from "./lib/oneeuro.mjs";
 import { sgLandmarks, savgolSmooth, holdWhere } from "./lib/smooth.mjs";
 import { S } from "./lib/landmarks.mjs";
-import { foreshortenAll, frontnessRatio } from "./lib/foreshorten.mjs";
+import { foreshortenAll, frontnessRatio, depthFromTwist, gatedBones } from "./lib/foreshorten.mjs";
 import { MP, buildRig, detectYSign, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { cycleSpread, angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove, sampleTableAt } from "./lib/distill.mjs";
@@ -325,6 +325,10 @@ async function processView(vk, primary) {
   const yawFrames = frontal.map((_, i) =>
     ({ pelvis: fore.yaws.pelvis[i], chest: fore.yaws.chest[i] }));
   const footYawOf = (i, rigSide) => twistFrames[i][`ankle${rigSide}`] ?? 0;
+  // depth (17.5): THE out-of-plane channel — signed twist normalized to
+  // [−1, 1]; replaces twist in the tables (one quantity, one channel)
+  const depthFrames = twistFrames.map((f) =>
+    Object.fromEntries(Object.entries(f).map(([nm, v]) => [nm, depthFromTwist(v)])));
   // world-derived twist — EXPLORER COMPARISON ONLY (acceptance plot)
   const twistWorldFrames = hasWorld
     ? worldN.map((f) => boneTwists(deYaw3(f, 0), rigV, mirror)) : null;
@@ -334,31 +338,24 @@ async function processView(vk, primary) {
   const footRef = natural === "front"
     ? { ankleL: cal.rests.ankleL, ankleR: cal.rests.ankleR } : null;
   if (footRef) console.log(`[mocap] front-view foot reference (dancer's standing foot, rad): ankleL ${footRef.ankleL.toFixed(2)} · ankleR ${footRef.ankleR.toFixed(2)}`);
-  const thetaFrames = frontal.map((f) => retargetFrame(f, rigV, mirror, view, footRef));
+  // degenerate in-plane (17.5 T1.3): a bone whose projection collapsed below
+  // the gate has no measurable 2D angle — retarget it to REST (no hold);
+  // its motion is carried by depth. Every bone, not just feet.
+  const FOOT_GATE = +opt("foot-gate", 0.35);
+  const gated = gatedBones(frontal, rigV.defs(mirror), fore.restLens, FOOT_GATE, S);
+  const thetaFrames = frontal.map((f, i) => retargetFrame(f, rigV, mirror, view, footRef, gated[i]));
 
   // foot-length gating (16.2 item 1; 18.1 made 2D-only): where the
   // projected heel→toe length collapses vs the MEASURED rest length (the
   // foot pointing at the camera), the 2D ankle angle is atan2 of noise —
   // hold the last valid sample. (The old ratio divided image-space by
   // metric-3D — meaningless once the projection went image-based.)
-  const FOOT_GATE = +opt("foot-gate", 0.35);
   {
+    // gate report (the gating itself happened in retargetFrame above)
     const gateLog = {};
-    var gateMasks = {};                       // 18.2 overlays: per-frame gate
-    for (const rigSide of ["L", "R"]) {
-      const p = mirror ? (rigSide === "L" ? "R" : "L") : rigSide;
-      const restLen = fore.restLens[`ankle${rigSide}`] || 1;
-      const mask = frontal.map((f2) => {
-        const h2 = f2[MP[`heel${p}`]], t2 = f2[MP[`toe${p}`]];
-        return Math.hypot(t2[0] - h2[0], t2[1] - h2[1]) / restLen < FOOT_GATE;
-      });
-      const series = thetaFrames.map((f2) => f2[`ankle${rigSide}`]);
-      const held = holdWhere(series, mask);
-      thetaFrames.forEach((f2, i) => { f2[`ankle${rigSide}`] = series[i]; });
-      gateLog[`ankle${rigSide}`] = held;
-      gateMasks[`ankle${rigSide}`] = mask.map(Number);
-    }
-    console.log(`[mocap] foot gate (<${FOOT_GATE}): held ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
+    for (const g of gated) for (const nm of g) gateLog[nm] = (gateLog[nm] ?? 0) + 1;
+    var gateMasks = Object.fromEntries(["ankleL", "ankleR"].map((nm) => [nm, gated.map((g) => (g.has(nm) ? 1 : 0))]));
+    console.log(`[mocap] foreshortening gate (<${FOOT_GATE} of rest length → in-plane REST, motion in depth): ${JSON.stringify(gateLog)} of ${thetaFrames.length} frames`);
   }
 
   // (the 2026-09-20 ankle re-centering is gone: measured-rest calibration
@@ -392,7 +389,7 @@ async function processView(vk, primary) {
   // Reported whole-window + per-third (constant vs drifting).
   {
     const rawFrontal = flipF(rawImgIso);
-    const rawTheta = rawFrontal.map((f) => retargetFrame(f, rigV, mirror, view, footRef));
+    const rawTheta = rawFrontal.map((f, i) => retargetFrame(f, rigV, mirror, view, footRef, gated[i]));
     rawThetaX = rawTheta;
     const fps = raw.meta.fps;
     const xlag = (i0, i1) => {
@@ -463,7 +460,7 @@ async function processView(vk, primary) {
   for (const nm of ARTICULATED) channels[`th:${nm}`] = uni(thetaFrames.map((f) => f[nm] ?? 0));
   // twist channels ride the same averaging (17 B1) — distill emits them
   // as per-key twist where the bone meaningfully leaves the plane
-  for (const nm of ARTICULATED) channels[`tw:${nm}`] = uni(twistFrames.map((f) => f[nm] ?? 0));
+  for (const nm of ARTICULATED) channels[`dp:${nm}`] = uni(depthFrames.map((f) => f[nm] ?? 0));
   channels["yw:pelvis"] = uni(yawFrames.map((f) => f.pelvis));
   channels["yw:chest"] = uni(yawFrames.map((f) => f.chest));
   channels.pelvisU = uni(pelvisU);
@@ -595,8 +592,8 @@ async function processView(vk, primary) {
   // ── stage 7: distill to the standard table ────────────────────────────────
   const thetasAvg = {};
   for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
-  const twistAvg = {};
-  for (const nm of ARTICULATED) twistAvg[nm] = mean[`tw:${nm}`];
+  const depthAvg = {};
+  for (const nm of ARTICULATED) depthAvg[nm] = mean[`dp:${nm}`];
   const yawAvg = { pelvis: mean["yw:pelvis"], chest: mean["yw:chest"] };
   const pelvisAvg = mean.pelvisU;
   const pelvisMean = pelvisAvg.reduce((a, b) => a + b, 0) / BINS;
@@ -625,7 +622,7 @@ async function processView(vk, primary) {
   }
   const table = distillMove({
     thetas: thetasAvg,
-    twists: twistAvg,
+    depths: depthAvg,
     yaws: yawAvg,
     pelvisU: pelvisAvg,
     footY: { L: fkFY.L, R: fkFY.R },
@@ -672,7 +669,7 @@ async function processView(vk, primary) {
       thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
       pelvisU: +pelvisU[i].toFixed(4),
       footYaw: { L: +footYawOf(i, "L").toFixed(4), R: +footYawOf(i, "R").toFixed(4) },
-      twist: Object.fromEntries(Object.entries(twistFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])),
+      depth: Object.fromEntries(Object.entries(depthFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])),
       yaw2d: { pelvis: +yawFrames[i].pelvis.toFixed(4), chest: +yawFrames[i].chest.toFixed(4) },
       ...(twistWorldFrames ? { twistWorld: Object.fromEntries(Object.entries(twistWorldFrames[i]).map(([nm, v]) => [nm, +v.toFixed(4)])) } : {}),
     })),
@@ -712,7 +709,7 @@ async function processView(vk, primary) {
   if (reinterpret) {
     moveOut.reinterpreted = `from-${natural}`;
     moveOut.keys = reinterpretKeys(moveOut.keys);
-    console.log(`[mocap] reinterpreted table: ${moveOut.keys.reduce((a2, k) => a2 + Object.keys(k.joints).length, 0)} twist keys, rot channels empty by design`);
+    console.log(`[mocap] reinterpreted table: ${moveOut.keys.reduce((a2, k) => a2 + Object.keys(k.joints).length, 0)} depth keys, rot channels empty by design`);
   }
   moveOut.provenance = { clip: path.basename(video), clipSha: clipHash, window: [winA, winB],
                          mirror, cyclesKept: kept.length, cyclesDropped: dropped.length,
@@ -888,7 +885,7 @@ function viewDecision(frontRatio, vk) {
   return { natural, reinterpret: vk !== natural };
 }
 
-// stage-8 reinterpretation: rot keys become twist keys (clamped ±2); joints
+// stage-8 reinterpretation: rot keys become depth keys (17.5: sign·(1−cos rot)); joints
 // left with only in-plane channels (dx/dy) drop; travel (natural-plane) zeroes;
 // contacts/ease pass through untouched.
 function reinterpretKeys(keys) {
@@ -896,8 +893,8 @@ function reinterpretKeys(keys) {
     ...k,
     travel: 0,
     joints: Object.fromEntries(Object.entries(k.joints).flatMap(([nm, ch]) => {
-      const tw = ch.rot != null ? Math.max(-2, Math.min(2, ch.rot)) : null;
-      return tw != null && Math.abs(tw) > 0.02 ? [[nm, { twist: +tw.toFixed(3) }]] : [];
+      const d = ch.rot != null ? depthFromTwist(ch.rot) : null;     // 17.5: one channel
+      return d != null && Math.abs(d) > 0.005 ? [[nm, { depth: +d.toFixed(4) }]] : [];
     })),
   }));
 }
@@ -1134,6 +1131,50 @@ function selfTest() {
       if (devK.some((d) => Math.abs(Math.abs(d) - 0.8) > 1e-6)) fails.push("front side kick must reach its full 0.8 foot deviation");
       if (Math.abs(thK.ankleL) > lim || Math.abs(thK.ankleR) > lim) fails.push("front side kick ankle theta exceeds the ±1.0 limit");
     }
+    // SOLE TO CAMERA (17.5 T1.3): a front-view foot pointing straight at
+    // the camera projects to a few pixels — its in-plane angle is noise.
+    // It must retarget to ankle in-plane 0 (the rig's rest foot) and carry
+    // the motion as depth ≈ +1 (toe scored higher = toward the camera).
+    {
+      const base = (sole) => {
+        const f = [];
+        for (const [s, x, dir] of [["L", 0.45, -1], ["R", 0.55, 1]]) {
+          f[MP[`hip${s}`]] = [x, 0.5]; f[MP[`knee${s}`]] = [x, 0.75]; f[MP[`ankle${s}`]] = [x, 1.0];
+          f[MP[`heel${s}`]] = [x, 1.02];
+          const len = (sole && s === "R") ? 0.004 : 0.09;              // R foot thrown at the camera
+          f[MP[`toe${s}`]] = [x + dir * len * 0.95, 1.02 + len * 0.3];
+        }
+        for (const [s, x] of [["L", 0.4], ["R", 0.6]]) {
+          f[MP[`shoulder${s}`]] = [x, 0.2]; f[MP[`elbow${s}`]] = [x, 0.33]; f[MP[`wrist${s}`]] = [x, 0.45];
+        }
+        f[MP.earL] = [0.47, 0.08]; f[MP.earR] = [0.53, 0.08]; f[MP.nose] = [0.5, 0.1];
+        return f;
+      };
+      const frames = [...Array.from({ length: 12 }, () => base(false)), base(true), base(true)];
+      const scoresT = frames.map((_, i) => {
+        const sc = new Array(21).fill(0.9);
+        if (i >= 12) { sc[MP.toeR] = 0.95; sc[MP.heelR] = 0.6; }       // toe nearer → toward (+)
+        return sc;
+      });
+      const masks = calibMasks(frames);
+      const defs = rg.defs(false);
+      const maskFor = () => masks.global.map(() => true);
+      const fore = foreshortenAll(frames, scoresT, defs, maskFor, MP);
+      const gatedT = gatedBones(frames, defs, fore.restLens, 0.35, MP);
+      const cal = measureRest(frames.slice(0, 12), rg, false, calibMasks(frames.slice(0, 12)));
+      const fr = { ankleL: cal.rests.ankleL, ankleR: cal.rests.ankleR };
+      const th = retargetFrame(frames[13], rg, false, null, fr, gatedT[13]);
+      // rendered foot vs the rig's rest foot (in-plane deviation)
+      const pose = fkPose(rg, th);
+      const r0 = Math.atan2(rg.joints.footR.y - rg.joints.ankleR.y, rg.joints.footR.x - rg.joints.ankleR.x);
+      const r1 = Math.atan2(pose.footR[1] - pose.ankleR[1], pose.footR[0] - pose.ankleR[0]);
+      const inPlane = Math.atan2(Math.sin(r1 - r0), Math.cos(r1 - r0));
+      const dep = depthFromTwist(fore.twists.ankleR[13]);
+      console.log(`[self-test] sole to camera: gated ${gatedT[13].has("ankleR")} · ankle in-plane ${inPlane.toFixed(4)} rad (want 0) · depth ${dep.toFixed(3)} (want ≈ +1)`);
+      if (!gatedT[13].has("ankleR")) fails.push("sole-to-camera foot not gated");
+      if (Math.abs(inPlane) > 1e-6) fails.push(`sole-to-camera ankle in-plane ${inPlane.toFixed(3)} ≠ 0`);
+      if (dep < 0.9) fails.push(`sole-to-camera depth ${dep.toFixed(3)} not ≈ +1`);
+    }
     // HABITUAL POSE SURVIVES (2026-09-28 root cause): a clip whose MEAN pose
     // is arms-FORWARD must retarget to arms-forward — NOT to the rig's rest.
     // (measured-rest calibration subtracted exactly this and collapsed the
@@ -1325,11 +1366,13 @@ function selfTest() {
     const out = dF.reinterpret ? reinterpretKeys(profileKeys) : profileKeys;
     const leak = out.some((k) => Object.values(k.joints).some(
       (ch) => ch.rot != null || ch.dx != null || ch.dy != null));
-    const twKnee = out[1].joints.kneeL?.twist ?? 0;
-    const ok = dF.reinterpret && !leak && Math.abs(twKnee - lift) < 1e-6 && out[1].travel === 0 &&
-               out[1].contacts.L === 0 && !("kneeL" in out[0].joints);
-    console.log(`[self-test] reinterpret front-from-profile: kneeL lift ${lift} → twist ${twKnee}, in-plane leak ${leak} (want twist ${lift}, no leak; fore-twist ${foreTwist} dropped, sign-ambiguous cross-plane)`);
-    if (!ok) fails.push("reinterpretation must route sagittal deviations to twist, zero in-plane");
+    const dKnee = out[1].joints.kneeL?.depth ?? 0;
+    const wantD = depthFromTwist(lift);               // 17.5: one channel — depth
+    const backAngle = Math.acos(1 - Math.abs(dKnee)); // what the engine recovers
+    const ok = dF.reinterpret && !leak && Math.abs(dKnee - wantD) < 1e-4 && Math.abs(backAngle - lift) < 1e-3 &&
+               out[1].travel === 0 && out[1].contacts.L === 0 && !("kneeL" in out[0].joints);
+    console.log(`[self-test] reinterpret front-from-profile: kneeL lift ${lift} → depth ${dKnee} (engine recovers ${backAngle.toFixed(3)} rad), in-plane leak ${leak}`);
+    if (!ok) fails.push("reinterpretation must route sagittal deviations to depth (round-trip to the angle), zero in-plane");
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);
   console.log(`VERIFY:${fails.length ? "FAIL" : "PASS"} mocap-self-test`);

@@ -224,7 +224,10 @@ export function sideSigns(rig, view) {
 // parked every front ankle against its ±1.0 limit (tstep, basic_kick). For
 // feet the deviation is taken from the dancer's standing foot and applied
 // onto the rig's rest foot; everything else stays gravity-referenced.
-export function retargetFrame(frame2d, rig, mirror, view = null, footRef = null) {
+// gated (17.5): Set of def names whose projection collapsed this frame —
+// their in-plane deviation is REST (acc 0, the rig's rest angle; no
+// last-valid hold); the motion they carry lives in the depth channel.
+export function retargetFrame(frame2d, rig, mirror, view = null, footRef = null, gated = null) {
   const thetas = {}, acc = {};
   const sign = sideSigns(rig, view);
   for (const [name, parent, a, b, restAngle] of rig.defs(mirror)) {
@@ -232,7 +235,7 @@ export function retargetFrame(frame2d, rig, mirror, view = null, footRef = null)
     // ABSOLUTE retarget: reference is the rig's own rest angle — habitual
     // pose transfers; only the rig-vs-human skeleton difference is removed
     const ref = (footRef && /^ankle/.test(name) && footRef[name] != null) ? footRef[name] : restAngle;
-    const accHere = sign(name) * wrap(obs - ref);
+    const accHere = gated?.has(name) ? 0 : sign(name) * wrap(obs - ref);
     acc[name] = accHere;
     thetas[name] = wrap(accHere - (parent ? acc[parent] : 0));
   }

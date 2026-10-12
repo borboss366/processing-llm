@@ -9,52 +9,52 @@
       "joints": {
         "chest": {
           "rot": 0.112,
-          "twist": 0.063,
+          "depth": 0.027,
           "yaw": 0.6
         },
         "neck": {
           "rot": 0.266,
-          "twist": 0.089
+          "depth": 0.0422
         },
         "shoulderL": {
           "rot": 0.077,
-          "twist": 0.006
+          "depth": 0.0209
         },
         "elbowL": {
           "rot": -1.595,
-          "twist": 0.351
+          "depth": 0.1869
         },
         "shoulderR": {
           "rot": 0.406,
-          "twist": 0.054
+          "depth": 0.0992
         },
         "elbowR": {
           "rot": -1.652,
-          "twist": -0.084
+          "depth": 0.0261
         },
         "hipL": {
           "rot": -0.522,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.749,
-          "twist": -0.18
+          "depth": 0
         },
         "ankleL": {
           "rot": -0.363,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": 0.215,
-          "twist": -0.063
+          "depth": 0.0702
         },
         "kneeR": {
           "rot": 0.349,
-          "twist": 0.103
+          "depth": 0.0481
         },
         "ankleR": {
           "rot": -0.601,
-          "twist": -0.001
+          "depth": 0.0304
         },
         "pelvis": {
           "yaw": 0.381,
@@ -70,52 +70,52 @@
       "joints": {
         "chest": {
           "rot": 0.077,
-          "twist": 0.165,
+          "depth": 0.0557,
           "yaw": 0.6
         },
         "neck": {
           "rot": 0.242,
-          "twist": -0.131
+          "depth": 0.0045
         },
         "shoulderL": {
           "rot": -0.069,
-          "twist": -0.011
+          "depth": 0.0175
         },
         "elbowL": {
           "rot": -1.652,
-          "twist": 0.382
+          "depth": 0.1902
         },
         "shoulderR": {
           "rot": 0.19,
-          "twist": 0.124
+          "depth": 0.1195
         },
         "elbowR": {
           "rot": -1.825,
-          "twist": -0.045
+          "depth": 0.0521
         },
         "hipL": {
           "rot": -0.509,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.748,
-          "twist": -0.18
+          "depth": 0
         },
         "ankleL": {
           "rot": -0.364,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": 0.198,
-          "twist": -0.104
+          "depth": 0.056
         },
         "kneeR": {
           "rot": 0.436,
-          "twist": 0.069
+          "depth": 0.0379
         },
         "ankleR": {
           "rot": -0.538,
-          "twist": -0.021
+          "depth": 0.0258
         },
         "pelvis": {
           "yaw": 0.6
@@ -130,52 +130,52 @@
       "joints": {
         "chest": {
           "rot": 0.055,
-          "twist": 0.115,
+          "depth": 0.0406,
           "yaw": 0.6
         },
         "neck": {
           "rot": 0.178,
-          "twist": -0.061
+          "depth": 0.0094
         },
         "shoulderL": {
           "rot": -0.152,
-          "twist": 0.106
+          "depth": 0.0455
         },
         "elbowL": {
           "rot": -1.851,
-          "twist": 0.323
+          "depth": 0.1547
         },
         "shoulderR": {
           "rot": 0.02,
-          "twist": 0.019
+          "depth": 0.0798
         },
         "elbowR": {
           "rot": -2.041,
-          "twist": -0.139
+          "depth": -0.0089
         },
         "hipL": {
           "rot": -0.423,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.608,
-          "twist": -0.179
+          "depth": 0.0001
         },
         "ankleL": {
           "rot": -0.312,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": 0.221,
-          "twist": -0.099
+          "depth": 0.0577
         },
         "kneeR": {
           "rot": 0.424,
-          "twist": 0.178
+          "depth": 0.0734
         },
         "ankleR": {
           "rot": -0.388,
-          "twist": 0.033
+          "depth": 0.0394
         },
         "pelvis": {
           "yaw": 0.6
@@ -193,52 +193,52 @@
       "joints": {
         "chest": {
           "rot": 0.029,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0.6
         },
         "neck": {
           "rot": 0.229,
-          "twist": 0.111
+          "depth": 0.0485
         },
         "shoulderL": {
           "rot": -0.134,
-          "twist": 0.174
+          "depth": 0.0686
         },
         "elbowL": {
           "rot": -2.004,
-          "twist": 0.308
+          "depth": 0.1486
         },
         "shoulderR": {
           "rot": 0.134,
-          "twist": 0.097
+          "depth": 0.1082
         },
         "elbowR": {
           "rot": -2.23,
-          "twist": -0.322
+          "depth": -0.1176
         },
         "hipL": {
           "rot": -0.16,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.134,
-          "twist": 0.016
+          "depth": 0.0191
         },
         "ankleL": {
           "rot": -0.158,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": -0.03,
-          "twist": 0.107
+          "depth": 0.1487
         },
         "kneeR": {
           "rot": 0.774,
-          "twist": 0.174
+          "depth": 0.0724
         },
         "ankleR": {
           "rot": -0.218,
-          "twist": 0.062
+          "depth": 0.0478
         },
         "pelvis": {
           "yaw": 0.6
@@ -256,52 +256,52 @@
       "joints": {
         "chest": {
           "rot": -0.028,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0.222
         },
         "neck": {
           "rot": 0.324,
-          "twist": -0.071
+          "depth": 0.016
         },
         "shoulderL": {
           "rot": -0.034,
-          "twist": 0.174
+          "depth": 0.0682
         },
         "elbowL": {
           "rot": -1.758,
-          "twist": 0.302
+          "depth": 0.1443
         },
         "shoulderR": {
           "rot": 0.296,
-          "twist": 0.163
+          "depth": 0.1415
         },
         "elbowR": {
           "rot": -2.087,
-          "twist": -0.159
+          "depth": -0.0256
         },
         "hipL": {
           "rot": -0.032,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.242,
-          "twist": 0.142
+          "depth": 0.0525
         },
         "ankleL": {
           "rot": -0.308,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": -0.785,
-          "twist": 0.313
+          "depth": 0.2702
         },
         "kneeR": {
           "rot": 1.575,
-          "twist": -0.078
+          "depth": 0.0166
         },
         "ankleR": {
           "rot": -0.277,
-          "twist": 0.335
+          "depth": 0.1662
         },
         "pelvis": {
           "yaw": 0
@@ -318,52 +318,52 @@
       "joints": {
         "chest": {
           "rot": -0.089,
-          "twist": 0.01,
+          "depth": 0.0164,
           "yaw": 0
         },
         "neck": {
           "rot": 0.425,
-          "twist": -0.198
+          "depth": 0
         },
         "shoulderL": {
           "rot": 0.171,
-          "twist": -0.092
+          "depth": 0.0111
         },
         "elbowL": {
           "rot": -0.774,
-          "twist": -0.154
+          "depth": 0.0075
         },
         "shoulderR": {
           "rot": 0.153,
-          "twist": -0.018
+          "depth": 0.0627
         },
         "elbowR": {
           "rot": -0.993,
-          "twist": -0.134
+          "depth": -0.006
         },
         "hipL": {
           "rot": -0.066,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.334,
-          "twist": 0.156
+          "depth": 0.0629
         },
         "ankleL": {
           "rot": -0.365,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": -0.858,
-          "twist": 0.338
+          "depth": 0.2877
         },
         "kneeR": {
           "rot": 1.579,
-          "twist": -0.053
+          "depth": 0.0237
         },
         "ankleR": {
           "rot": -0.258,
-          "twist": 0.219
+          "depth": 0.1146
         },
         "pelvis": {
           "yaw": 0,
@@ -381,52 +381,52 @@
       "joints": {
         "chest": {
           "rot": -0.035,
-          "twist": 0.009,
+          "depth": 0.0162,
           "yaw": 0
         },
         "neck": {
           "rot": 0.43,
-          "twist": -0.198
+          "depth": 0
         },
         "shoulderL": {
           "rot": 0.389,
-          "twist": -0.197
+          "depth": 0
         },
         "elbowL": {
           "rot": -0.245,
-          "twist": -0.149
+          "depth": 0.0084
         },
         "shoulderR": {
           "rot": 0.183,
-          "twist": -0.211
+          "depth": 0.0134
         },
         "elbowR": {
           "rot": -0.802,
-          "twist": -0.018
+          "depth": 0.0509
         },
         "hipL": {
           "rot": -0.1,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.335,
-          "twist": 0.235
+          "depth": 0.0854
         },
         "ankleL": {
           "rot": -0.355,
-          "twist": -0.019
+          "depth": 0.0089
         },
         "hipR": {
           "rot": -0.843,
-          "twist": 0.39
+          "depth": 0.3248
         },
         "kneeR": {
           "rot": 1.504,
-          "twist": 0.033
+          "depth": 0.0297
         },
         "ankleR": {
           "rot": -0.196,
-          "twist": 0.199
+          "depth": 0.1047
         },
         "pelvis": {
           "yaw": 0
@@ -443,52 +443,52 @@
       "joints": {
         "chest": {
           "rot": 0.067,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0
         },
         "neck": {
           "rot": 0.391,
-          "twist": -0.198
+          "depth": 0
         },
         "shoulderL": {
           "rot": 0.724,
-          "twist": 0.063
+          "depth": 0.0349
         },
         "elbowL": {
           "rot": -0.259,
-          "twist": -0.164
+          "depth": 0.0059
         },
         "shoulderR": {
           "rot": 0.304,
-          "twist": -0.071
+          "depth": 0.0452
         },
         "elbowR": {
           "rot": -0.944,
-          "twist": -0.108
+          "depth": 0.0108
         },
         "hipL": {
           "rot": 0.219,
-          "twist": -0.027
+          "depth": 0.0099
         },
         "kneeL": {
           "rot": 0.14,
-          "twist": 0.211
+          "depth": 0.0758
         },
         "ankleL": {
           "rot": -0.379,
-          "twist": 0.228
+          "depth": 0.0581
         },
         "hipR": {
           "rot": -0.373,
-          "twist": 0.245
+          "depth": 0.226
         },
         "kneeR": {
           "rot": 0.613,
-          "twist": -0.03
+          "depth": 0.0157
         },
         "ankleR": {
           "rot": -0.034,
-          "twist": 0.054
+          "depth": 0.0454
         },
         "pelvis": {
           "yaw": 0,
@@ -506,52 +506,52 @@
       "joints": {
         "chest": {
           "rot": 0.038,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0
         },
         "neck": {
           "rot": 0.388,
-          "twist": -0.198
+          "depth": 0
         },
         "shoulderL": {
           "rot": 0.69,
-          "twist": 0.079
+          "depth": 0.0398
         },
         "elbowL": {
           "rot": -0.182,
-          "twist": -0.24
+          "depth": 0
         },
         "shoulderR": {
           "rot": 0.258,
-          "twist": -0.025
+          "depth": 0.0593
         },
         "elbowR": {
           "rot": -1.057,
-          "twist": -0.191
+          "depth": -0.0408
         },
         "hipL": {
           "rot": 0.329,
-          "twist": 0.196
+          "depth": 0.0519
         },
         "kneeL": {
           "rot": 0.311,
-          "twist": 0.125
+          "depth": 0.0486
         },
         "ankleL": {
           "rot": -0.485,
-          "twist": 0.187
+          "depth": 0.0449
         },
         "hipR": {
           "rot": -0.304,
-          "twist": 0.222
+          "depth": 0.2112
         },
         "kneeR": {
           "rot": 0.578,
-          "twist": 0.044
+          "depth": 0.0315
         },
         "ankleR": {
           "rot": -0.243,
-          "twist": 0.012
+          "depth": 0.034
         },
         "pelvis": {
           "yaw": 0
@@ -569,52 +569,52 @@
       "joints": {
         "chest": {
           "rot": -0.012,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0
         },
         "neck": {
           "rot": 0.437,
-          "twist": -0.036
+          "depth": 0.0131
         },
         "shoulderL": {
           "rot": 0.377,
-          "twist": -0.197
+          "depth": 0
         },
         "elbowL": {
           "rot": -0.228,
-          "twist": 0.045
+          "depth": 0.0404
         },
         "shoulderR": {
           "rot": 0.136,
-          "twist": -0.157
+          "depth": 0.0226
         },
         "elbowR": {
           "rot": -1.161,
-          "twist": 0.441
+          "depth": 0.1559
         },
         "hipL": {
           "rot": 0.33,
-          "twist": 0.242
+          "depth": 0.0677
         },
         "kneeL": {
           "rot": 0.236,
-          "twist": 0.056
+          "depth": 0.0278
         },
         "ankleL": {
           "rot": -0.554,
-          "twist": 0.103
+          "depth": 0.0232
         },
         "hipR": {
           "rot": -0.254,
-          "twist": 0.208
+          "depth": 0.2028
         },
         "kneeR": {
           "rot": 0.559,
-          "twist": 0.1
+          "depth": 0.0468
         },
         "ankleR": {
           "rot": -0.303,
-          "twist": -0.035
+          "depth": 0.0227
         },
         "pelvis": {
           "yaw": 0,
@@ -633,52 +633,52 @@
       "joints": {
         "chest": {
           "rot": -0.022,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0
         },
         "neck": {
           "rot": 0.414,
-          "twist": 0.071
+          "depth": 0.036
         },
         "shoulderL": {
           "rot": 0.279,
-          "twist": 0.012
+          "depth": 0.0218
         },
         "elbowL": {
           "rot": -0.653,
-          "twist": -0.003
+          "depth": 0.0281
         },
         "shoulderR": {
           "rot": 0.032,
-          "twist": -0.123
+          "depth": 0.0304
         },
         "elbowR": {
           "rot": -1.33,
-          "twist": 0.498
+          "depth": 0.1876
         },
         "hipL": {
           "rot": 0.311,
-          "twist": 0.193
+          "depth": 0.0509
         },
         "kneeL": {
           "rot": 0.307,
-          "twist": -0.007
+          "depth": 0.0149
         },
         "ankleL": {
           "rot": -0.552,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": -0.225,
-          "twist": 0.178
+          "depth": 0.1849
         },
         "kneeR": {
           "rot": 0.544,
-          "twist": 0.127
+          "depth": 0.0552
         },
         "ankleR": {
           "rot": -0.32,
-          "twist": -0.1
+          "depth": 0.011
         },
         "pelvis": {
           "yaw": 0,
@@ -697,52 +697,52 @@
       "joints": {
         "chest": {
           "rot": -0.024,
-          "twist": -0.17,
+          "depth": 0,
           "yaw": 0
         },
         "neck": {
           "rot": 0.419,
-          "twist": 0.183
+          "depth": 0.0716
         },
         "shoulderL": {
           "rot": 0.25,
-          "twist": 0.238
+          "depth": 0.0933
         },
         "elbowL": {
           "rot": -1.379,
-          "twist": -0.241
+          "depth": 0
         },
         "shoulderR": {
           "rot": -0.082,
-          "twist": 0.139
+          "depth": 0.1269
         },
         "elbowR": {
           "rot": -1.59,
-          "twist": 0.535
+          "depth": 0.2097
         },
         "hipL": {
           "rot": 0.06,
-          "twist": 0.166
+          "depth": 0.0428
         },
         "kneeL": {
           "rot": 0.759,
-          "twist": 0.074
+          "depth": 0.0322
         },
         "ankleL": {
           "rot": -0.436,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": -0.206,
-          "twist": 0.087
+          "depth": 0.1354
         },
         "kneeR": {
           "rot": 0.527,
-          "twist": 0.106
+          "depth": 0.0488
         },
         "ankleR": {
           "rot": -0.331,
-          "twist": -0.107
+          "depth": 0.01
         },
         "pelvis": {
           "yaw": 0,
@@ -761,52 +761,52 @@
       "joints": {
         "chest": {
           "rot": 0.046,
-          "twist": 0.166,
+          "depth": 0.0559,
           "yaw": 0
         },
         "neck": {
           "rot": 0.423,
-          "twist": 0.097
+          "depth": 0.0433
         },
         "shoulderL": {
           "rot": 0.29,
-          "twist": 0.298
+          "depth": 0.1203
         },
         "elbowL": {
           "rot": -1.618,
-          "twist": -0.241
+          "depth": 0
         },
         "shoulderR": {
           "rot": 0.011,
-          "twist": 0.204
+          "depth": 0.1604
         },
         "elbowR": {
           "rot": -1.697,
-          "twist": 0.601
+          "depth": 0.2522
         },
         "hipL": {
           "rot": -0.535,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 1.357,
-          "twist": 0.042
+          "depth": 0.0246
         },
         "ankleL": {
           "rot": -0.311,
-          "twist": 0.01
+          "depth": 0.0076
         },
         "hipR": {
           "rot": -0.036,
-          "twist": -0.44
+          "depth": 0
         },
         "kneeR": {
           "rot": 0.08,
-          "twist": -0.207
+          "depth": 0
         },
         "ankleR": {
           "rot": -0.141,
-          "twist": -0.248
+          "depth": 0
         },
         "pelvis": {
           "yaw": 0.6
@@ -823,52 +823,52 @@
       "joints": {
         "chest": {
           "rot": 0.079,
-          "twist": 0.216,
+          "depth": 0.0734,
           "yaw": 0
         },
         "neck": {
           "rot": 0.37,
-          "twist": 0.103
+          "depth": 0.0449
         },
         "shoulderL": {
           "rot": 0.349,
-          "twist": 0.253
+          "depth": 0.0994
         },
         "elbowL": {
           "rot": -1.455,
-          "twist": -0.241
+          "depth": 0
         },
         "shoulderR": {
           "rot": 0.081,
-          "twist": 0.202
+          "depth": 0.1594
         },
         "elbowR": {
           "rot": -1.494,
-          "twist": 0.594
+          "depth": 0.2475
         },
         "hipL": {
           "rot": -0.8,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 1.523,
-          "twist": 0
+          "depth": 0.0162
         },
         "ankleL": {
           "rot": -0.34,
-          "twist": 0.091
+          "depth": 0.0207
         },
         "hipR": {
           "rot": 0.006,
-          "twist": -0.44
+          "depth": 0
         },
         "kneeR": {
           "rot": 0.049,
-          "twist": -0.207
+          "depth": 0
         },
         "ankleR": {
           "rot": -0.172,
-          "twist": -0.248
+          "depth": 0
         },
         "pelvis": {
           "yaw": 0.6
@@ -885,52 +885,52 @@
       "joints": {
         "chest": {
           "rot": 0.033,
-          "twist": 0.216,
+          "depth": 0.0734,
           "yaw": 0.516
         },
         "neck": {
           "rot": 0.352,
-          "twist": 0.105
+          "depth": 0.0455
         },
         "shoulderL": {
           "rot": 0.414,
-          "twist": 0.094
+          "depth": 0.042
         },
         "elbowL": {
           "rot": -0.983,
-          "twist": -0.24
+          "depth": 0
         },
         "shoulderR": {
           "rot": 0.118,
-          "twist": 0.01
+          "depth": 0.0712
         },
         "elbowR": {
           "rot": -1.102,
-          "twist": 0.529
+          "depth": 0.2059
         },
         "hipL": {
           "rot": -1.029,
-          "twist": 0.168
+          "depth": 0.0434
         },
         "kneeL": {
           "rot": 1.627,
-          "twist": -0.013
+          "depth": 0.0141
         },
         "ankleL": {
           "rot": -0.339,
-          "twist": -0.113
+          "depth": 0
         },
         "hipR": {
           "rot": -0.029,
-          "twist": -0.44
+          "depth": 0
         },
         "kneeR": {
           "rot": 0.237,
-          "twist": -0.207
+          "depth": 0
         },
         "ankleR": {
           "rot": -0.295,
-          "twist": -0.248
+          "depth": 0
         },
         "pelvis": {
           "yaw": 0.6
@@ -947,52 +947,52 @@
       "joints": {
         "chest": {
           "rot": -0.028,
-          "twist": 0.18,
+          "depth": 0.0607,
           "yaw": 0.6
         },
         "neck": {
           "rot": 0.437,
-          "twist": 0.2
+          "depth": 0.0781
         },
         "shoulderL": {
           "rot": 0.387,
-          "twist": -0.197
+          "depth": 0
         },
         "elbowL": {
           "rot": -0.344,
-          "twist": -0.241
+          "depth": 0
         },
         "shoulderR": {
           "rot": 0.088,
-          "twist": -0.37
+          "depth": 0
         },
         "elbowR": {
           "rot": -0.624,
-          "twist": 0.235
+          "depth": 0.0641
         },
         "hipL": {
           "rot": -0.96,
-          "twist": 0.186
+          "depth": 0.0488
         },
         "kneeL": {
           "rot": 1.488,
-          "twist": -0.18
+          "depth": 0
         },
         "ankleL": {
           "rot": -0.333,
-          "twist": 0.171
+          "depth": 0.0402
         },
         "hipR": {
           "rot": -0.035,
-          "twist": -0.44
+          "depth": 0
         },
         "kneeR": {
           "rot": 0.266,
-          "twist": -0.061
+          "depth": 0.0106
         },
         "ankleR": {
           "rot": -0.312,
-          "twist": -0.248
+          "depth": 0
         },
         "pelvis": {
           "yaw": 0.6
@@ -1009,52 +1009,52 @@
       "joints": {
         "chest": {
           "rot": 0.027,
-          "twist": -0.011,
+          "depth": 0.0125,
           "yaw": 0.369
         },
         "neck": {
           "rot": 0.47,
-          "twist": 0.107
+          "depth": 0.0463
         },
         "shoulderL": {
           "rot": 0.237,
-          "twist": -0.197
+          "depth": 0
         },
         "elbowL": {
           "rot": -0.515,
-          "twist": -0.241
+          "depth": 0
         },
         "shoulderR": {
           "rot": 0.433,
-          "twist": -0.001
+          "depth": 0.0673
         },
         "elbowR": {
           "rot": -1.286,
-          "twist": -0.126
+          "depth": -0.0001
         },
         "hipL": {
           "rot": -0.906,
-          "twist": 0.284
+          "depth": 0.0837
         },
         "kneeL": {
           "rot": 1.361,
-          "twist": -0.18
+          "depth": 0
         },
         "ankleL": {
           "rot": -0.208,
-          "twist": 0.062
+          "depth": 0.0152
         },
         "hipR": {
           "rot": -0.136,
-          "twist": -0.19
+          "depth": 0.0311
         },
         "kneeR": {
           "rot": 0.308,
-          "twist": 0.106
+          "depth": 0.0487
         },
         "ankleR": {
           "rot": -0.262,
-          "twist": -0.247
+          "depth": 0.0002
         },
         "pelvis": {
           "yaw": 0.251,
@@ -1072,52 +1072,52 @@
       "joints": {
         "chest": {
           "rot": 0.087,
-          "twist": -0.005,
+          "depth": 0.0135,
           "yaw": 0
         },
         "neck": {
           "rot": 0.458,
-          "twist": 0.099
+          "depth": 0.0438
         },
         "shoulderL": {
           "rot": 0.142,
-          "twist": -0.197
+          "depth": 0
         },
         "elbowL": {
           "rot": -0.679,
-          "twist": 0.015
+          "depth": 0.0325
         },
         "shoulderR": {
           "rot": 0.584,
-          "twist": 0.058
+          "depth": 0.0903
         },
         "elbowR": {
           "rot": -1.57,
-          "twist": -0.521
+          "depth": -0.0775
         },
         "hipL": {
           "rot": -0.726,
-          "twist": 0.124
+          "depth": 0.0316
         },
         "kneeL": {
           "rot": 1.003,
-          "twist": -0.18
+          "depth": 0
         },
         "ankleL": {
           "rot": -0.055,
-          "twist": 0.152
+          "depth": 0.0349
         },
         "hipR": {
           "rot": -0.05,
-          "twist": -0.21
+          "depth": 0.0264
         },
         "kneeR": {
           "rot": 0.149,
-          "twist": -0.013
+          "depth": 0.0188
         },
         "ankleR": {
           "rot": -0.249,
-          "twist": 0.065
+          "depth": 0.0488
         },
         "pelvis": {
           "yaw": 0,
@@ -1135,52 +1135,52 @@
       "joints": {
         "chest": {
           "rot": 0.118,
-          "twist": 0.058,
+          "depth": 0.026,
           "yaw": 0
         },
         "neck": {
           "rot": 0.403,
-          "twist": 0.091
+          "depth": 0.0416
         },
         "shoulderL": {
           "rot": 0.083,
-          "twist": -0.042
+          "depth": 0.012
         },
         "elbowL": {
           "rot": -1.15,
-          "twist": 0.357
+          "depth": 0.1734
         },
         "shoulderR": {
           "rot": 0.621,
-          "twist": 0.222
+          "depth": 0.1703
         },
         "elbowR": {
           "rot": -1.861,
-          "twist": -0.743
+          "depth": -0.1849
         },
         "hipL": {
           "rot": -0.429,
-          "twist": -0.128
+          "depth": 0
         },
         "kneeL": {
           "rot": 0.533,
-          "twist": -0.18
+          "depth": 0
         },
         "ankleL": {
           "rot": -0.118,
-          "twist": 0.161
+          "depth": 0.0374
         },
         "hipR": {
           "rot": 0.094,
-          "twist": -0.178
+          "depth": 0.0342
         },
         "kneeR": {
           "rot": 0.219,
-          "twist": -0.06
+          "depth": 0.0108
         },
         "ankleR": {
           "rot": -0.405,
-          "twist": 0.132
+          "depth": 0.0714
         },
         "pelvis": {
           "yaw": 0,

@@ -913,6 +913,9 @@ function sampleMove(move, moveAcc) {
       // 17 B: small-angle depth inside a view — twist (per-bone axial,
       // ±1.2) and yaw (pelvis/chest body yaw, ±0.6), interpolated like rot
       twist: (A.twist ?? 0) + ((B.twist ?? 0) - (A.twist ?? 0)) * u,
+      // 17.5: depth ∈ [−1,1] — the captured out-of-plane channel (signed
+      // foreshortening); authored tables may still carry twist (an angle)
+      depth: (A.depth ?? 0) + ((B.depth ?? 0) - (A.depth ?? 0)) * u,
       yaw: (A.yaw ?? 0) + ((B.yaw ?? 0) - (A.yaw ?? 0)) * u,
     };
   }
@@ -1502,7 +1505,7 @@ export default {
         if (mvPose) {
           for (const nm of Object.keys(mvPose.joints)) {
             const tk = mvPose.joints[nm];
-            for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) if (tk[ch]) tk[ch] *= wIn;
+            for (const ch of ['dx', 'dy', 'rot', 'twist', 'depth', 'yaw']) if (tk[ch]) tk[ch] *= wIn;
           }
         }
         const prev = state.prevMove;
@@ -1512,8 +1515,8 @@ export default {
           mvPose.travel = (mvPose.travel ?? 0) * wIn + (prevPose.travel ?? 0) * (1 - wIn);
           for (const nm of Object.keys(prevPose.joints)) {
             const pk = prevPose.joints[nm];
-            const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, yaw: 0 });
-            for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) {
+            const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, depth: 0, yaw: 0 });
+            for (const ch of ['dx', 'dy', 'rot', 'twist', 'depth', 'yaw']) {
               if (pk[ch]) tk[ch] = (tk[ch] || 0) + pk[ch] * (1 - wIn);
             }
           }
@@ -1566,9 +1569,9 @@ export default {
     if (mvPose) {
       const mvS = (state.mvSpring ??= {});
       for (const nm of new Set([...Object.keys(mvS), ...Object.keys(mvPose.joints)])) {
-        const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, yaw: 0 });  // unkeyed → spring back to 0
+        const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, depth: 0, yaw: 0 });  // unkeyed → spring back to 0
         const sp = (mvS[nm] ??= {});
-        for (const ch of ['dx', 'dy', 'rot', 'twist', 'yaw']) {
+        for (const ch of ['dx', 'dy', 'rot', 'twist', 'depth', 'yaw']) {
           tk[ch] = springStep((sp[ch] ??= { x: 0, v: 0 }), tk[ch], FOLLOW_WN, dt);
         }
       }
@@ -1688,7 +1691,13 @@ export default {
       // ±2.0, not the brief's ±1.2: the promised elbow FLIP ("re-emerges
       // bent the other way") needs cos to cross zero at π/2 ≈ 1.571 —
       // the brief's own bound forbids its own example (deviation, reported)
-      J.twist = Math.max(-2.0, Math.min(2.0, (tk?.twist ?? 0) * accentK));
+      // depth → angle: the twist mechanics below (cos-bend, draw
+      // foreshorten, dim/fan) consume an angle; depth d recovers it as
+      // sign(d)·acos(1 − |d|) — exact inverse of the extractor's mapping
+      const dRaw = Math.max(-1, Math.min(1, tk?.depth ?? 0));
+      J.depth = dRaw;
+      const twFromDepth = dRaw ? Math.sign(dRaw) * Math.acos(1 - Math.abs(dRaw)) : 0;
+      J.twist = Math.max(-2.0, Math.min(2.0, ((tk?.twist ?? 0) + twFromDepth) * accentK));
       J.yawCh = (J.role === 'root' || J.role === 'rootMid')
         ? Math.max(-0.6, Math.min(0.6, (tk?.yaw ?? 0) + (Number(params.bodyYaw) || 0))) : 0;
       // cos-bend (B1): a twisted parent bone flips the child's APPARENT
