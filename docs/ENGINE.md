@@ -1,213 +1,367 @@
-# The engine, stage by stage (brief 19.2 Task 1)
+# The engine, stage by stage
 
-Plain-words version (no math, same stages): [ENGINE_PLAIN.md](ENGINE_PLAIN.md).
+This document describes the creature engine. The text follows ASD-STE100
+Simplified Technical English (STE): short sentences, one topic for each
+paragraph, active voice, and the same headings for each stage. Function
+names, parameters and formulas are technical names and technical data.
 
-**How to run this:** `npm run engine-report -- --move <name> --shape
-<shape> [--open]` — captures a live trace, prints the per-stage ladder
-(the rung that eats the radians, worst joint, clamps/yields) and the
-fidelity verdict, opens the engine explorer; `--help` for flags, and
-it prints the underlying engine-trace command.
+A version without formulas is in [ENGINE_PLAIN.md](ENGINE_PLAIN.md).
 
-Written for the owner, to be read WITH an engine explorer open
-(`reports/engine-<move>-<shape>.engine.explorer.html`, written by
-`tools/engine-trace.mjs`) or the puppet page's live Engine view. One
-page per stage in the 19.1 tap order. Everything lives in ONE file:
-`web/app/loaded-modules/creature.js` — line numbers are from the
-2026-10-03 revision and drift with edits; the section comments quoted
-here are stable search anchors. Return every sentence you cannot
-verify in the explorer — each becomes a revision.
+## How to use this document
 
-The one convention to hold in your head: the engine's FK rotates the
-bone ENTERING a joint by that joint's theta (`rot = P.accRot +
-J.theta`). Captured tables name rotations by the bone LEAVING the
-joint, so they are shifted one joint down each limb chain AT LOAD
-(`remapCapturedTable`, ~line 854) — hip→knee, knee→ankle, ankle→foot,
-shoulder→elbow, elbow→hand. Spine channels are distal-named in both
-conventions and pass through. This is the A7 knee bug's grave; the
-explorer reports everything in EXTRACTOR semantics (thigh = hip+knee
-slots summed) so you never juggle it while reading.
+1. Start the stack (`npm run server`, and `npm run dev` in `web/app`).
+2. Run `npm run engine-report -- --move <name> --shape <shape> --open`.
+3. Read each stage below with the engine explorer open.
+4. Compare each statement with the explorer view that the stage names.
+5. Write down each statement that the explorer does not show.
 
-## 1 · Table playback
+NOTE: The engine explorer is `reports/engine-<move>-<shape>.engine.explorer.html`.
+The puppet page has the same views as a live "Engine view".
 
-**In:** the table (`moves/<name>.json`, keys sorted by phase) + the
-move clock `moveAcc` (beats, driven by the beat grid; `phaseDebt`
-spreads clock snaps over ≥1 beat so acquisition can't step the pose).
-**Out:** `mvPose` — one joints{rot,dx,dy,twist,yaw} record + contacts
-set + travel for this instant.
-**Formula** (`sampleMove`, ~894): loop phase = moveAcc mod
-beatsPerLoop; find the key pair bracketing it; `u` eased by the
-SEGMENT's ease — `snap` completes in the first quarter (smoothstepped),
-`smooth` is a full smoothstep, `linear` is linear; channels lerp.
-**Failure we hit:** the one-slot convention shift above — 1.8 rad of
-knee swung the thigh and the leg drew straight (A7 FAIL, 2026-10-03).
-**Explorer:** s1 row IS this stage's output; the ladder's zero rung.
+NOTE: All engine code is in one file: `web/app/loaded-modules/creature.js`.
+This document gives function names and section comments as references.
+Line numbers change with each edit, so this document does not use them.
 
-## 2 · Blend / crossfade
+## The joint convention
 
-**In:** mvPose + the previous move's table during a switch.
-**Out:** one blended mvPose; `ov`/`vc` (overlay, verticalContent)
-crossfade on the same envelope.
-**Formula** (~1466): incoming channels × `wIn`, outgoing × `1−wIn`,
-`wIn` = smoothstep over XFADE_BEATS=4, phase-aligned to the bar wrap
-that fired the rotation. A separate POSITION blend (~1878, "pose
-blending") lerps joints from a snapshot over `blendBeats` when a move
-is forced mid-bar. Manual scrub completes both instantly (a frozen
-envelope would scale the scrubbed pose).
-**Failure we hit:** rhythm switched instantly under the old
-position-only blend (brief 14) — the pose was continuous but the BEAT
-pattern stepped.
-**Explorer:** s2 vs s1 on the ladder — ≈ 0.000 when settled; the
-filmstrip's violet band marks active windows.
+The engine FK turns the bone that goes INTO a joint by the theta of that
+joint: `rot = P.accRot + J.theta`. The capture pipeline names each
+rotation by the bone that goes OUT of a joint. Thus the two conventions
+differ by one joint on each limb chain.
 
-## 3 · Springs / follow — THE R2 RUNG
+The function `remapCapturedTable` moves each limb rotation of a captured
+table one joint down the chain when the table loads: hip→knee,
+knee→ankle, ankle→foot, shoulder→elbow, elbow→hand. Spine channels use
+the same name in the two conventions, so they do not move. The channels
+`dx`, `dy`, `twist`, `depth` and `yaw` do not move.
 
-**In:** every table channel. **Out:** the same channels, one
-critically-damped spring late.
-**Formula** (`springStep` ~946, applied ~1536): per channel,
-`a = wn²(target−x) − 2·wn·v`, default `moveSpringWn` 10 ≈ 100 ms
-response. Exists so `snap` keys can't land a one-frame velocity step
-(the spike metric's old top source).
-**Measured cost (19.1 ladder):** 0.355 rad RMS on the running man
-(worst elbowL 0.588), 0.235 on the t-step — the LARGEST engine rung
-by an order of magnitude. This is the "softness" that survives a
-perfect table.
-**Per table (2026-10-13):** header `followWn` sets the spring rate for
-that table; default by provenance — captured tables 60 (≈17 ms; they're
-already smoothed upstream), authored tables `moveSpringWn`. Fixed the
-captured-table softness: runningman s3 0.346 → 0.034 rad, spikes 0.
-**Knob:** `moveSpringWn` (puppet param, authored tables; halve to 5 to
-feel the lag double — watch the spike count).
-**Explorer:** the s3 ladder step; s3−s1 per joint in the heatmap.
+CAUTION: Do not add a limb rotation to a captured table by hand without
+this remap. If you do, the rotation turns the wrong bone. This was the
+cause of the A7 failure (2026-10-03): a 1.8 rad knee turned the thigh,
+and the leg was straight.
 
-## 4 · Liveness
+The explorer shows all values in the capture convention. For example,
+the thigh angle is the sum of the hip and knee slots.
 
-**In:** sprung channels + the procedural gait. **Out:** J.theta per
-joint: `dance = (gaitSin + tRot·accentK)·cos(parentTwist)`, then × vA.
-**Formula** (~1607–1700): per-joint amplitude wander vA (slow Perlin,
-20–60 s, ±varyAmp·5), phase wander on the gait sinusoid only,
-dominant-side ±8 %, downbeat accent + drop burst (accentK), spine/head
-lead-lag via a time-indexed buffer (spineLagMs/headLagMs; walk
-exempt). All UNDER the table, master-gated by `liveness`.
-**Measured cost:** +0.027 rad over s3 — pennies, by design.
-**Explorer:** s4−s3; wander is visible as slow breathing of the step.
+## Stage 1 · Table playback
 
-## 5 · Limits & signs
+**Function:** The stage reads the pose that the table gives for this
+instant.
 
-**In:** table rot per slot. **Out:** the same, clamped to the shape
-sidecar's `rotLimits` by chain family; ±symmetric.
-**Formula** (~1640): family = role (knee slot → 'knee' …), one slot
-PROXIMAL for remapped captured tables (the slot holds the
-next-proximal bone's value). Clamp hits are counted
-(`__creatureBench.clampHits`) and warned once per joint.
-**Failure class:** a clamp on a captured table is either a convention
-smell or a real anatomy-vs-engine finding — tstep's feet clamp 83/106
-frames (front-view heel→toe vs foot-splay rest; whitelisted in the
-table header, fix owned by the depth re-run). The knee bug would have
-been caught here had the fidelity row existed.
-**Explorer:** s5−s3 ladder (must be 0.000 outside the whitelist); red
-filmstrip band = clamp hits; `engine-fidelity` fails unwhitelisted.
+**Input:** The table (`moves/<name>.json`, keys in phase order). The move
+clock `moveAcc`, in beats, which the beat grid drives.
 
-## 6 · Stance lock / contacts / odometry
+**Output:** `mvPose`: one record of joint channels (`rot`, `dx`, `dy`,
+`twist`, `depth`, `yaw`), the set of feet in contact, and the travel.
 
-**In:** the FK'd pose + the segment's contacts set. **Out:** flagged
-feet held down; root travel.
-**Formula** (~1846): per ground tip, a critically damped lock weight
-`w` springs toward 1 when the segment lists the foot AND the table
-pose doesn't lift it > 0.025 u (the yield). CAPTURED tables: the lock
-only pulls the tip to the GROUND PLANE (y) — the chain is real data.
-Authored tables (no leg content) keep the old machinery: tip pinned at
-rest x/y, ankle heel-pivot about the toe (phi = the authored ankle
-rot — the t-step mechanism), knee at the hip↔ankle midpoint. Travel:
-`mvPose.travel × dPhase` glides world.x; walk owns its own odometry.
-**Failure we hit (twice):** image-space contacts planted the occluded
-foot through its whole swing (stance lock ate the lift, brief 17);
-then the authored-era rewrite straightened REAL captured legs (A7 —
-the running man's foot slides low while the knee bends, so the yield
-never fired and the midpoint knee erased 1.8 rad).
-**Explorer:** lock−s4 on the ladder (≤ 0.15 budget); filmstrip green
-= lock engaged, yellow = lift-yield; puppet readout shows live w per
-foot.
+**Rule (`sampleMove`):**
+- The loop phase is `moveAcc` modulo `beatsPerLoop`.
+- The stage finds the two keys on each side of the phase.
+- The `ease` of the first key sets the curve: `snap` completes in the
+  first quarter of the segment, `smooth` is a smoothstep, `linear` is
+  linear.
+- Each channel is a linear interpolation between the two keys with
+  this curve.
 
-## 7 · FK
+**Parameters:** `phaseDebt` spreads a sudden clock correction over one
+beat or more. Thus a clock correction does not make the pose jump.
 
-**In:** J.theta per joint. **Out:** joint positions (ax, ay).
-**Formula** (~1708): `rot = P.accRot + J.theta`; the parent→J offset
-(from the SHAPE's rest geometry) rotates by `rot`; `accRot` chains.
-True hierarchy — a hip theta carries the ankle through space. dx/dy
-add AFTER chaining (authoring guidance: rot on chained limbs).
-**Failure we hit:** the pre-13 "0.35-damped immediate-parent"
-inheritance left elbows pulling up without rotating.
-**Explorer:** the fkP skeleton panel; compare with lockP to see what
-the lock moved.
+**Known failure:** The joint-convention error above (A7, 2026-10-03).
 
-## 8 · Depth mapping
+**How to examine:** The row `s1` in the trace is the output of this
+stage. It is the reference for all other rungs of the ladder.
 
-**In:** twist/yaw channels (±2.0 / ±0.6, accent-scaled). **Out:**
-draw-time factors only — no physics.
-**Formula** (~1660–1760): child bend flips by `cos(parent.twist)`
-(the un-chicken mechanism: an arm raise passes through straight and
-re-emerges bent the other way); a twisted bone DRAWS shorter
-(`max(0.25, cos(twist))` on the child offset); per-limb dim ≤ 0.15
-and foot-fan splat widening from `|sin(twist)|`; pelvis/chest yaw
-cos-squeezes limb-root offsets + eye parallax.
-**Explorer:** depth.twistFx per frame in the trace; on stage the
-capture explorer's overlay 4 is the same channel upstream.
+## Stage 2 · Blend and crossfade
 
-**Depth cues (brief 17.5, 2026-10-13):** captured tables carry `depth`
-∈ [−1,1] per bone instead of twist. It drives four render-only cues with
-constants on the shape (`depthCues`) and one dial (`exaggerateDepth`):
-size (radius × max(0.8, 1+gain·depth)), draw length (× 1−|depth|),
-brightness (white/black wash in the colour field), and arm overlap
-(front/behind the torso at |depth| > 0.3, hysteresis 0.1). Depth 0 is
-exactly neutral at any dial.
+**Function:** The stage changes from one move to the next move without a
+jump.
 
-## 9 · Tissue
+**Input:** `mvPose` and, during a change, the table of the previous move.
 
-**In:** joint positions. **Out:** the node cloud following them.
-**Formula** (~2111): each joint hard-pins its ≤4 nearest same-part
-nodes (offsets rotate with accRot; paws pin everything in radius);
-everyone else is verlet + edge springs (3 iterations, stiffness
-param) + ground clamp; spine-bow nodes pull onto the pelvis/chest/
-neck quadratic (spineBow, 2026-09-28). Bone splats (~2475) lerp
-sprites along every bone so a limb can NEVER sever whatever the
-springs do.
-**Failure we hit:** wrist pinning forearm nodes dragged the chain
-(pin audit, 8.1); fists whipped off on springs (paw pins).
-**Explorer:** tissue summary in the trace; components metric (=1) in
-every harness.
+**Output:** One blended `mvPose`. The overlay `ov` and the vertical
+content `vc` also change on the same curve.
 
-## 10 · Density & goo
+**Rule (comment "rhythm crossfade"):**
+- The incoming channels are multiplied by `wIn`.
+- The outgoing channels are multiplied by `1 − wIn`.
+- `wIn` is a smoothstep over `XFADE_BEATS` = 4 beats.
+- The change starts on the bar that started the rotation.
+- A different blend (comment "pose blending") moves the joints from a
+  snapshot over `blendBeats`. It operates when a move is forced in the
+  middle of a bar.
+- In manual scrub, the two blends complete immediately.
 
-**In:** node + splat sprites accumulated per part-channel. **Out:**
-pixels.
-**Formula** (~2446): density accumulates per group (R = torso+head+
-legs, G/B = arms), UNION-BY-MAX across groups (no weld flash);
-shader thresholds at `gooThreshold` 0.18, shades by density gradient
-(normal from 4-tap), rim + specular + ambient pickup from the
-background; `silhouette` mode is the same field flat-filled; render
-modes goo/goo-bones/bones/silhouette/wire + onion ghosts (hotkeys
-m/o).
-**Failure we hit:** additive density weld-flash (26–39 % removed by
-union-by-max); readback mode flipping the accum canvas (9× frame
-cost — never getImageData the accum).
-**Explorer:** the render-mode strip (R4 is judged THERE); goo.d0 in
-the trace; limbDensity probe in `__creaturePerf`.
+**Known failure:** Brief 14: the old blend changed only the positions.
+The beat pattern of the new move started immediately, and the rhythm
+jumped.
 
----
+**How to examine:** The ladder rung `blend` is approximately 0.000 when
+no change is active. A violet band in the flag strip shows each active
+change.
 
-## The reading assignment (yours — brief 19.2 Task 2)
+## Stage 3 · Springs (rung R2)
 
-The three code stretches that ARE the pose path, each beside its page
-and its explorer tap:
-1. `sampleMove` + the crossfade block (stages 1–2, ~120 lines).
-2. `springStep` + the liveness/dance loop (stages 3–4, ~150 lines).
-3. The clamp + FK + stance lock (stages 5–7, ~150 lines).
+**Function:** A spring smooths each table channel, so that a `snap` key
+does not make a one-frame jump.
 
-Prediction knobs (write the prediction FIRST, then run):
-- `moveSpringWn: 5` via the puppet params → re-run
-  `node tools/engine-trace.mjs --move runningman-captured --shape
-  biped-profile --no-webm` and read the s3 ladder step.
-- rotLimits.knee edit in `web/app/shapes/biped-profile.json` → same
-  run, stage-5 heatmap + filmstrip.
-- contacts forced planted: copy the table, add `"footL"` to every
-  key's contacts, load by name → stage-6/lock views.
+**Input:** Each table channel. **Output:** The same channels, with a
+small delay.
+
+**Rule (`springStep`):** Each channel is a critically damped spring:
+`a = wn²·(target − x) − 2·wn·v`. The function divides each frame into
+substeps, so the spring is stable at a high `wn`.
+
+**Parameters:**
+- The header field `followWn` of a table sets `wn` for that table.
+- If a table has no `followWn`, the value comes from its source.
+- Captured tables use 60 (approximately 17 ms).
+- Authored tables use the param `moveSpringWn` (default 10,
+  approximately 100 ms).
+- The stance-lock weight (stage 6) uses `moveSpringWn` for all tables.
+
+**Known failure:** Captured tables are already smooth. The 100 ms spring
+made them soft: on the running man, this rung was 0.346 rad. With
+`followWn` 60, it is 0.034 rad, and the spike count stays 0.
+
+**How to examine:** The ladder rung `spring` and the heatmap at stage
+`s3`. To examine the effect, set `moveSpringWn` to 5 on the puppet page
+for an authored table. The rung increases.
+
+## Stage 4 · Liveness
+
+**Function:** This stage adds small variations, so that a loop does not
+look mechanical.
+
+**Input:** The sprung channels and the procedural gait. **Output:**
+`J.theta` for each joint.
+
+**Rule (comment "liveness layer"):**
+- `dance = (gaitSin + tRot·accentK)·cos(parentTwist)`. Then `J.theta =
+  dance × vA`.
+- `vA` is a slow amplitude variation for each joint (Perlin noise,
+  period 20–60 s).
+- A phase variation applies to the gait sine only.
+- The dominant side is 8 % larger. The other side is 6 % smaller.
+- `accentK` adds the downbeat accent and the drop burst.
+- The spine and the head follow the pelvis with a delay
+  (`spineLagMs`, `headLagMs`). The walk state does not use this delay.
+
+**Parameters:** The param `liveness` turns all of these on or off.
+
+**Known failure:** The head turn was once a step at a noise threshold.
+It caused a twitch. Now the head turns smoothly to its target.
+
+**How to examine:** The ladder rung `+gait/liveness`. This rung is
+small by design (approximately 0.03–0.15 rad).
+
+## Stage 5 · Limits and signs
+
+**Function:** The stage limits each joint rotation to its anatomical
+range.
+
+**Input:** The table rotation of each slot. **Output:** The same value,
+limited to ± the limit.
+
+**Rule (comment "rotLimits clamp"):**
+- The limit comes from `rotLimits` in the shape sidecar.
+- Each joint family has one limit: `hip`, `knee`, `ankle`, `shoulder`,
+  `elbow`, `wrist`, `toe`.
+- For a remapped captured table, the slot holds the value of the next
+  joint up the chain. Thus the stage uses the limit of that joint.
+- The stage counts each clamp in `__creatureBench.clampHits`.
+
+**Known failure:** A clamp on a captured table shows a convention error
+or a real difference between dancer and rig. The t-step feet clamp on
+many frames, because the toes turn in the floor plane. The table header
+lists these feet in `clampWhitelist`, with a reason.
+
+**How to examine:** The ladder rung `limits` must be 0.000 for joints
+that are not in the whitelist. A red band in the flag strip shows each
+clamp. The verify row `engine-fidelity` fails on a clamp that is not in
+the whitelist.
+
+## Stage 6 · Stance lock, contacts and travel
+
+**Function:** The stage keeps a planted foot on the floor.
+
+**Input:** The FK pose and the contact set of the segment. **Output:**
+The feet that the table marks as planted stay down. The root moves by the
+travel.
+
+**Rule (comment "table-move stance lock"):**
+- For each ground foot, a lock weight `w` moves to 1 when the segment
+  lists the foot.
+- If the table pose lifts the foot by more than 0.025 units, the lock
+  releases the foot (the yield).
+- For a captured table, the lock moves the foot to the floor height
+  only. The table data controls all other values.
+- For an authored table, the lock also sets the foot at its rest
+  position.
+- It turns the ankle about the toe (the heel pivot).
+- It puts the knee between the hip and the ankle.
+- The travel moves `world.x` by `mvPose.travel × dPhase`. The walk state
+  uses its own travel.
+
+**Known failure:**
+- Brief 17: wrong contacts kept a moving foot on the floor, and the lift
+  was lost.
+- A7: the authored-table rule made a captured leg straight. The yield
+  did not operate, because the foot of the running man stays low while
+  the knee bends.
+
+**How to examine:** The ladder rung `lock+FK` (budget 0.15). In the flag
+strip, green shows an active lock and yellow shows a yield. The puppet
+page shows `w` for each foot.
+
+## Stage 7 · FK (forward kinematics)
+
+**Function:** The stage calculates the joint positions from the joint
+angles.
+
+**Input:** `J.theta` for each joint. **Output:** The joint positions
+`ax`, `ay`.
+
+**Rule (comment "TRUE hierarchical FK"):**
+- `rot = P.accRot + J.theta`.
+- The offset from the parent to the joint comes from the rest shape. The
+  stage turns this offset by `rot`.
+- `accRot` accumulates down the chain. Thus a hip rotation also moves
+  the knee, the ankle and the foot.
+- `dx` and `dy` are added after the chain.
+
+**Known failure:** Before brief 13, each joint followed only its direct
+parent, with a factor of 0.35. The elbow moved up but did not turn.
+
+**How to examine:** The skeleton panel at stage `fkP`. Compare it with
+stage `lockP` to see the change that the lock makes. The ladder row
+`FK position` gives the distance between the table skeleton and the
+engine skeleton.
+
+## Stage 8 · Depth
+
+**Function:** The stage shows the movement toward or away from the
+camera as visual cues. The engine stays 2D.
+
+**Input:**
+- `depth` ∈ [−1, 1] for each bone, from captured tables. Positive is
+  toward the camera.
+- `twist` (±2.0 rad) and `yaw` (±0.6 rad) from authored tables.
+
+**Output:** Factors for the drawing only. The physics does not change.
+
+**Rule for depth (comment "depth cues"):**
+- Size: the radius of the bone is multiplied by `max(0.8, 1 +
+  gain·depth·dial)`.
+- Draw length: the length of the bone is multiplied by `1 −
+  |depth|·drawK·dial`, with a minimum of 0.25.
+- Brightness: the stage adds white (toward) or black (away) to the color
+  of the part. The density does not change.
+- Overlap: an arm with `depth` > +0.3 is in front of the torso. An arm
+  with `depth` < −0.3 is behind the torso. The arm goes back to neutral
+  only when `depth` is 0.1 nearer to zero. This prevents a flicker.
+
+**Rule for authored twist and yaw:**
+- The child bend is multiplied by `cos(parent.twist)`.
+- A twisted bone is shorter: `max(0.25, cos(twist))`.
+- A twisted limb is dimmer, and a twisted foot is wider.
+- Pelvis and chest `yaw` make the limb roots narrower and move the eyes.
+
+**Parameters:**
+- The shape sidecar holds `depthCues`: `gains`, `sizeFloor`, `drawK`,
+  `brightness`, `overlapOn` and `overlapHyst`.
+- The gains for each part are: feet and hands 0.6, shins and forearms
+  0.35, thighs and upper arms 0.2, torso and head 0.
+- The dial is the param `exaggerateDepth`: 0 is off, 1 is the shape
+  values, 2 is the maximum.
+
+**Known failure:** A foot that points at the camera has almost no 2D
+length. Its 2D angle is noise. The capture pipeline gives this bone its
+rest angle and puts the movement into `depth`.
+
+**NOTE:** Overlap operates for the arms in front view only. The legs and
+the torso use the same density channel.
+
+**NOTE:** When `depth` is 0, all cues have a factor of 1. Thus a standing
+figure has the same image at each value of the dial.
+
+**How to examine:** The ladder rungs `depth: spring` and `depth: final`.
+The verify row `depth-stress`. On stage, use the render mode
+`goo-bones` and change the dial.
+
+## Stage 9 · Tissue
+
+**Function:** A cloud of soft nodes follows the skeleton and makes the
+body.
+
+**Input:** The joint positions. **Output:** The node positions.
+
+**Rule:**
+- Each joint holds its nearest nodes of the same part (comment
+  "J.pins"). The offsets turn with the joint. A hand (paw) holds all the
+  nodes in its radius.
+- The other nodes move with Verlet integration and edge springs (3
+  iterations, param `stiffness`). The floor stops them.
+- The spine-bow nodes move to a curve through pelvis, chest and neck
+  (param `spineBow`).
+- Bone splats put sprites along each bone (comment "bone splats").
+  Thus a limb cannot come apart.
+
+**Known failure:**
+- A wrist held forearm nodes and pulled the chain (brief 8.1).
+- A fist that only springs held came off during a fast swing.
+
+**How to examine:** The components metric in each harness must be 1.
+One connected body has one component.
+
+## Stage 10 · Density and goo
+
+**Function:** The stage makes one smooth, lit body from the nodes.
+
+**Input:** The node and splat sprites. **Output:** The pixels.
+
+**Rule:**
+- The density accumulates in three channels: red is torso, head and
+  legs; green is the left arm; blue is the right arm.
+- The shader uses the maximum of the channels (union by max). Thus an
+  arm that crosses the body does not make a bright flash.
+- The shader shows the body where the density is more than
+  `gooThreshold` (0.18).
+- The shader calculates the light from the density gradient. It adds a
+  rim, a specular light and a tint from the background.
+- The render modes are `goo`, `goo-bones`, `bones`, `silhouette` and
+  `wire`. Press `m` to change the mode. Press `o` to show the last
+  poses as ghosts.
+
+**Known failure:**
+- Additive density made a bright flash where two parts touched. Union by
+  max removed it.
+- A read of the accumulation canvas made each frame 9 times slower.
+
+CAUTION: Do not call `getImageData` on the accumulation canvas. Copy it
+to a scratch canvas first.
+
+**How to examine:** The render-mode strip of the engine explorer. The
+`limbDensity` probe in `__creaturePerf`.
+
+## Reading procedure (brief 19.2 Task 2)
+
+The pose path is in three code sections. Read each section with its stage
+in this document and its explorer view open.
+
+1. Read `sampleMove` and the crossfade block (stages 1 and 2).
+2. Read `springStep` and the liveness loop (stages 3 and 4).
+3. Read the clamp, the FK and the stance lock (stages 5, 6 and 7).
+
+Do these three tests. Write your prediction before you run each test.
+
+1. Set `moveSpringWn` to 5 on the puppet page. Run
+   `npm run engine-report -- --move tstep-placeholder --shape biped-1`.
+   Read the `spring` rung.
+2. Change `rotLimits.knee` in `web/app/shapes/biped-profile.json`. Run
+   the same report for `runningman-captured` on `biped-profile`. Examine
+   the stage-5 heatmap and the flag strip.
+3. Copy a table. Add `"footL"` to the contacts of each key. Load the copy
+   by name. Examine the stage-6 views.
+
+NOTE: For test 1, use an authored table. A captured table uses
+`followWn` 60, and `moveSpringWn` does not change it.
