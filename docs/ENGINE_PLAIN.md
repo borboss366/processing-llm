@@ -1,208 +1,250 @@
 # The engine, in plain words
 
-The same system as [ENGINE.md](ENGINE.md), without the math. The
-engine is everything between a move table and pixels. Read with an
-engine explorer open (`reports/engine-<move>-<shape>.engine.explorer
-.html`) or the puppet page's live Engine view.
+This document describes the engine without formulas. The text follows
+ASD-STE100 Simplified Technical English (STE): short sentences, one topic
+for each paragraph, active voice, and the same five parts for each
+stage. The technical version is [ENGINE.md](ENGINE.md).
 
-## The whole thing in one breath
+The engine is all the steps between a move table and the pixels on the
+screen. Read this document with an engine explorer open
+(`reports/engine-<move>-<shape>.engine.explorer.html`) or with the
+"Engine view" on the puppet page.
 
-The stage has a **table** — sheet music of key poses. Each frame, the
-engine looks up **where in the loop** the music says we are and reads
-the pose. If a new move just started, it **crossfades** from the old
-one. A **spring** smooths every value so nothing snaps. The
-**liveness** layer adds breath — tiny wander, a stronger beat, one side
-slightly dominant. **Limits** stop anatomically silly bends. The
-**stance lock** holds planted feet on the floor. **FK** turns the
-angles into actual joint positions, limb by limb, parent to child.
-**Depth** cues fake the third dimension. The **tissue** — a cloud of
-soft points — follows the skeleton like flesh. The **goo** renderer
-melts the cloud into one shaded body on screen.
+## The engine in one paragraph
 
-One question per stage: 1 *what pose does the music ask for?* · 2 *are
-we between moves?* · 3 *is anything snapping?* · 4 *does it breathe?* ·
-5 *is any bend impossible?* · 6 *are the feet honest?* · 7 *where is
-every joint, actually?* · 8 *does it read as 3D?* · 9 *does the flesh
-follow?* · 10 *does the skin hold together?*
+The stage has a **table**. The table is a list of key poses, like sheet
+music. For each frame, the engine finds the position in the loop and
+reads the pose. When a new move starts, the engine **blends** from the
+old move. A **spring** smooths each value, so that no value jumps. The
+**liveness** step adds small variations. **Limits** stop each joint at
+its natural range. The **stance lock** keeps a planted foot on the
+floor. **FK** calculates the position of each joint from the angles.
+**Depth cues** show movement toward the camera. The **tissue** is a
+cloud of soft points that follows the skeleton. The **goo** step makes
+one smooth body from the cloud.
 
-## 1 · Table playback — what pose does the music ask for?
+Each stage answers one question:
 
-**What it does:** finds today's position in the loop and reads the
+| stage | question |
+|---|---|
+| 1 Table playback | Which pose does the table give now? |
+| 2 Blend | Does a move change now? |
+| 3 Springs | Does a value jump? |
+| 4 Liveness | Does the loop look alive? |
+| 5 Limits | Is a bend too large? |
+| 6 Stance lock | Do the feet stay on the floor? |
+| 7 FK | Where is each joint? |
+| 8 Depth | Does a movement toward the camera show? |
+| 9 Tissue | Does the soft body follow the bones? |
+| 10 Goo | Is the body one smooth shape? |
+
+## 1 · Table playback
+
+**What it does:** It finds the position in the loop. It calculates the
 pose between the two nearest key poses.
-**Why it exists:** the table only stores a handful of keys; the
-in-betweens are made here.
-**The analogy:** a pianist reading between two chords — the hands are
-always somewhere en route.
-**What can go wrong:** the biggest bug in the project's history lived
-here: the engine and the capture pipeline *named* the angles one joint
-apart, like two orchestras with the parts shifted one chair over. A
-knee bent 100° in the table swung the *thigh* instead, and the leg drew
-straight. Captured tables are now translated at load.
-**How I'd notice:** the ladder's first rung should be exactly zero —
-this stage *is* the reference. The knees bug showed as the final
-skeleton ignoring the ghost. ([ENGINE.md §1](ENGINE.md))
 
-## 2 · Blend / crossfade — are we between moves?
+**Why it is necessary:** The table keeps only a small number of key
+poses. This stage makes all the poses between them.
 
-**What it does:** when the move changes, fades the old table out and
-the new one in over a bar.
-**Why it exists:** without it the body teleports to the new dance on a
-frame boundary.
-**The analogy:** a DJ crossfader, not a track skip.
-**What can go wrong:** an early version blended the *pose* but switched
-the *rhythm* instantly — the body was continuous but the beat pattern
-jumped. The fade now carries both.
-**How I'd notice:** the blend rung reads near zero once settled; the
-flag strip shows a violet band while a fade is in flight — deviations
-inside the band are the fade doing its job. ([ENGINE.md §2](ENGINE.md))
+**Comparison:** A pianist plays from one chord to the next chord. The
+hands are always between two chords.
 
-## 3 · Springs — is anything snapping?
+**What can go wrong:** The engine and the capture pipeline once gave
+different names to the same angle. Each name was one joint from the
+correct joint. Thus a knee bend of 100° in the table turned the thigh,
+and the leg was straight. Now the engine changes the names when it loads
+a captured table.
 
-**What it does:** every value from the table goes through a small
-spring that eases it toward its target.
-**Why it exists:** a "snap" key would otherwise jump in one frame — a
-visible hiccup.
-**The analogy:** a rubber band between the sheet music and the hand:
-pull, and the hand arrives a beat of a heart later.
-**What can go wrong:** nothing *broke* here — the opposite: this is
-where fidelity quietly leaks. The spring is the single biggest gap
-between table and screen, the "softness" you feel when a sharp captured
-kick lands mushy. It's a known, measured trade: springiness versus
-punch.
-**How I'd notice:** the spring rung is the tallest bar in the ladder on
-every clip. Halve the `moveSpringWn` knob on the puppet page and watch
-it grow. ([ENGINE.md §3](ENGINE.md))
+**How to see it:** In the explorer skeleton panel, the ghost is the
+table. If the solid skeleton does not follow the ghost, look at this
+stage first.
 
-## 4 · Liveness — does it breathe?
+## 2 · Blend
 
-**What it does:** adds slow wander to each joint, a push on the
-downbeat, a slightly dominant side, and the head trailing the body.
-**Why it exists:** a perfect loop reads as a screensaver within a
+**What it does:** When the move changes, it decreases the old move and
+increases the new move over one bar.
+
+**Why it is necessary:** Without a blend, the body jumps to the new move
+in one frame.
+
+**Comparison:** A DJ crossfader. The DJ does not stop one track and
+start the next track.
+
+**What can go wrong:** An old version blended the pose but changed the
+rhythm immediately. The body moved smoothly, but the beat pattern jumped.
+Now the blend changes the rhythm too.
+
+**How to see it:** The "blend" rung on the ladder is almost zero when no
+change occurs. A violet band in the flag strip shows each blend.
+
+## 3 · Springs
+
+**What it does:** Each value from the table goes through a small spring.
+The spring moves the value to its target smoothly.
+
+**Why it is necessary:** A "snap" key can change a value in one frame.
+Without the spring, this change shows as a small jerk.
+
+**Comparison:** A rubber band between the sheet music and the hand. The
+hand follows, but a little late.
+
+**What can go wrong:** A slow spring makes a sharp move soft. Captured
+tables are already smooth, but they used the same slow spring as the
+authored tables. A sharp kick looked soft. Now captured tables use a
+spring that is six times faster. The spike count stays zero.
+
+**How to see it:** The "spring" rung on the ladder. On a captured table
+it is now small. On an authored table, set `moveSpringWn` to 5 on the
+puppet page, and the rung increases.
+
+## 4 · Liveness
+
+**What it does:** It adds small, slow variations to each joint. It makes
+the downbeat stronger. It makes one side of the body a little stronger.
+The head follows the body a little late.
+
+**Why it is necessary:** An exact loop looks mechanical after one
 minute.
-**The analogy:** a drummer's human timing — never twice exactly the
-same, always the same song.
-**What can go wrong:** the head's "look around" was once a hard step:
-at some threshold it flicked, a literal twitch, our top hiccup source
-for a while. It now glides to its target.
-**How I'd notice:** the liveness rung should add pennies. On stage,
-toggle the `liveness` param: off, the creature goes mannequin; on, it
-breathes. ([ENGINE.md §4](ENGINE.md))
 
-## 5 · Limits — is any bend impossible?
+**Comparison:** A drummer never plays two bars in exactly the same way,
+but the song stays the same.
 
-**What it does:** caps each joint at an anatomical maximum from the
-body's spec; every capped frame is counted and reported.
-**Why it exists:** one wrong number in a table shouldn't fold the
-puppet inside out.
-**The analogy:** a door stopper. Mostly you never touch it; when you
-do, you want to *know*.
-**What can go wrong:** captured kicks point the foot harder than the
-old cap allowed — the kick clip's foot hit the stop for 180 straight
-frames and the kick flattened. The rule now: any cap hit on a captured
-table is a loud failure unless it's been explicitly waved through with
-a written reason.
-**How I'd notice:** red marks in the flag strip; the "clamps" count in
-the report. The limits rung should add exactly nothing when no cap is
-hit. ([ENGINE.md §5](ENGINE.md))
+**What can go wrong:** The head turn was once a step at a threshold. The
+head made a small twitch. Now the head turns smoothly to its target.
 
-## 6 · Stance lock — are the feet honest?
+**How to see it:** The "+gait/liveness" rung on the ladder is small. On
+stage, set `liveness` to 0 on the puppet page. The creature moves like a
+machine. Set it to 1 again.
 
-**What it does:** holds a foot the table marks "planted" down on the
-floor.
-**Why it exists:** without it feet drift and swim, and the body looks
-weightless.
-**The analogy:** tape on the stage floor — but tape you can pull off,
-because some moves slide the planted foot on purpose.
-**What can go wrong:** twice. First the contacts were wrong and the
-lock pinned a foot that should have swung — "only one leg moves".
-Later the lock *rewrote* a real captured leg: it pinned the foot in
-place and straightened the knee above it, while the actual move slides
-the foot backward low along the floor. For captured moves the lock now
-only holds feet down to floor height and otherwise believes the data.
-**How I'd notice:** green (lock) and yellow (yield) marks in the flag
-strip; the lock rung must add almost nothing.
-([ENGINE.md §6](ENGINE.md))
+## 5 · Limits
 
-## 7 · FK — where is every joint, actually?
+**What it does:** It stops each joint at a maximum angle from the body
+file. It counts each stop.
 
-**What it does:** walks the skeleton parent-to-child, turning angles
-into positions: pelvis places the hips, hips place the knees, and so
-on.
-**Why it exists:** this is the step that guarantees limbs never
-stretch — positions are *derived*, never drawn directly.
-**The analogy:** a folding ruler: set each hinge's angle and the tip
-ends up where the hinges say, never further.
-**What can go wrong:** before true chaining, a hip bend didn't carry
-the ankle with it — kicks moved the thigh and left the foot behind,
-like a marionette with a cut string.
-**How I'd notice:** the skeleton panel, "FK positions": the solid
-skeleton over the table-ghost. The position row of the ladder measures
-their gap in body units — it catches what angle-space can hide.
-([ENGINE.md §7](ENGINE.md))
+**Why it is necessary:** A wrong number in a table must not fold the
+body.
 
-## 8 · Depth — does it read as 3D?
+**Comparison:** A door stop. Usually the door does not touch it. When
+the door touches it, you must know.
 
-**What it does:** fakes the third dimension: a limb rotating toward
-you draws shorter and slightly dimmer, feet fan wider, the body can
-squeeze into a three-quarter hint.
-**Why it exists:** the puppet is flat; without these cues, any motion
-toward the camera simply vanishes.
-**The analogy:** a shadow puppeteer tilting the puppet — the shadow
-shortens, and you *read* rotation.
-**What can go wrong:** before the twist channel, an arm raised toward
-the camera looked like a chicken wing — the out-of-plane part of the
-motion had nowhere to go, so it just looked broken.
-**How I'd notice:** on stage, the goo-bones render mode: a
-foreshortened bone should look deliberately short, not missing. The
-trace records the per-limb depth factors. ([ENGINE.md §8](ENGINE.md))
+**What can go wrong:** A captured foot pointed harder than the limit
+allowed. The foot touched the stop on most frames, and the kick looked
+flat. Now each stop on a captured table is a failure. The only exception
+is a table that lists the joint in its header, with a reason.
 
-## 9 · Tissue — does the flesh follow?
+**How to see it:** A red band in the flag strip shows each stop. The
+"clamps" count in the engine report shows the total.
 
-**What it does:** a cloud of soft points rides the skeleton — each
-joint drags its nearest points, springs drag the rest, and the spine
-bows through bends.
-**Why it exists:** the creature is a blob with bones, not a stick
-figure; the cloud is the blob.
-**What can go wrong:** a fist's points once connected only by springs
-whipped clean off the wrist during a fast swing — a severed mitt
-floating beside the arm. Fists now grip every nearby point directly,
-and extra padding is drawn along every bone so a limb *cannot* come
-apart.
-**The analogy:** a sock puppet over a hand — the hand moves, the sock
-follows, slightly late and slightly soft.
-**How I'd notice:** the component count in every harness must be 1 —
-one connected body. A severed limb is instantly "components 2".
-([ENGINE.md §9](ENGINE.md))
+## 6 · Stance lock
 
-## 10 · Goo — does the skin hold together?
+**What it does:** It keeps a foot on the floor when the table marks the
+foot as planted.
 
-**What it does:** melts the point cloud into one smooth, lit body — the
-thing the audience actually sees.
-**Why it exists:** it *is* the look.
-**The analogy:** mercury droplets pooling: close droplets merge into
-one shape with one surface.
-**What can go wrong:** where an arm crossed the torso, their
-brightnesses used to *add* — a white flash at every overlap, like two
-projectors aimed at the same wall. Overlaps now take the brighter of
-the two instead of the sum.
-**How I'd notice:** silhouette mode shows the pure shape — blobby but
-whole. Watch an arm cross the body: no flash, no seam. The render-mode
-strip at the bottom of each engine explorer shows bones, silhouette and
-goo of the same frame. ([ENGINE.md §10](ENGINE.md))
+**Why it is necessary:** Without it, the feet move over the floor and
+the body looks too light.
 
-## How to read the engine explorer like a story
+**Comparison:** Tape on a stage floor. The tape can come off, because
+some moves slide the planted foot.
 
-Open three panels, in this order:
-1. **The ladder** — one bar per stage, "how far from the sheet music
-   after this step". Good: a staircase of pennies with one honest
-   bump at the spring. Bad: any bar that dwarfs the spring — that
-   stage is eating the dance; its name is on the bar.
-2. **The skeleton panel** — ghost (the table) vs solid (the engine).
-   Good: the solid shadows the ghost, bones green. Bad: a red limb
-   doing its own thing — the knees bug looked exactly like that: ghost
-   kicking, solid standing straight.
-3. **The flag strip** — time across, colored ticks for caps hit,
-   locks engaged, fades in flight, spikes. Good: sparse and
-   explainable (locks under planted feet, a violet band at a move
-   switch). Bad: a solid red band — a value pinned against its stop
-   for the whole loop, like the kick clip's foot.
+**What can go wrong:** This happened two times. First, wrong contact
+data kept a moving foot on the floor, and only one leg moved. Then the
+lock changed a real captured leg. It held the foot in place and made the
+knee straight. In the real move, the foot slides back along the floor.
+Now, for captured tables, the lock only keeps the foot at floor height.
+
+**How to see it:** Green marks in the flag strip show the lock. Yellow
+marks show a release. The "lock+FK" rung on the ladder must stay small.
+
+## 7 · FK (the joint positions)
+
+**What it does:** It calculates the position of each joint from the
+angles. It starts at the pelvis and goes along each chain to the hands
+and feet.
+
+**Why it is necessary:** The engine calculates positions from angles.
+Thus a limb cannot become longer or shorter by error.
+
+**Comparison:** A folding ruler. You set the angle of each hinge, and
+the end of the ruler goes to one position only.
+
+**What can go wrong:** In an old version, each joint followed only its
+direct parent. A kick moved the thigh, but the foot stayed behind.
+
+**How to see it:** The skeleton panel at "FK positions". The "FK
+position" rung on the ladder gives the distance between the table
+skeleton and the engine skeleton.
+
+## 8 · Depth cues
+
+**What it does:** It shows a movement toward the camera or away from the
+camera. A part that comes toward the camera is larger, shorter and
+brighter. A part that goes away is smaller, shorter and darker. An arm
+that comes toward the camera is drawn in front of the body.
+
+**Why it is necessary:** The creature is flat. Without these cues, a
+movement toward the camera does not show.
+
+**Comparison:** A cartoon. An animator draws a punch at the viewer as a
+large fist on a short arm.
+
+**What can go wrong:** A foot that points at the camera is only a few
+pixels long in the video. Its angle is noise. We do not use this angle.
+The foot keeps its rest angle, and the depth cues show the movement.
+
+**How to see it:** Use the render mode "goo-bones" on stage. Change
+`exaggerateDepth` on the puppet page: 0 stops all cues, 1 is normal,
+1.5 is stronger. A standing figure looks the same at each value. The
+`punchcam` move shows a punch at the camera with no other movement.
+
+## 9 · Tissue
+
+**What it does:** A cloud of soft points follows the skeleton. Each
+joint holds its nearest points. Springs hold the other points.
+
+**Why it is necessary:** The creature is a soft body with bones, not a
+stick figure. The cloud is the soft body.
+
+**Comparison:** A sock puppet. The hand moves, and the sock follows a
+little late and a little soft.
+
+**What can go wrong:** A fist was once held only by springs. During a
+fast swing, the fist came off the arm. Now each hand holds all its points
+directly. Extra points along each bone keep each limb in one piece.
+
+**How to see it:** Each test counts the parts of the body. The count
+must be 1. A loose fist makes the count 2.
+
+## 10 · Goo
+
+**What it does:** It makes one smooth, lit body from the cloud of
+points. The audience sees this body.
+
+**Why it is necessary:** This step gives the creature its look.
+
+**Comparison:** Drops of mercury. Drops that touch become one shape
+with one surface.
+
+**What can go wrong:** Where an arm crossed the body, the two
+brightnesses were added. This made a white flash. Now the engine uses
+the brighter of the two values, not the sum.
+
+**How to see it:** Use the render mode "silhouette". The shape must be
+whole. Move an arm across the body: there is no flash and no seam.
+
+## How to read the engine explorer
+
+Open these three views in this sequence:
+
+1. **The ladder.** Each bar shows the distance from the table after one
+   stage. Good: all bars are small, and the spring bar is small. Bad:
+   one bar is much larger than the others. The name on that bar is the
+   stage that loses the movement.
+2. **The skeleton panel.** The ghost is the table. The solid skeleton is
+   the engine. Good: the solid skeleton follows the ghost, and the bones
+   are green. Bad: one limb is red and does a different movement. The
+   knee failure looked like this: the ghost kicked, and the solid leg
+   stayed straight.
+3. **The flag strip.** Each colored mark shows an event: a limit stop, a
+   lock, a blend or a spike. Good: few marks, each with a reason. Bad: a
+   long red band, for example a foot against its limit for the full
+   loop.
