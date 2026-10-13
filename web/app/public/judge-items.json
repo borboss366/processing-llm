@@ -1,0 +1,77 @@
+{
+  "about": "Items for judge.html. Each setup is a list of creature params the page sends to the stage window when you press its button. Edit freely; reload the page.",
+  "stage": "/?audio=file:/music/Y2Mate.is%20-%20Darude%20-%20Sandstorm.mp3",
+  "base": { "behavior": "groove", "clockMode": "live", "view": "auto", "onion": 0, "viewForce": 0 },
+  "items": [
+    {
+      "id": "7a-kick",
+      "gate": "USER_GATES 7 (brief 17.5) — depth cues",
+      "title": "Kick thrown at the audience",
+      "look": "Stand ~3 m back. Watch the kicking leg and foot. At dial 0 there are no depth cues; at 1 and 1.5 the parts coming at you grow, shorten and brighten, and the left arm is drawn in front of the body.",
+      "question": "Does the kick read as a foot thrown at you? Which dial reads best?",
+      "setups": [
+        { "label": "dial 0 (no cues)", "params": { "move": "basic_kick_1-captured-front", "renderMode": "goo-bones", "exaggerateDepth": 0 } },
+        { "label": "dial 1", "params": { "move": "basic_kick_1-captured-front", "renderMode": "goo-bones", "exaggerateDepth": 1 } },
+        { "label": "dial 1.5", "params": { "move": "basic_kick_1-captured-front", "renderMode": "goo-bones", "exaggerateDepth": 1.5 } },
+        { "label": "dial 1 · audience look (goo)", "params": { "move": "basic_kick_1-captured-front", "renderMode": "goo", "exaggerateDepth": 1 } }
+      ]
+    },
+    {
+      "id": "7b-runningman-depth",
+      "gate": "USER_GATES 7 (brief 17.5) — depth cues",
+      "title": "Running man must stay unchanged",
+      "look": "A sideways move: depth cues should change nothing. The capture gives the right leg some depth (up to 0.22), so at dial 1 it may swell up to ×1.13. Compare dial 0 with 1.5.",
+      "question": "Does the running man look the same at every dial? If the right leg swells, is it the far leg crossing (fine) or noise (remove)?",
+      "setups": [
+        { "label": "dial 0", "params": { "move": "runningman-captured", "renderMode": "goo-bones", "exaggerateDepth": 0 } },
+        { "label": "dial 1", "params": { "move": "runningman-captured", "renderMode": "goo-bones", "exaggerateDepth": 1 } },
+        { "label": "dial 1.5", "params": { "move": "runningman-captured", "renderMode": "goo-bones", "exaggerateDepth": 1.5 } }
+      ]
+    },
+    {
+      "id": "7c-punchcam",
+      "gate": "USER_GATES 7 (brief 17.5) — depth cues",
+      "title": "Cartoon punch at the camera",
+      "look": "A hand-made two-key move: the right fist goes from guard straight at the camera. It never extends in the picture — only the cues show it (short forearm, big fist, outline across the chest).",
+      "question": "Does it read as a punch at you? Too much, too little, or right?",
+      "setups": [
+        { "label": "dial 0 (nothing should happen)", "params": { "move": "punchcam", "renderMode": "goo-bones", "exaggerateDepth": 0 } },
+        { "label": "dial 1", "params": { "move": "punchcam", "renderMode": "goo-bones", "exaggerateDepth": 1 } },
+        { "label": "dial 1.5", "params": { "move": "punchcam", "renderMode": "goo-bones", "exaggerateDepth": 1.5 } },
+        { "label": "dial 1 · audience look (goo)", "params": { "move": "punchcam", "renderMode": "goo", "exaggerateDepth": 1 } }
+      ]
+    },
+    {
+      "id": "3-runningman-a7",
+      "gate": "USER_GATES 3 (brief 17 A7) — re-view after the knee fix",
+      "title": "Running man in profile",
+      "look": "The knees failed the first viewing and were fixed. Judge the motion, not the drawing (the side body is placeholder art). Then compare the variants, then let the rotation run to see the switch into the side view.",
+      "question": "Recognizably him, readable at 3 m? Plain or exaggerated? Side or front as the default? Does the view switch look intentional?",
+      "setups": [
+        { "label": "plain (side)", "params": { "move": "runningman-captured", "renderMode": "goo", "exaggerateDepth": 1 } },
+        { "label": "exaggerated (-x)", "params": { "move": "runningman-captured-x", "renderMode": "goo", "exaggerateDepth": 1 } },
+        { "label": "front version", "params": { "move": "runningman-captured-front", "renderMode": "goo", "exaggerateDepth": 1 } },
+        { "label": "rotation (watch the switch)", "params": { "move": "", "renderMode": "goo", "exaggerateDepth": 1 } }
+      ]
+    },
+    {
+      "id": "5-engine-explorer",
+      "gate": "USER_GATES 5 (brief 19.1) — engine explorer",
+      "title": "Find the lossy stage without a report",
+      "look": "Desk task. Open the explorer; use the ladder, the skeleton panel and the flag strip.",
+      "question": "Could you find the stage that loses a joint without reading a report? What was hard?",
+      "setups": [
+        { "label": "open running man explorer", "copy": "open reports/engine-runningman-captured-biped-profile.engine.explorer.html" },
+        { "label": "open kick explorer", "copy": "open reports/engine-basic_kick_1-captured-front-biped-1.engine.explorer.html" }
+      ]
+    },
+    {
+      "id": "6-explain-it",
+      "gate": "USER_GATES 6 (brief 19.2) — the explain-it gate",
+      "title": "Your first explain-it paragraph",
+      "look": "Pick one feature (director, clocks, goo render, authored moves, FSM, audience pipeline, captured moves). Write what it does and how, in your own words. Claude files it as docs/explained/<feature>.md exactly as written.",
+      "question": "Feature name on the first line, then your paragraph.",
+      "setups": []
+    }
+  ]
+}

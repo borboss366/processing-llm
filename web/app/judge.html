@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VJ · Rating</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { background: #0a0a12; color: #cfd3e8; font: 14px/1.5 ui-monospace, Menlo, monospace; height: 100%; }
+      #app { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
+      nav { border-right: 1px solid #1e1e33; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+      nav h1 { font-size: 12px; color: #667; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
+      nav button.item { text-align: left; background: #11111f; border: 1px solid #1e1e33; color: #cfd3e8; border-radius: 8px; padding: 8px 10px; cursor: pointer; font: inherit; }
+      nav button.item.on { border-color: #4a7cff; background: #162040; }
+      nav .mark { float: right; font-size: 12px; }
+      main { padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; max-width: 900px; }
+      .gate { color: #667; font-size: 12px; }
+      h2 { font-size: 18px; color: #fff; }
+      .look { color: #aab; }
+      .q { color: #ffd479; }
+      .setups { display: flex; flex-wrap: wrap; gap: 8px; }
+      .setups button { background: #23233a; color: #dde; border: 1px solid #2f2f4d; border-radius: 8px; padding: 9px 14px; font: inherit; cursor: pointer; }
+      .setups button.on { background: #17b26a; border-color: #17b26a; color: #fff; }
+      .verdict { display: flex; gap: 8px; }
+      .verdict button { background: #191927; color: #dde; border: 1px solid #2a2a44; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+      .verdict button.on.yes { background: #17b26a; } .verdict button.on.partly { background: #b28a17; } .verdict button.on.no { background: #b2172f; }
+      textarea { width: 100%; min-height: 220px; background: #11111f; color: #e6e8f4; border: 1px solid #2a2a44; border-radius: 8px; padding: 10px; font: 15px/1.5 -apple-system, system-ui, sans-serif; resize: vertical; }
+      .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .bar button { background: #23233a; color: #dde; border: 0; border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
+      .status { color: #5ee89a; font-size: 12px; }
+      .note { color: #667; font-size: 12px; }
+      .stagebox { background: #11111f; border: 1px solid #1e1e33; border-radius: 8px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      code { color: #8fa; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <nav>
+        <h1>Rating</h1>
+        <div id="items"></div>
+        <div class="note" style="margin-top:auto">Notes save automatically (this browser + the session log). <button id="copy-all" style="margin-top:6px;background:#23233a;color:#dde;border:0;border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer">copy all as Markdown</button></div>
+      </nav>
+      <main>
+        <div class="stagebox">
+          <button id="open-stage">1 · open stage window</button>
+          <span class="note">then press play in it, keep it visible (a hidden window freezes)</span>
+          <button id="arm">2 · start the creature</button>
+          <span id="stage-status" class="status"></span>
+        </div>
+        <div class="gate" id="gate"></div>
+        <h2 id="title"></h2>
+        <div class="look" id="look"></div>
+        <div class="setups" id="setups"></div>
+        <div class="q" id="question"></div>
+        <div class="verdict" id="verdict">
+          <button data-v="yes" class="yes">yes</button>
+          <button data-v="partly" class="partly">partly</button>
+          <button data-v="no" class="no">no</button>
+        </div>
+        <textarea id="text" placeholder="What do you see? Write it in your own words."></textarea>
+        <div class="bar"><span id="save-status" class="status"></span></div>
+      </main>
+    </div>
+    <script type="module" src="/src/judge.js"></script>
+  </body>
+</html>

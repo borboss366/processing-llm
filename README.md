@@ -92,6 +92,17 @@ sparkline + spike count) shares its widget code with the bench via
 `puppet-snapshot` event to the session stream. Acceptance:
 `tools/puppet-check.mjs` (part of `verify --full`).
 
+### Rating (owner judgments)
+
+**http://localhost:5173/judge.html** — one item to judge at a time. Each
+item says what to look at and what to answer; its setup buttons put
+exactly the right move, depth dial and render mode on the stage window
+(the page opens and starts it). A text box takes the owner's own words,
+plus yes / partly / no. Items live in `web/app/public/judge-items.json`
+(edit and reload). Notes persist in the browser and are appended to
+`sessions/judge-<date>.jsonl` through `/session/append`; "copy all as
+Markdown" exports them for USER_GATES.
+
 ### Authoring a move (workbench)
 
 1. Load + trigger the creature; open **puppet.html**'s move rig.

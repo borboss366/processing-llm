@@ -37,6 +37,7 @@ export default defineConfig({
         controller: resolve(__dirname, 'controller.html'),
         bench:      resolve(__dirname, 'bench.html'),
         puppet:     resolve(__dirname, 'puppet.html'),
+        judge:      resolve(__dirname, 'judge.html'),
         ncaDemo:    resolve(__dirname, 'nca.html'),
       },
     },
