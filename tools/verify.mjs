@@ -128,6 +128,13 @@ const CHECKS = [
     desc: "brief 17 C: grid-tier drops precomputed, pre-arm ≤1 bar out, boundary fires re-pick + fill, spikes 0",
   },
   {
+    name: "depth-stress",
+    tier: "full",
+    skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
+    cmd: ["node", "tools/depth-stress.mjs"],
+    desc: "brief 17.5: depth −1→+1 on every limb at slow/beat/snap — spikes 0, components 1, no NaN, no pop at zero, overlap flips ≤ 4 per loop",
+  },
+  {
     name: "engine-fidelity",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),

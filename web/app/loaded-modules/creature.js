@@ -1537,6 +1537,14 @@ export default {
       return o;
     };
     if (engRow) engRow.s1 = extRotsOf(slotRots(mvPose));
+    // depth taps (17.5 T3): depth is named by the bone it describes in BOTH
+    // conventions (never remapped), so table and engine compare by name
+    const depthOf = (mp) => {
+      const o = {};
+      if (mp) for (const [nm, ch] of Object.entries(mp.joints)) if (ch.depth) o[nm] = +ch.depth.toFixed(4);
+      return o;
+    };
+    if (engRow) engRow.d1 = depthOf(mvPose);
     let ov = move ? Math.max(0, Math.min(1, move.overlay ?? 1)) : 1;
     let vc = move ? Math.max(0, Math.min(1, move.verticalContent ?? 0)) : 0;
     // rhythm crossfade (brief 14 Task 2.1): the pose blend keeps POSITIONS
@@ -1636,7 +1644,7 @@ export default {
       }
     }
 
-    if (engRow) engRow.s3 = extRotsOf(slotRots(mvPose));
+    if (engRow) { engRow.s3 = extRotsOf(slotRots(mvPose)); engRow.d3 = depthOf(mvPose); }
 
     // ── skeleton targets per state (gait resolved above, with the rotation) ─
     const amp = params.amplitude * lvl * (stEff === 'idle' ? 0 : 1) * ov;
@@ -1834,6 +1842,7 @@ export default {
       const s4slots = {};
       for (const J of joints) if (J.theta) s4slots[J.name] = J.theta;
       engRow.s4 = extRotsOf(s4slots);
+      engRow.dE = Object.fromEntries(joints.filter((J) => J.depth).map((J) => [J.name, +J.depth.toFixed(4)]));
       engRow.fkP = joints.map((J) => [+J.ax.toFixed(3), +J.ay.toFixed(3)]);
     }
 

@@ -293,6 +293,22 @@ function ladder() {
     }
     return { k, label, rms: Math.sqrt(s / n), worstB, worstV };
   });
+  // DEPTH rungs (17.5 T3): table depth vs after spring / final, depth units
+  {
+    const DB = [...new Set(F0.flatMap((f) => Object.keys(f.d1 ?? {})))];
+    for (const [k, label] of [['d3', 'depth: spring'], ['dE', 'depth: final']]) {
+      if (!DB.length) break;
+      let s = 0, n = 0, worstB = '', worstV = -1;
+      for (const b of DB) {
+        let sb = 0;
+        for (const f of F0) sb += (((f[k] ?? {})[b] ?? 0) - ((f.d1 ?? {})[b] ?? 0)) ** 2;
+        sb = Math.sqrt(sb / F0.length);
+        if (sb > worstV) { worstV = sb; worstB = b; }
+        s += sb * sb; n++;
+      }
+      rows.push({ k, label, rms: Math.sqrt(s / n), worstB, worstV });
+    }
+  }
   // POSITION rung (19.2 review): pelvis-normalized table-FK vs engine
   {
     const names = D.meta.jointNames, pi = names.indexOf('pelvis');

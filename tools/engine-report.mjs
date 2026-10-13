@@ -58,6 +58,22 @@ for (const [k, label] of stages) {
   console.log(`  ${label.padEnd(16)} RMS ${all.toFixed(3)} (Δ ${(all - prev >= 0 ? "+" : "")}${(all - prev).toFixed(3)})  worst ${wb} ${wv.toFixed(3)}`);
   prev = all;
 }
+// DEPTH rungs (17.5 T3): the channel measured like the others — table
+// depth (d1) vs after the spring (d3) and as the engine holds it (dE)
+const DB = [...new Set(F.flatMap((f) => Object.keys(f.d1 ?? {})))];
+if (DB.length) {
+  for (const [k, label] of [["d3", "depth: spring"], ["dE", "depth: final"]]) {
+    let s = 0, n = 0, wb = "", wv = -1;
+    for (const b of DB) {
+      let sb = 0;
+      for (const f of F) sb += (((f[k] ?? {})[b] ?? 0) - ((f.d1 ?? {})[b] ?? 0)) ** 2;
+      sb = Math.sqrt(sb / F.length);
+      if (sb > wv) { wv = sb; wb = b; }
+      s += sb * sb; n++;
+    }
+    console.log(`  ${label.padEnd(16)} RMS ${Math.sqrt(s / n).toFixed(3)} (depth units)  worst ${wb} ${wv.toFixed(3)}`);
+  }
+} else console.log("  depth            (table carries no depth)");
 const clamps = {}, yields = new Set();
 for (const f of F) {
   for (const [nm, n2] of Object.entries(f.flags?.clamps ?? {})) clamps[nm] = Math.max(clamps[nm] ?? 0, n2);
