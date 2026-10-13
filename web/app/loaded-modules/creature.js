@@ -1414,7 +1414,18 @@ export default {
     if (params.move) {
       moveName = String(params.move) === 'none' ? null : String(params.move);
     } else {
-      const rep = (state.repertoire ?? gait.repertoire ?? {})[stEff];
+      // roster (moves/roster.json): when the server names a rotation (the
+      // "captured" roster), groove picks only from it, equal weights; other
+      // states dance procedurally. No roster rotation → the built-in one.
+      if (state.rosterRot === undefined) {
+        state.rosterRot = null;
+        fetch('/moves-list').then((r) => r.json())
+          .then((j) => { state.rosterRot = Array.isArray(j.rotation) && j.rotation.length ? j.rotation : null; })
+          .catch(() => {});
+      }
+      const rep = state.rosterRot
+        ? (stEff === 'groove' ? state.rosterRot.map((n2) => [n2, 1]) : null)
+        : (state.repertoire ?? gait.repertoire ?? {})[stEff];
       if (rep?.length) {
         const rot = (state.rot ??= { st: null, bars: 0, name: null });
         const due = rot.st !== stEff ||

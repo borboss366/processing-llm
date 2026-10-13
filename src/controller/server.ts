@@ -134,12 +134,34 @@ export async function startControllerServer(): Promise<void> {
     }
   });
 
-  app.get("/moves-list", async (_req, res) => {
+  // roster (2026-10-14): moves/roster.json picks which tables the stage
+  // uses — "captured" (provenance tools/mocap/*) or "all". The list feeds
+  // the puppet selector; `rotation` (captured roster only) is the groove
+  // rotation: natural-view captured tables, no -x variants, no converted
+  // other-view tables. Nothing is deleted; authored tables stay on disk.
+  app.get("/moves-list", async (req, res) => {
     try {
-      const files = await fs.readdir(MOVES_DIR);
-      res.json({ ok: true, moves: files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort() });
+      const files = (await fs.readdir(MOVES_DIR)).filter((f) => f.endsWith(".json") && f !== "roster.json");
+      let roster: { active?: string; include?: string[] } = {};
+      try { roster = JSON.parse(await fs.readFile(path.join(MOVES_DIR, "roster.json"), "utf8")); } catch { /* no roster: all */ }
+      const active = String(req.query.roster ?? roster.active ?? "all");
+      const include = new Set(roster.include ?? []);
+      const info = await Promise.all(files.map(async (f) => {
+        const name = f.slice(0, -5);
+        try {
+          const j = JSON.parse(await fs.readFile(path.join(MOVES_DIR, f), "utf8"));
+          const captured = String(j.provenance?.pipeline ?? "").startsWith("tools/mocap");
+          return { name, captured, natural: !j.reinterpreted, variant: /-x$/.test(name) };
+        } catch { return { name, captured: false, natural: true, variant: false }; }
+      }));
+      const inRoster = (m: { name: string; captured: boolean }) => active !== "captured" || m.captured || include.has(m.name);
+      const moves = info.filter(inRoster).map((m) => m.name).sort();
+      const rotation = active === "captured"
+        ? info.filter((m) => (m.captured && m.natural && !m.variant) || include.has(m.name)).map((m) => m.name).sort()
+        : null;
+      res.json({ ok: true, roster: active, moves, rotation });
     } catch {
-      res.json({ ok: true, moves: [] });
+      res.json({ ok: true, roster: "all", moves: [], rotation: null });
     }
   });
 

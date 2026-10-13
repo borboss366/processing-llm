@@ -1,0 +1,5 @@
+{
+  "active": "captured",
+  "about": "Which move tables the stage uses. 'captured' = only tables made from video (provenance tools/mocap/*): the puppet move list shows them, and the groove rotation picks from the natural-view ones (not the -x variants, not the converted other-view tables). 'all' = every table, with the built-in authored rotation. Nothing is deleted or moved — authored tables stay in this folder (harnesses load them by name). To add an authored table to the captured roster anyway, put its name in 'include'.",
+  "include": []
+}
