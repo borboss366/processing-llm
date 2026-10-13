@@ -445,6 +445,24 @@ function buildFromShape(state, params, shape) {
     });
   }
 
+  // depth cues: each limb node rides the nearest bone of its own part (rest
+  // geometry) — its size/tint follow that bone's depth
+  const nodeBone = new Int16Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    if (!/^limb/.test(labels[i])) continue;
+    let best = -1, bd = Infinity;
+    bones.forEach((B, bi) => {
+      if (B.label !== labels[i]) return;
+      const J = joints[B.j], P = joints[B.p];
+      const vx = J.x - P.x, vy = J.y - P.y, L2 = vx * vx + vy * vy || 1e-9;
+      const t = Math.max(0, Math.min(1, ((xs[i] - P.x) * vx + (ys[i] - P.y) * vy) / L2));
+      const d2 = (xs[i] - P.x - t * vx) ** 2 + (ys[i] - P.y - t * vy) ** 2;
+      if (d2 < bd) { bd = d2; best = bi; }
+    });
+    nodeBone[i] = best;
+  }
+  for (const B of bones) B.cueRole = cueRoleOf(joints[B.j]);
+
   // per-limb node lists for the density probe (step 4 measurement)
   const limbNodeIdx = {};
   for (let i = 0; i < n; i++) {
@@ -487,6 +505,9 @@ function buildFromShape(state, params, shape) {
     // even if ground joints exist — the flag drives the FSM, not new code
     hasFeet: json.grounded === false ? false : joints.some((J) => J.ground),
     repertoire: json.repertoire ?? null,   // per-state move weights override (12.6)
+    nodeBone,
+    depthCues: { ...DEPTH_CUES_DEFAULT, ...(json.depthCues ?? {}),
+                 gains: { ...DEPTH_CUES_DEFAULT.gains, ...(json.depthCues?.gains ?? {}) } },
     // rot limits per chain position (brief 15 B2) — SIGNED, symmetric.
     // 2D design note: a 3D hinge's apparent bend flips with pose in
     // projection, so elbows/knees are signed by design ("always convex"
@@ -589,8 +610,18 @@ out vec4 outColor;
 // arm takes max, so no weld-flash and no normal smear at the overlap.
 uniform float uUnion;
 uniform float uFlat;
-float dmax(vec2 uv) {
+// depth cue 4 (17.5): arm draw order per density channel (g, b):
+// +1 = in FRONT of the torso (its outline is drawn across the body),
+// −1 = BEHIND (hidden wherever the torso is solid), 0 = union-by-max
+uniform vec2 uOrder;
+vec3 densOrdered(vec2 uv) {
   vec3 g = texture(uDens, uv).rgb;
+  if (uOrder.x < -0.5 && g.r > uD0) g.g = 0.0;
+  if (uOrder.y < -0.5 && g.r > uD0) g.b = 0.0;
+  return g;
+}
+float dmax(vec2 uv) {
+  vec3 g = densOrdered(uv);
   // uUnion 0 = legacy additive field (A/B evidence for the weld fix only)
   return mix(texture(uField, uv).a, max(g.r, max(g.g, g.b)), uUnion);
 }
@@ -626,6 +657,13 @@ void main() {
   c += rim * mix(vec3(1.0), uAccent, 0.6) * 0.9;
   vec3 h = normalize(uLightDir + vec3(0.0, 0.0, 1.0));
   c += pow(max(dot(nrm, h), 0.0), 28.0) * smoothstep(uD1, uD1 + 0.1, d) * 0.6;
+  // front arm: its silhouette edge stays visible inside the torso
+  vec3 go = densOrdered(vUv);
+  if (go.r > uD0) {
+    float edgeG = uOrder.x > 0.5 ? 1.0 - smoothstep(0.0, 0.04, abs(go.g - uD0)) : 0.0;
+    float edgeB = uOrder.y > 0.5 ? 1.0 - smoothstep(0.0, 0.04, abs(go.b - uD0)) : 0.0;
+    c *= 1.0 - 0.55 * max(edgeG, edgeB);
+  }
   float a = smoothstep(uD0 - 0.03, uD0 + 0.03, d) * uAlpha;
   outColor = vec4(c * a, a);
 }`;
@@ -680,7 +718,7 @@ function ensureShadeLayer(state) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const u = {};
-    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha', 'uBgAmb', 'uAmbient', 'uFlat']) {
+    for (const name of ['uField', 'uDens', 'uUnion', 'uTexel', 'uD0', 'uD1', 'uNz', 'uLightDir', 'uLightInt', 'uCore', 'uAccent', 'uSecondary', 'uAlpha', 'uBgAmb', 'uAmbient', 'uFlat', 'uOrder']) {
       u[name] = gl.getUniformLocation(prog, name);
     }
     // ambient-pickup source: the background canvas downsampled to a few
@@ -796,6 +834,24 @@ function ensureDensSprites(state) {
 // against each other and the body instead of flashing where they overlap
 // (which in profile is almost always). Residual risk, accepted + reported:
 // far-arm×far-leg share a channel, so a hand passing the thigh stacks.
+// depth cues (brief 17.5 T2): render-only, driven by the table's `depth`
+// channel, constants on the SHAPE (sidecar `depthCues` overrides), never on
+// a table. Every cue is multiplicative in depth → depth 0 renders exactly
+// as before at any dial value.
+const DEPTH_CUES_DEFAULT = {
+  gains: { foot: 0.6, hand: 0.6, shin: 0.35, forearm: 0.35, thigh: 0.2, upperArm: 0.2, torso: 0, head: 0 },
+  sizeFloor: 0.8,          // away-sized parts never shrink below 0.8×
+  drawK: 1,                // draw length × (1 − |depth|·drawK), floored 0.25
+  brightness: 0.35,        // core brightness × (1 + brightness·depth)
+  overlapOn: 0.3,          // |arm depth| past this switches draw order
+  overlapHyst: 0.1,        // …and must fall back below on − hyst to release
+};
+// the part a bone (P→J) belongs to, by the joint it ENDS at
+const cueRoleOf = (J) => J.role === 'knee' ? (J.limb >= 2 ? 'upperArm' : 'thigh')
+  : J.role === 'ankle' ? 'shin'
+  : J.role === 'limb' ? (J.limb >= 2 ? 'hand' : 'foot')
+  : J.role === 'head' ? 'head' : 'torso';
+
 const densChannel = (lab, st) => {
   if (st?.view === 'profile') {
     const farLeg = st.dominantSide === 'R' ? 'limb0' : 'limb1';
@@ -1037,6 +1093,7 @@ export default {
     engineTrace: 0,            // 19.1: per-stage engine taps (offline/judging only — ~1KB/frame)
     moveSpringWn: 10,          // table-channel spring stiffness (R2 rung; halve it to feel the lag)
     viewForce: 0,              // 1 = keep the active view even for mismatched tables (inspect reinterpretation)
+    exaggerateDepth: 1,        // 17.5 depth cues dial: 0 off · 1 shape defaults · up to 2
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
     shadeNz: 0.6,              // pseudo-normal flatness
@@ -1557,6 +1614,8 @@ export default {
     // first-order-filtered step still lands a one-frame velocity jump that
     // the spike metric's growth test rightly flags — a spring builds
     // velocity from zero, so attacks stay hiccup-free at any frame rate
+    const cueK = Math.max(0, Math.min(2, Number.isFinite(+params.exaggerateDepth) ? +params.exaggerateDepth : 1));
+    state.cueK = cueK;
     const MV_WN = Math.max(2, Number(params.moveSpringWn) || 10);   // ≈100 ms at 10; the 19.2 prediction knob
     // per-table follow (finding 1, 2026-10-13): CAPTURED tables carry their
     // own dynamics (SavGol-smoothed upstream, keys dense) — the 100 ms
@@ -1691,13 +1750,10 @@ export default {
       // ±2.0, not the brief's ±1.2: the promised elbow FLIP ("re-emerges
       // bent the other way") needs cos to cross zero at π/2 ≈ 1.571 —
       // the brief's own bound forbids its own example (deviation, reported)
-      // depth → angle: the twist mechanics below (cos-bend, draw
-      // foreshorten, dim/fan) consume an angle; depth d recovers it as
-      // sign(d)·acos(1 − |d|) — exact inverse of the extractor's mapping
-      const dRaw = Math.max(-1, Math.min(1, tk?.depth ?? 0));
-      J.depth = dRaw;
-      const twFromDepth = dRaw ? Math.sign(dRaw) * Math.acos(1 - Math.abs(dRaw)) : 0;
-      J.twist = Math.max(-2.0, Math.min(2.0, ((tk?.twist ?? 0) + twFromDepth) * accentK));
+      // depth (17.5) drives the render CUES only (size, draw length,
+      // brightness, overlap); authored twist keeps its own mechanics
+      J.depth = Math.max(-1, Math.min(1, tk?.depth ?? 0));
+      J.twist = Math.max(-2.0, Math.min(2.0, (tk?.twist ?? 0) * accentK));
       J.yawCh = (J.role === 'root' || J.role === 'rootMid')
         ? Math.max(-0.6, Math.min(0.6, (tk?.yaw ?? 0) + (Number(params.bodyYaw) || 0))) : 0;
       // cos-bend (B1): a twisted parent bone flips the child's APPARENT
@@ -1755,7 +1811,10 @@ export default {
         // the pinned joints. Twist on joint J names the bone LEAVING J
         // (shoulder twist = the humerus — same convention as rot and the
         // extractor's defs), so the CHILD's offset is what shrinks.
-        const ftw = Math.max(0.25, Math.cos(P.twist ?? 0));
+        // + depth cue 2 (17.5): draw length × (1 − |depth|·drawK·dial) —
+        // toward and away both shorten; size disambiguates the sign
+        const ftw = Math.max(0.25, Math.cos(P.twist ?? 0)
+          * (1 - Math.abs(P.depth ?? 0) * state.depthCues.drawK * cueK));
         if (ftw < 1) { ox *= ftw; oy *= ftw; }
         const rot = (P.accRot ?? 0) + J.theta;
         const c = Math.cos(rot), s = Math.sin(rot);
@@ -1776,6 +1835,34 @@ export default {
       for (const J of joints) if (J.theta) s4slots[J.name] = J.theta;
       engRow.s4 = extRotsOf(s4slots);
       engRow.fkP = joints.map((J) => [+J.ax.toFixed(3), +J.ay.toFixed(3)]);
+    }
+
+    // depth cues 1/3/4 (17.5): per-bone size + tint, arm draw order
+    {
+      const dc = state.depthCues, nb = state.bones.length;
+      if (!state.cueSize || state.cueSize.length !== nb) {
+        state.cueSize = new Float32Array(nb); state.cueTint = new Float32Array(nb);
+      }
+      state.bones.forEach((B, bi) => {
+        const d = joints[B.p].depth ?? 0;          // depth names the bone LEAVING P
+        const g = dc.gains[B.cueRole] ?? 0;
+        state.cueSize[bi] = Math.max(dc.sizeFloor, 1 + g * d * cueK);
+        state.cueTint[bi] = g ? dc.brightness * d * cueK : 0;
+      });
+      // arm overlap: front (+1) / neutral (0) / behind (−1), hysteresis band
+      const ov = (state.ovl ??= {}), flips = (state.ovlFlips ??= {});
+      for (const lab of ['limb2', 'limb3']) {
+        let d = 0;
+        for (const J of joints) if (J.limb === (lab === 'limb2' ? 2 : 3) && Math.abs(J.depth ?? 0) > Math.abs(d)) d = J.depth;
+        d *= Math.min(1, cueK);                   // dial 0 → no reordering
+        const s0 = ov[lab] ?? 0, on = dc.overlapOn, off = on - dc.overlapHyst;
+        let s1 = s0;
+        if (s0 === 0) s1 = d > on ? 1 : d < -on ? -1 : 0;
+        else if (s0 === 1) s1 = d < -on ? -1 : d < off ? 0 : 1;
+        else s1 = d > on ? 1 : d > -off ? 0 : -1;
+        if (s1 !== s0) flips[lab] = (flips[lab] ?? 0) + 1;
+        ov[lab] = s1;
+      }
     }
 
     // per-limb twist render factors (17 B1): dim (out-of-plane depth cue,
@@ -2199,7 +2286,8 @@ export default {
       if ((P.yawCh ?? 0) && (J.role === 'hip' || J.role === 'shoulder')) {
         ox = ox * Math.cos(P.yawCh) + 0.02 * Math.sin(P.yawCh);
       }
-      const expected = Math.hypot(ox, oy) * Math.max(0.25, Math.cos(P.twist ?? 0));
+      const expected = Math.hypot(ox, oy) * Math.max(0.25, Math.cos(P.twist ?? 0)
+        * (1 - Math.abs(P.depth ?? 0) * state.depthCues.drawK * cueK));
       const dev = Math.abs(Math.hypot(J.ax - P.ax, J.ay - P.ay) - expected) / expected;
       if (B.groundChain) boneDevGround = Math.max(boneDevGround, dev);
       else if (!inBlend) boneDevRot = Math.max(boneDevRot, dev);
@@ -2479,6 +2567,15 @@ export default {
     if (rMode === 'goo' || rMode === 'goo-bones' || rMode === 'silhouette') {
       const sh = ensureShadeLayer(state);
       const sprites = ensureSprites(state, params);
+      const tintSp = (state.tintSp ??= (() => {
+        const mk = (rgb) => {
+          const c = document.createElement('canvas'); c.width = c.height = 64;
+          const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+          gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(0.6, `rgba(${rgb},0.5)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+          x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return c;
+        };
+        return { w: mk('255,255,255'), k: mk('0,0,0') };
+      })());
       const dens = ensureDensSprites(state);
       const gl = sh.gl;
       const g = sh.g;
@@ -2498,10 +2595,18 @@ export default {
         const lab = state.labels[i];
         const sp = lab === 'head' ? sprites.head : lab === 'body' ? sprites.body : sprites.limb;
         const wob = 1 + 0.06 * simmer * (p.noise(i * 0.37, tSec * 0.22) * 2 - 1);
-        const r = state.spriteR[i] * S * wob * 0.5;
+        const nbi = state.nodeBone?.[i] ?? -1;
+        const r = state.spriteR[i] * S * wob * 0.5 * (nbi >= 0 ? state.cueSize[nbi] : 1);   // cue 1: size
         g.globalAlpha = ((lab === 'body' || lab === 'head') ? aBody : aLimb) * farDim(lab, state)
           * (1 - 0.15 * (state.twistFx?.[lab]?.dim ?? 0));
         g.drawImage(sp, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
+        const tnt = nbi >= 0 ? state.cueTint[nbi] : 0;             // cue 3: brightness
+        if (tnt > 0.005 || tnt < -0.005) {
+          const ga = g.globalAlpha;
+          g.globalAlpha = ga * Math.min(1, Math.abs(tnt));
+          g.drawImage(tnt > 0 ? tintSp.w : tintSp.k, X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
+          g.globalAlpha = ga;
+        }
         dg.globalAlpha = g.globalAlpha;
         dg.drawImage(dens[densChannel(lab, state)], X(i) * 0.5 - r, Y(i) * 0.5 - r, r * 2, r * 2);
       }
@@ -2523,6 +2628,9 @@ export default {
           // foot fan (17 B1): toes toward the viewer widen the foot's
           // density profile on the ground tip bone
           if (B.tip && B.groundChain) rU *= 1 + 0.6 * (state.twistFx?.[B.label]?.fan ?? 0);
+          const bi = state.bones.indexOf(B);
+          rU *= state.cueSize?.[bi] ?? 1;                       // cue 1: size
+          const btnt = state.cueTint?.[bi] ?? 0;                 // cue 3: brightness
           const r = rU * S * 0.5;
           const len = Math.hypot(J.ax - P.ax, J.ay - P.ay);
           const N = Math.max(5, Math.ceil(len / (rU * 0.5)));
@@ -2534,6 +2642,12 @@ export default {
             const bx = mapX(P.ax + (J.ax - P.ax) * t) * 0.5;
             const by = mapY(P.ay + (J.ay - P.ay) * t) * 0.5;
             g.drawImage(sp, bx - r, by - r, r * 2, r * 2);
+            if (btnt > 0.005 || btnt < -0.005) {
+              const ga = g.globalAlpha;
+              g.globalAlpha = ga * Math.min(1, Math.abs(btnt));
+              g.drawImage(btnt > 0 ? tintSp.w : tintSp.k, bx - r, by - r, r * 2, r * 2);
+              g.globalAlpha = ga;
+            }
             dg.drawImage(dsp, bx - r, by - r, r * 2, r * 2);
             splatCount++;
           }
@@ -2661,6 +2775,12 @@ export default {
       gl.uniform3f(sh.u.uSecondary, sec[0], sec[1], sec[2]);
       gl.uniform1f(sh.u.uAlpha, alpha * (rMode === 'goo-bones' ? 0.6 : 1));
       gl.uniform1f(sh.u.uFlat, rMode === 'silhouette' ? 1 : 0);
+      // arm order → the channel each arm lives in (front view only: in
+      // profile g/b mix legs and arms, so ordering would mean nothing)
+      const ordOf = (lab) => (state.view === 'profile' ? 0 : (state.ovl?.[lab] ?? 0));
+      const chG = densChannel('limb2', state) === 'g' ? ordOf('limb2') : 0;
+      const chB = densChannel('limb3', state) === 'b' ? ordOf('limb3') : 0;
+      gl.uniform2f(sh.u.uOrder, chG, chB);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);

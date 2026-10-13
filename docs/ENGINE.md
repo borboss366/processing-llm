@@ -153,6 +153,14 @@ cos-squeezes limb-root offsets + eye parallax.
 **Explorer:** depth.twistFx per frame in the trace; on stage the
 capture explorer's overlay 4 is the same channel upstream.
 
+**Depth cues (brief 17.5, 2026-10-13):** captured tables carry `depth`
+∈ [−1,1] per bone instead of twist. It drives four render-only cues with
+constants on the shape (`depthCues`) and one dial (`exaggerateDepth`):
+size (radius × max(0.8, 1+gain·depth)), draw length (× 1−|depth|),
+brightness (white/black wash in the colour field), and arm overlap
+(front/behind the torso at |depth| > 0.3, hysteresis 0.1). Depth 0 is
+exactly neutral at any dial.
+
 ## 9 · Tissue
 
 **In:** joint positions. **Out:** the node cloud following them.

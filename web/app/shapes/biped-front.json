@@ -218,5 +218,22 @@
   "toe": 0.8,
   "hip": 0.9
  },
- "dominantSide": "R"
+ "dominantSide": "R",
+ "depthCues": {
+  "gains": {
+   "foot": 0.6,
+   "hand": 0.6,
+   "shin": 0.35,
+   "forearm": 0.35,
+   "thigh": 0.2,
+   "upperArm": 0.2,
+   "torso": 0,
+   "head": 0
+  },
+  "sizeFloor": 0.8,
+  "drawK": 1,
+  "brightness": 0.35,
+  "overlapOn": 0.3,
+  "overlapHyst": 0.1
+ }
 }
