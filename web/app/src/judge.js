@@ -22,11 +22,16 @@ const notes = (() => { try { return JSON.parse(localStorage.getItem(STORE) ?? '{
 const saveLocal = () => { try { localStorage.setItem(STORE, JSON.stringify(notes)); } catch { /* private mode */ } };
 
 let armed = false, arming = null;
+let creatureSeenAt = 0;   // last bench-state that carried a creature
 async function arm() {
   arming ??= armOnce().finally(() => { arming = null; });
   return arming;
 }
 async function armOnce() {
+  // never restart a creature that is already dancing (trigger = the
+  // walk-in entrance); only start one when the stage shows none
+  if (!creatureSeenAt) await new Promise((r) => setTimeout(r, 1500));   // let the stage report first
+  if (Date.now() - creatureSeenAt < 2500) { armed = true; return; }
   await post('/browser-modules/load', { id: 'creature' });
   await new Promise((r) => setTimeout(r, 800));
   await osc('/creature/entryConf', 0);
@@ -141,8 +146,11 @@ $('verdict').addEventListener('click', (e) => {
 let stageWin = null;
 $('open-stage').onclick = () => {
   if (stageWin && !stageWin.closed) { stageWin.focus(); $('stage-status').textContent = 'stage window already open (focused)'; return; }
-  stageWin = window.open(STAGE, 'vj-stage');
-  $('stage-status').textContent = 'stage window opened — press play there';
+  // a separate WINDOW, not a tab: a background tab is frozen by the browser,
+  // so stage-in-a-tab froze while this page was in front and then replayed
+  // the start command (= the walk-in entrance) when switched to
+  stageWin = window.open(STAGE, 'vj-stage', 'popup,width=1280,height=760,left=0,top=0');
+  $('stage-status').textContent = 'stage window opened — put it beside this one, press play there';
 };
 $('arm').onclick = () => arm();
 
@@ -171,7 +179,8 @@ createWs({
   onMessage(msg) {
     if (msg.type === 'bench-state') {
       const c = msg.creature;
-      $('live').textContent = `on stage now: ${c ? (c.move ?? '(procedural)') : '(no creature)'}`;
+      if (c) creatureSeenAt = Date.now();
+      $('live').textContent = `on stage now: ${c ? `${c.move ?? '(procedural)'} · ${c.st}` : '(no creature)'}`;
       return;
     }
     // only the VISIBLE judge page steers: commands reach every stage tab, so

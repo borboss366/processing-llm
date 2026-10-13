@@ -97,7 +97,9 @@ sparkline + spike count) shares its widget code with the bench via
 **http://localhost:5173/judge.html** — one item to judge at a time. Each
 item says what to look at and what to answer; its setup buttons put
 exactly the right move, depth dial and render mode on the stage window
-(the page opens and starts it). A text box takes the owner's own words,
+(the page opens it as a SEPARATE window — a stage in a background tab is
+frozen by the browser — and starts the creature only if none is on
+stage). A text box takes the owner's own words,
 plus yes / partly / no. Items live in `web/app/public/judge-items.json`
 (edit and reload). Notes persist in the browser and are appended to
 `sessions/judge-<date>.jsonl` through `/session/append`; "copy all as
