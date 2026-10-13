@@ -1411,7 +1411,9 @@ export default {
     const gaitName = params.archetype === 'auto' ? state.gaitName : params.archetype;
     const gait = GAITS[gaitName] ?? GAITS.biped;
     let moveName = null;
-    if (params.move) {
+    // 'auto' = the rotation (an explicit value: an empty string doesn't
+    // survive the OSC path); 'none' = no table, procedural dance only
+    if (params.move && String(params.move) !== 'auto') {
       moveName = String(params.move) === 'none' ? null : String(params.move);
     } else {
       // roster (moves/roster.json): when the server names a rotation (the

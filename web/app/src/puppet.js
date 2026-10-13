@@ -98,7 +98,7 @@ for (const b of ['auto', 'idle', 'walk', 'groove', 'hop']) {
   })();
   nameSel.addEventListener('change', () => {
     moveForced = nameSel.value !== '';
-    osc('/creature/move', nameSel.value || 'none');
+    osc('/creature/move', nameSel.value || 'auto');   // 'auto' = the rotation ('none' = no table)
   });
   // in auto mode the selector FOLLOWS the live rotation (read-only mirror);
   // picking an entry forces it, picking "(auto by state)" releases it

@@ -43,3 +43,36 @@ commands); a second "open stage" only focuses the window; the page
 watches the stage's forced-move setting and re-applies the setup after a
 reload (verified: reload → back to punchcam in ~2 s); only a VISIBLE
 judge page steers, so two judge tabs can't fight over one stage.
+
+## Second pass (same day, after the rating-page fixes)
+
+### 7c — Cartoon punch at the camera — **PASS**
+Looked at: dial 0, 1, 1.5. The verdict button read "no" (left over from
+the first pass); the text is the verdict:
+> Cartoon punch looks rather good. I think we can accept this one.
+
+### 3 — Running man in profile (A7 re-view) — **PASS for the side view**
+Looked at: plain, -x, front version, rotation.
+> running man both plain and exaggerated looks quite fun and cartoonish.
+> front version is weird - because the body is like nailed in the center
+> and legs and arms wiggle, though i would say in transition may be good
+> enough. rotation parameter seem to do nothing.
+
+Notes: the front version is the depth-only reinterpretation (no in-plane
+leg motion) — "nailed in the center" is the same missing support-leg /
+root motion as the kick (7a). "Rotation does nothing" was a real bug:
+the setup sent an empty move, which the OSC path drops, so the previous
+forced move stayed. Fixed with an explicit 'auto' value (engine + rating
+page + the puppet's "(auto by state)", which had sent 'none' = no table);
+verified: 40 s of rotation cycles all six captured moves with view switches.
+
+### Thinner goo — **PARTLY**
+Looked at: 0.18, 0.24, 0.30, 0.30 + bones.
+> I would say became better, but might be that we need exaggerate more.
+> Like in cartoons, probably need to think about this one.
+
+## Open after this session
+- Support leg / root motion (kick "hanged on the back", front running man
+  "nailed in the center") — proposed engine task, awaiting go.
+- Goo: thinner helps; cartoon exaggeration to think about (owner).
+- Item 5 (engine explorer desk task) and item 6 (explain-it paragraph).

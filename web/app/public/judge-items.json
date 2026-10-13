@@ -159,7 +159,7 @@
         {
           "label": "rotation (watch the switch)",
           "params": {
-            "move": "",
+            "move": "auto",
             "renderMode": "goo",
             "exaggerateDepth": 1
           }

@@ -40,8 +40,10 @@ verdict moves to the report and gets a ✓ + date here.
    off for captured limb channels + the stance lock rewrote real leg
    data (reports/2026-10-03-a7-engine-knees.md; engine now tracks the
    table within 0.04 rad, amplitude rung added to moves-x-shapes).
-   RE-VIEW with the original protocol below (2026-10-14: not judged —
-   rating-page bug, fixed; re-run). — `runningman-captured`
+   ✓ 2026-10-14: side view PASS — plain and -x "quite fun and
+   cartoonish"; front version "weird, body nailed in the center" (no
+   support-leg/root motion — same gap as 7a); rotation re-check pending
+   (the setup was broken, fixed). — `runningman-captured`
    (profile-tagged, rebuilt through the full 2026-09-21 pipeline:
    measured rest, heel→toe feet, per-side sign, plane-select) is in the
    groove rotation at 0.1; picking it switches the stage to the PROFILE
@@ -82,7 +84,7 @@ verdict moves to the report and gets a ✓ + date here.
    other not; legs wiggle "like it is hanged on the back", no support
    leg. (b) PASS in substance — "depth cues do not change nothing";
    running man "looks the best", goo too thick hides the movement.
-   (c) not judged (rating-page bug, fixed) → re-run (c).
+   (c) ✓ PASS 2026-10-14 — "looks rather good, we can accept this one".
 
 ## Standing re-check triggers
 
