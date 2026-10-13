@@ -22,16 +22,17 @@ const notes = (() => { try { return JSON.parse(localStorage.getItem(STORE) ?? '{
 const saveLocal = () => { try { localStorage.setItem(STORE, JSON.stringify(notes)); } catch { /* private mode */ } };
 
 let armed = false, arming = null;
-let creatureSeenAt = 0;   // last bench-state that carried a creature
+let lifecycle = null;     // the stage creature's lifecycle state (render-state)
 async function arm() {
   arming ??= armOnce().finally(() => { arming = null; });
   return arming;
 }
 async function armOnce() {
-  // never restart a creature that is already dancing (trigger = the
-  // walk-in entrance); only start one when the stage shows none
-  if (!creatureSeenAt) await new Promise((r) => setTimeout(r, 1500));   // let the stage report first
-  if (Date.now() - creatureSeenAt < 2500) { armed = true; return; }
+  // start the creature when the stage reports it IDLE (invisible). The
+  // bench feed carries a pose even while idle, so it can't be the signal;
+  // a trigger on an entering/active creature is a no-op anyway.
+  if (!lifecycle) await new Promise((r) => setTimeout(r, 1500));   // let the stage report first
+  if (lifecycle === 'entering' || lifecycle === 'active') { armed = true; return; }
   await post('/browser-modules/load', { id: 'creature' });
   await new Promise((r) => setTimeout(r, 800));
   await osc('/creature/entryConf', 0);
@@ -152,7 +153,13 @@ $('open-stage').onclick = () => {
   stageWin = window.open(STAGE, 'vj-stage', 'popup,width=1280,height=760,left=0,top=0');
   $('stage-status').textContent = 'stage window opened — put it beside this one, press play there';
 };
-$('arm').onclick = () => arm();
+$('arm').onclick = async () => {   // explicit press: always (re)start
+  await post('/browser-modules/load', { id: 'creature' });
+  await osc('/creature/entryConf', 0);
+  await post('/browser-modules/trigger', { id: 'creature' });
+  armed = true;
+  $('stage-status').textContent = 'creature started';
+};
 
 $('copy-all').onclick = async () => {
   const md = ITEMS.map((it) => {
@@ -179,15 +186,18 @@ createWs({
   onMessage(msg) {
     if (msg.type === 'bench-state') {
       const c = msg.creature;
-      if (c) creatureSeenAt = Date.now();
       $('live').textContent = `on stage now: ${c ? `${c.move ?? '(procedural)'} · ${c.st}` : '(no creature)'}`;
       return;
     }
     // only the VISIBLE judge page steers: commands reach every stage tab, so
     // two judge pages (or a background one) would fight over one stage
-    if (msg.type !== 'render-state' || !want || document.visibilityState !== 'visible') return;
+    if (msg.type !== 'render-state') return;
     const mod = (msg.modules ?? []).find((m) => m.id === 'creature');
     if (!mod) return;
+    lifecycle = mod.lifecycle?.state ?? null;
+    // the creature went idle (stage reloaded / exited): bring it back
+    if (lifecycle === 'idle' && want && document.visibilityState === 'visible' && !arming) { armed = false; arm(); }
+    if (!want || document.visibilityState !== 'visible') return;
     const forced = mod.params?.move ?? '';
     if (forced === (want.params.move ?? '')) { driftSince = 0; return; }
     driftSince ||= Date.now();
