@@ -71,6 +71,13 @@ verdict moves to the report and gets a ✓ + date here.
    goo render · authored moves · FSM · audience pipeline. First
    paragraph (your pick) opens the gate. → ____
 
+7. **Depth cues (brief 17.5 Task 4)** — goo+bones at 3 m,
+   `exaggerateDepth` 0 / 1 / 1.5 (puppet param), stills in
+   reports/2026-10-13-depth-judgment-stills.png: (a) basic_kick_1 — a
+   foot thrown at the audience? (b) runningman — unchanged? (right leg
+   carries depth ≤ 0.22 → ×1.13) (c) `punchcam` — a cartoon punch at
+   the camera? → ____
+
 ## Standing re-check triggers
 
 - **Captured T-step = depth-channel acceptance test** — when brief 17

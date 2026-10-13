@@ -1,0 +1,15 @@
+{
+  "name": "punchcam",
+  "description": "17.5 Task 4: the punch at the camera (declared impossible in front view) as a cartoon — fist in-plane guard → same pose thrown at the audience via depth +0.9, snap. Authored: no in-plane extension at all; the punch is carried entirely by the depth cues.",
+  "beatsPerLoop": 2,
+  "overlay": 0.3,
+  "verticalContent": 0.1,
+  "keys": [
+    { "phase": 0, "ease": "snap", "contacts": ["footL", "footR"],
+      "joints": { "shoulderR": { "rot": -0.25, "depth": 0 }, "elbowR": { "rot": -0.4, "depth": 0 },
+                  "shoulderL": { "rot": 0.25 }, "elbowL": { "rot": 0.4 }, "chest": { "rot": 0 } } },
+    { "phase": 0.5, "ease": "snap", "contacts": ["footL", "footR"],
+      "joints": { "shoulderR": { "rot": -0.25, "depth": 0.9 }, "elbowR": { "rot": -0.4, "depth": 0.9 },
+                  "shoulderL": { "rot": 0.25 }, "elbowL": { "rot": 0.4 }, "chest": { "rot": 0.04 } } }
+  ]
+}
