@@ -26,3 +26,5 @@ tools/mocap/models/
 .DS_Store
 *.log
 spool/
+# judge before/after copies (git show HEAD~N:web/app/moves/<m>.json); not part of any roster
+web/app/moves/before/

@@ -7,155 +7,167 @@
     "view": "auto",
     "onion": 0,
     "viewForce": 0,
-    "gooThreshold": 0.18
+    "gooThreshold": 0.18,
+    "exaggerateDepth": 1
   },
   "items": [
     {
-      "id": "7a-kick",
-      "gate": "USER_GATES 7 (brief 17.5) — depth cues",
-      "title": "Kick thrown at the audience",
-      "look": "Stand ~3 m back. Watch the kicking leg and foot. At dial 0 there are no depth cues; at 1 and 1.5 the parts coming at you grow, shorten and brighten, and the left arm is drawn in front of the body.",
-      "question": "Does the kick read as a foot thrown at you? Which dial reads best?",
+      "id": "w1-runningman-side",
+      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "title": "Running man (side) — does the stance foot hold?",
+      "look": "Before: 14 of 31 key poses had NO foot planted, so the body floated and the feet drifted. Now every pose has its support foot planted, alternating once per step. The side-view feet were also drawn ~11° toe-up before; now a flat foot is flat. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
+      "question": "Does the body hang less — does a foot hold the floor on each step? Are the feet flat on the floor now? Anything worse?",
       "setups": [
         {
-          "label": "dial 0 (no cues)",
+          "label": "before (old table)",
           "params": {
-            "move": "basic_kick_1-captured-front",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 0
+            "move": "before/runningman-captured",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1",
+          "label": "now (weight)",
           "params": {
-            "move": "basic_kick_1-captured-front",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 1
+            "move": "runningman-captured",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1.5",
+          "label": "now · audience look (goo)",
           "params": {
-            "move": "basic_kick_1-captured-front",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 1.5
-          }
-        },
-        {
-          "label": "dial 1 · audience look (goo)",
-          "params": {
-            "move": "basic_kick_1-captured-front",
-            "renderMode": "goo",
-            "exaggerateDepth": 1
+            "move": "runningman-captured",
+            "renderMode": "goo"
           }
         }
       ]
     },
     {
-      "id": "7b-runningman-depth",
-      "gate": "USER_GATES 7 (brief 17.5) — depth cues",
-      "title": "Running man must stay unchanged",
-      "look": "A sideways move: depth cues should change nothing. The capture gives the right leg some depth (up to 0.22), so at dial 1 it may swell up to ×1.13. Compare dial 0 with 1.5.",
-      "question": "Does the running man look the same at every dial? If the right leg swells, is it the far leg crossing (fine) or noise (remove)?",
+      "id": "w2-runningman-front",
+      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "title": "Running man (front) — same check",
+      "look": "Same capture, front view. You called it 'nailed in the center' last time; the pinned foot may change that a little, the pelvis shift (Task 2) is what should really fix it. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
+      "question": "Any difference? Does a foot hold the floor each step?",
       "setups": [
         {
-          "label": "dial 0",
+          "label": "before (old table)",
           "params": {
-            "move": "runningman-captured",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 0
+            "move": "before/runningman-captured-front",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1",
+          "label": "now (weight)",
           "params": {
-            "move": "runningman-captured",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 1
+            "move": "runningman-captured-front",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1.5",
+          "label": "now · audience look (goo)",
           "params": {
-            "move": "runningman-captured",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 1.5
+            "move": "runningman-captured-front",
+            "renderMode": "goo"
           }
         }
       ]
     },
     {
-      "id": "7c-punchcam",
-      "gate": "USER_GATES 7 (brief 17.5) — depth cues",
-      "title": "Cartoon punch at the camera",
-      "look": "A hand-made two-key move: the right fist goes from guard straight at the camera. It never extends in the picture — only the cues show it (short forearm, big fist, outline across the chest).",
-      "question": "Does it read as a punch at you? Too much, too little, or right?",
+      "id": "w3-tstep",
+      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "title": "T-step — weight rocking side to side",
+      "look": "The weight rocks left ↔ right through the shuffle; the support foot now stays down on each rock. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
+      "question": "Does a planted foot read on each side? Does it look more grounded than before?",
       "setups": [
         {
-          "label": "dial 0 (nothing should happen)",
+          "label": "before (old table)",
           "params": {
-            "move": "punchcam",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 0
+            "move": "before/tstep-captured",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1",
+          "label": "now (weight)",
           "params": {
-            "move": "punchcam",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 1
+            "move": "tstep-captured",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1.5",
+          "label": "now · audience look (goo)",
           "params": {
-            "move": "punchcam",
-            "renderMode": "goo-bones",
-            "exaggerateDepth": 1.5
+            "move": "tstep-captured",
+            "renderMode": "goo"
+          }
+        }
+      ]
+    },
+    {
+      "id": "w4-bodyroll",
+      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "title": "Body roll — standing on the floor",
+      "look": "No foot lifts here; the weight shifts forward and back. Both feet should stay on the floor in both versions — this is a check that nothing got worse. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
+      "question": "Does it stand on the floor, same as or better than before?",
+      "setups": [
+        {
+          "label": "before (old table)",
+          "params": {
+            "move": "before/bodyroll-captured",
+            "renderMode": "goo-bones"
           }
         },
         {
-          "label": "dial 1 · audience look (goo)",
+          "label": "now (weight)",
           "params": {
-            "move": "punchcam",
-            "renderMode": "goo",
-            "exaggerateDepth": 1
+            "move": "bodyroll-captured",
+            "renderMode": "goo-bones"
+          }
+        },
+        {
+          "label": "now · audience look (goo)",
+          "params": {
+            "move": "bodyroll-captured",
+            "renderMode": "goo"
+          }
+        }
+      ]
+    },
+    {
+      "id": "w5-kick",
+      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "title": "Kick — expected: NO improvement yet",
+      "look": "The kick capture covers several kicks with different standing legs; averaged into one loop, the weight cancels out (−0.09…+0.33), so both feet stay planted as before. The fix is a recapture with one kick. Shown so you can confirm the finding, not to judge the look. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
+      "question": "Do you agree it looks the same and still lacks a standing leg?",
+      "setups": [
+        {
+          "label": "before (old table)",
+          "params": {
+            "move": "before/basic_kick_1-captured-front",
+            "renderMode": "goo-bones"
+          }
+        },
+        {
+          "label": "now (weight)",
+          "params": {
+            "move": "basic_kick_1-captured-front",
+            "renderMode": "goo-bones"
+          }
+        },
+        {
+          "label": "now · audience look (goo)",
+          "params": {
+            "move": "basic_kick_1-captured-front",
+            "renderMode": "goo"
           }
         }
       ]
     },
     {
       "id": "3-runningman-a7",
-      "gate": "USER_GATES 3 (brief 17 A7) — re-view after the knee fix",
+      "gate": "USER_GATES 3 (brief 17 A7) — re-check: the rotation now works",
       "title": "Running man in profile",
-      "look": "The knees failed the first viewing and were fixed. Judge the motion, not the drawing (the side body is placeholder art). Then compare the variants, then let the rotation run to see the switch into the side view.",
-      "question": "Recognizably him, readable at 3 m? Plain or exaggerated? Side or front as the default? Does the view switch look intentional?",
+      "look": "Last time the rotation button did nothing (bug, fixed). Press \"rotation\" and wait a few bars: the stage cycles the captured moves and switches between side and front views.",
+      "question": "Does the view switch look intentional?",
       "setups": [
-        {
-          "label": "plain (side)",
-          "params": {
-            "move": "runningman-captured",
-            "renderMode": "goo",
-            "exaggerateDepth": 1
-          }
-        },
-        {
-          "label": "exaggerated (-x)",
-          "params": {
-            "move": "runningman-captured-x",
-            "renderMode": "goo",
-            "exaggerateDepth": 1
-          }
-        },
-        {
-          "label": "front version",
-          "params": {
-            "move": "runningman-captured-front",
-            "renderMode": "goo",
-            "exaggerateDepth": 1
-          }
-        },
         {
           "label": "rotation (watch the switch)",
           "params": {
