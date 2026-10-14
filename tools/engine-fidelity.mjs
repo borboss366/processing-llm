@@ -77,8 +77,15 @@ for (const c of CASES) {
     const v = F.map((f) => f.s1?.[b] ?? 0);
     return Math.max(...v) - Math.min(...v);
   }));
+  // clamp hits INSIDE the window: the engine's counter is cumulative over
+  // the page session (hits during the switch-in from the previous move are
+  // not this table's), so take last − first
+  const c0 = F[0].flags?.clamps ?? {}, c1 = F.at(-1).flags?.clamps ?? {};
   const clampTotals = {};
-  for (const f of F) for (const [nm, n2] of Object.entries(f.flags?.clamps ?? {})) clampTotals[nm] = Math.max(clampTotals[nm] ?? 0, n2);
+  for (const nm of new Set([...Object.keys(c0), ...Object.keys(c1)])) {
+    const d = (c1[nm] ?? 0) - (c0[nm] ?? 0);
+    if (d > 0) clampTotals[nm] = d;
+  }
   const badClamps = Object.keys(clampTotals).filter((nm) => !whitelist.has(nm));
 
   console.log(`[engine-fidelity] ${c.move} × ${c.shape}: blend ${r2.toFixed(3)} · spring ${r3.toFixed(3)} · +live ${(r4 - r3).toFixed(3)} · limits Δ ${(r5 - r3ok).toFixed(3)} (ex-whitelist) · lock Δ ${(rl - r4).toFixed(3)} · s1 amp ${amp.toFixed(2)} · clamps ${JSON.stringify(clampTotals)}${whitelist.size ? " whitelist [" + [...whitelist] + "]" : ""}`);

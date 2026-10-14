@@ -39,6 +39,7 @@ const L = JSON.parse(fs.readFileSync(files[0], "utf8"));
 const swapSide = (nm) => nm.endsWith("L") ? `${nm.slice(0, -1)}R` : nm.endsWith("R") ? `${nm.slice(0, -1)}L` : nm;
 const mirrorKey = (k) => ({
   phase: k.phase,
+  ...(k.weight !== undefined ? { weight: k.weight == null ? null : -k.weight } : {}),   // 17.6: L↔R support
   joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => [swapSide(nm), {
     ...(ch.rot != null ? { rot: -ch.rot } : {}),
     ...(ch.dx != null ? { dx: -ch.dx } : {}),
@@ -111,6 +112,7 @@ function symmetrizeLoop(keys, view, pick) {
     .sort((a, b) => a.phase - b.phase);
   const swapped = half.map((k) => ({
     ...k,
+    ...(k.weight !== undefined ? { weight: k.weight == null ? null : -k.weight } : {}),   // 17.6
     phase: +(k.phase + 0.5).toFixed(5),
     joints: Object.fromEntries(Object.entries(k.joints).map(([nm, ch]) => [swapSide(nm), { ...ch }])),
     contacts: (k.contacts ?? []).map(swapSide),

@@ -60,6 +60,7 @@ import { foreshortenAll, frontnessRatio, depthFromTwist, gatedBones } from "./li
 import { MP, buildRig, detectYSign, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { cycleSpread, angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove, sampleTableAt } from "./lib/distill.mjs";
+import { weightSeries, legLength, weightFromContacts, contactsFromWeight } from "./lib/weight.mjs";
 import { renderExplorer } from "./lib/explorer.mjs";
 import { sideSigns } from "./lib/retarget.mjs";
 
@@ -335,9 +336,16 @@ async function processView(vk, primary) {
 
   // front-view feet: the dancer's own standing foot is the ankle reference
   // (retargetFrame footRef); profile feet stay gravity-referenced
+  // profile feet (2026-10-14, found by the 17.6 lift self-test): the capture
+  // measures HEEL→TOE (horizontal when flat), the rig's foot bone is
+  // ankle→toe and rests tilted ~11°. The absolute retarget dropped the old
+  // "flat = rest" rule, so every flat profile foot drew toe-up by the tilt.
+  // Horizontal toward the facing (+x after canonicalization) = 0 rad is the
+  // profile foot's zero, applied onto the rig's rest foot.
   const footRef = natural === "front"
-    ? { ankleL: cal.rests.ankleL, ankleR: cal.rests.ankleR } : null;
-  if (footRef) console.log(`[mocap] front-view foot reference (dancer's standing foot, rad): ankleL ${footRef.ankleL.toFixed(2)} · ankleR ${footRef.ankleR.toFixed(2)}`);
+    ? { ankleL: cal.rests.ankleL, ankleR: cal.rests.ankleR }
+    : { ankleL: 0, ankleR: 0 };
+  console.log(`[mocap] foot reference (${natural === "front" ? "dancer's standing foot" : "flat = horizontal toward the facing"}, rad): ankleL ${footRef.ankleL.toFixed(2)} · ankleR ${footRef.ankleR.toFixed(2)}`);
   // degenerate in-plane (17.5 T1.3): a bone whose projection collapsed below
   // the gate has no measurable 2D angle — retarget it to REST (no hold);
   // its motion is carried by depth. Every bone, not just feet.
@@ -456,6 +464,25 @@ async function processView(vk, primary) {
     }
     return out;
   };
+  // weight (17.6): which foot carries the body, per frame, from the rig's
+  // own FK feet (never image height); smoothed like any channel. Airborne
+  // frames (both feet up) are carried as a separate fraction so a key can
+  // be marked "no support" after averaging.
+  const legL = legLength(rigV);
+  const fkFrames = thetaFrames.map((th) => fkPose(rigV, th));
+  // each foot = its ankle x (the brief's axis) and its LOWEST point (ankle or
+  // toe) — a flat foot and a foot drawn at the rest tilt must both read down
+  const footOf = (q, s2) => [q[`ankle${s2}`][0], Math.max(q[`ankle${s2}`][1], q[`foot${s2}`][1])];
+  const ws = weightSeries(fkFrames.map((q) => ({ pelvis: q.pelvis, footL: footOf(q, "L"), footR: footOf(q, "R") })), legL);
+  {
+    let prev = 0;
+    var weightFrames = ws.weight.map((w) => (w == null ? prev : (prev = w)));
+    weightFrames = Array.from(savgolSmooth(Float64Array.from(weightFrames), sg.window, sg.order), (v) => Math.max(-1, Math.min(1, v)));
+    var airFrames = ws.weight.map((w) => (w == null ? 1 : 0));
+    const sh = (v) => (v < -0.6 ? "L" : v > 0.6 ? "R" : "·");
+    const runs = weightFrames.map(sh).join("").replace(/(.)\1+/g, "$1");
+    console.log(`[mocap] weight (17.6): L ${legL.toFixed(3)} u · lifted L ${ws.liftL.filter(Boolean).length} / R ${ws.liftR.filter(Boolean).length} · airborne ${airFrames.filter(Boolean).length} of ${weightFrames.length} frames · support runs ${runs.slice(0, 60)}`);
+  }
   const channels = {};
   for (const nm of ARTICULATED) channels[`th:${nm}`] = uni(thetaFrames.map((f) => f[nm] ?? 0));
   // twist channels ride the same averaging (17 B1) — distill emits them
@@ -464,6 +491,8 @@ async function processView(vk, primary) {
   channels["yw:pelvis"] = uni(yawFrames.map((f) => f.pelvis));
   channels["yw:chest"] = uni(yawFrames.map((f) => f.chest));
   channels.pelvisU = uni(pelvisU);
+  channels.wt = uni(weightFrames);
+  channels.air = uni(airFrames);
   for (const s of ["L", "R"]) {
     channels[`footY${s}`] = uni(footY[s]);
     const fx = uni(footX[s]);
@@ -592,6 +621,7 @@ async function processView(vk, primary) {
   // ── stage 7: distill to the standard table ────────────────────────────────
   const thetasAvg = {};
   for (const nm of ARTICULATED) thetasAvg[nm] = mean[`th:${nm}`];
+  const weightAvg = mean.wt, airAvg = mean.air;
   const depthAvg = {};
   for (const nm of ARTICULATED) depthAvg[nm] = mean[`dp:${nm}`];
   const yawAvg = { pelvis: mean["yw:pelvis"], chest: mean["yw:chest"] };
@@ -623,6 +653,7 @@ async function processView(vk, primary) {
   const table = distillMove({
     thetas: thetasAvg,
     depths: depthAvg,
+    weight: weightAvg, air: airAvg,
     yaws: yawAvg,
     pelvisU: pelvisAvg,
     footY: { L: fkFY.L, R: fkFY.R },
@@ -664,6 +695,7 @@ async function processView(vk, primary) {
              gateMasks: typeof gateMasks !== "undefined" ? gateMasks : null,
              contactDebug },
     frames: detected.map((f, i) => ({
+      weight: +weightFrames[i].toFixed(4), airborne: airFrames[i] === 1,
       t: +times[i].toFixed(4),
       conf: +conf[i].toFixed(3),
       thetas: Object.fromEntries(ARTICULATED.map((nm) => [nm, +thetaFrames[i][nm].toFixed(4)])),
@@ -1373,6 +1405,97 @@ function selfTest() {
                out[1].travel === 0 && out[1].contacts.L === 0 && !("kneeL" in out[0].joints);
     console.log(`[self-test] reinterpret front-from-profile: kneeL lift ${lift} → depth ${dKnee} (engine recovers ${backAngle.toFixed(3)} rad), in-plane leak ${leak}`);
     if (!ok) fails.push("reinterpretation must route sagittal deviations to depth (round-trip to the angle), zero in-plane");
+  }
+  // 8) WEIGHT (17.6): which foot carries the body
+  {
+    const L = 0.3;
+    const P = (pel, fl, fr) => ({ pelvis: [pel, 0.5], footL: fl, footR: fr });
+    // (a) one foot raised → all weight on the other
+    const a1 = weightSeries([P(0.5, [0.45, 0.85], [0.55, 0.9])], L).weight[0];   // L raised 0.05 > 0.06·L=0.018
+    const a2 = weightSeries([P(0.5, [0.45, 0.9], [0.55, 0.85])], L).weight[0];
+    // (b) both down: pelvis over the left foot → −1, centred → 0
+    const b1 = weightSeries([P(0.45, [0.45, 0.9], [0.6, 0.9])], L).weight[0];
+    const b2 = weightSeries([P(0.525, [0.45, 0.9], [0.6, 0.9])], L).weight[0];
+    console.log(`[self-test] weight: L up → ${a1} (want +1) · R up → ${a2} (want −1) · pelvis over L → ${b1} (want −1) · centred → ${b2} (want 0)`);
+    if (a1 !== 1 || a2 !== -1) fails.push("weight: a raised foot must put all weight on the other");
+    if (b1 !== -1 || b2 !== 0) fails.push("weight: pelvis-between-feet rule wrong");
+    // (c) the same clip with --mirror gives the negated channel (through
+    //     the real retarget + FK)
+    const front = (wl) => {
+      const f = [];
+      // hips 0.45/0.55; feet set so the pelvis sits toward the LEFT foot
+      for (const [s2, hx, fx] of [["L", 0.45, 0.47 - wl], ["R", 0.55, 0.62 + wl]]) {
+        f[MP[`hip${s2}`]] = [hx, 0.5]; f[MP[`knee${s2}`]] = [(hx + fx) / 2, 0.75]; f[MP[`ankle${s2}`]] = [fx, 1.0];
+        f[MP[`heel${s2}`]] = [fx, 1.02]; f[MP[`toe${s2}`]] = [fx + (s2 === "L" ? -0.06 : 0.06), 1.03];
+      }
+      for (const [s2, x] of [["L", 0.4], ["R", 0.6]]) { f[MP[`shoulder${s2}`]] = [x, 0.2]; f[MP[`elbow${s2}`]] = [x, 0.33]; f[MP[`wrist${s2}`]] = [x, 0.45]; }
+      f[MP.earL] = [0.47, 0.08]; f[MP.earR] = [0.53, 0.08]; f[MP.nose] = [0.5, 0.1];
+      return f;
+    };
+    const clip = [front(0.06), front(0.1), front(0.14)];
+    const rgF = buildRig(JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-1.json"), "utf8")));
+    const wOf = (mir) => {
+      const Lr = legLength(rgF);
+      const fo = (q, s2) => [q[`ankle${s2}`][0], Math.max(q[`ankle${s2}`][1], q[`foot${s2}`][1])];
+      return weightSeries(clip.map((f) => { const q = fkPose(rgF, retargetFrame(f, rgF, mir)); return { pelvis: q.pelvis, footL: fo(q, "L"), footR: fo(q, "R") }; }), Lr).weight;
+    };
+    const w0 = wOf(false), w1 = wOf(true);
+    const mirrorClip = (f) => {
+      const g = [];
+      for (let i = 0; i < f.length; i++) if (f[i]) g[i] = [1 - f[i][0], f[i][1]];
+      for (let k = 0; k < 10; k++) { const a = 2 * k + 1, b = 2 * k + 2; [g[a], g[b]] = [g[b], g[a]]; }
+      return g;
+    };
+    const clipM = clip.map(mirrorClip);
+    const fo3 = (q, s2) => [q[`ankle${s2}`][0], Math.max(q[`ankle${s2}`][1], q[`foot${s2}`][1])];
+    const wM = weightSeries(clipM.map((f) => { const q = fkPose(rgF, retargetFrame(f, rgF, false)); return { pelvis: q.pelvis, footL: fo3(q, "L"), footR: fo3(q, "R") }; }), legLength(rgF)).weight;
+    // the drawn rig is not exactly symmetric (ankle 0.084 vs 0.077 from the
+    // pelvis) → a mirrored clip differs by a few hundredths; sign must flip
+    const clipOK = w0.every((v, i) => v !== 0 && Math.sign(v) === -Math.sign(wM[i]) && Math.abs(v + wM[i]) < 0.08);
+    const flagOK = w0.every((v, i) => Math.sign(v) === -Math.sign(w1[i]));
+    console.log(`[self-test] weight mirror: clip [${w0.map((v) => v.toFixed(2))}] · mirrored clip [${wM.map((v) => v.toFixed(2))}] (want negated, ±0.08) · --mirror relabel [${w1.map((v) => v.toFixed(2))}] (want opposite sign)`);
+    if (!clipOK) fails.push("weight: a mirrored clip must give the negated channel");
+    if (!flagOK) fails.push("weight: --mirror must flip the sign");
+    // (d) profile, sole-to-camera foot on the floor: the gated foot draws at
+    //     rest and must NOT read as lifted
+    {
+      const rgP2 = buildRig(JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/shapes/biped-profile.json"), "utf8")));
+      const prof2 = (sole) => {
+        const f = [];
+        for (const [s2, x] of [["L", 0.0], ["R", 0.05]]) {
+          f[MP[`hip${s2}`]] = [x, 0.5]; f[MP[`knee${s2}`]] = [x, 0.75]; f[MP[`ankle${s2}`]] = [x, 1.0];
+          f[MP[`heel${s2}`]] = [x - 0.01, 1.02];
+          const len = (sole && s2 === "R") ? 0.004 : 0.09;
+          f[MP[`toe${s2}`]] = [x - 0.01 + len, 1.02];
+        }
+        for (const [s2, x] of [["L", 0], ["R", 0.02]]) { f[MP[`shoulder${s2}`]] = [x, 0.1]; f[MP[`elbow${s2}`]] = [x, 0.3]; f[MP[`wrist${s2}`]] = [x, 0.45]; }
+        f[MP.earL] = [0, 0]; f[MP.earR] = [0.02, 0]; f[MP.nose] = [0.05, 0.01];
+        return f;
+      };
+      const frames = [...Array.from({ length: 10 }, () => prof2(false)), prof2(true)];
+      const scoresT = frames.map(() => new Array(21).fill(0.9));
+      const masks = calibMasks(frames);
+      const fore = foreshortenAll(frames, scoresT, rgP2.defs(false), () => masks.global.map(() => true), MP);
+      const gatedT = gatedBones(frames, rgP2.defs(false), fore.restLens, 0.35, MP);
+      const q = fkPose(rgP2, retargetFrame(frames[10], rgP2, false, { profileFacing: 1 }, { ankleL: 0, ankleR: 0 }, gatedT[10]));
+      const fo2 = (s2) => [q[`ankle${s2}`][0], Math.max(q[`ankle${s2}`][1], q[`foot${s2}`][1])];
+      const wd = weightSeries([{ pelvis: q.pelvis, footL: fo2("L"), footR: fo2("R") }], legLength(rgP2));
+      console.log(`[self-test] weight, profile sole-to-camera foot: gated ${gatedT[10].has("ankleR")} · lifted L ${wd.liftL[0]} R ${wd.liftR[0]} (want both false) · weight ${wd.weight[0]}`);
+      if (wd.liftR[0] || wd.liftL[0]) fails.push("weight: a gated sole-to-camera foot on the floor must not break the lift rule");
+    }
+    // round trip on EVERY authored table: contacts → weight → contacts = identity
+    let keysN = 0, bad = [];
+    for (const f2 of fs.readdirSync(path.join(ROOT, "web/app/moves")).filter((x) => x.endsWith(".json") && x !== "roster.json")) {
+      const t = JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/moves", f2), "utf8"));
+      if (String(t.provenance?.pipeline ?? "").startsWith("tools/mocap") || !t.keys) continue;
+      for (const k of t.keys) {
+        keysN++;
+        const a = [...(k.contacts ?? [])].sort().join("+"), b2 = contactsFromWeight(weightFromContacts(k.contacts ?? [])).sort().join("+");
+        if (a !== b2) bad.push(`${f2}@${k.phase}: ${a || "∅"} → ${b2 || "∅"}`);
+      }
+    }
+    console.log(`[self-test] weight round-trip on authored tables: ${keysN} keys, ${bad.length} mismatches`);
+    if (bad.length) fails.push(`weight round-trip: ${bad.slice(0, 3).join("; ")}`);
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);
   console.log(`VERIFY:${fails.length ? "FAIL" : "PASS"} mocap-self-test`);

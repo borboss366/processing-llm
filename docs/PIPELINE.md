@@ -234,6 +234,14 @@ planted (stance lock ate the lift); the fixed 16-key cap smeared
 accents; and the constant-channel exclusion above.
 **Code:** `lib/distill.mjs` (~200 lines).
 
+**Weight (brief 17.6, 2026-10-15):** distill also emits `weight` ∈
+[−1, +1] per key (−1 all on the left foot, +1 right, 0 shared, null
+airborne), measured per frame from the rig's own FK feet (a foot higher
+than the other by > 0.06 leg-lengths carries nothing; both down → where
+the pelvis sits between the ankles). Contacts are DERIVED from it
+(|w| ≥ 0.6 → the free foot is unplanted) — one source of truth. The
+running man's 14 keys with no foot planted (the "hanging") are gone.
+
 ## 8 · Table
 
 **Out:** `moves/<name>.json` — view tag, keys with rot/dx/dy/twist/yaw,

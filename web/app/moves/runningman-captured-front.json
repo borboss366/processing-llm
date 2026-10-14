@@ -29,7 +29,7 @@
           "depth": 0.1844
         },
         "ankleL": {
-          "depth": -0.148
+          "depth": -0.0617
         },
         "hipR": {
           "depth": 0.0252
@@ -38,10 +38,58 @@
           "depth": 0.0743
         },
         "ankleR": {
-          "depth": -0.1258
+          "depth": -0.0477
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": 0.484,
+      "ease": "smooth",
+      "travel": 0
+    },
+    {
+      "phase": 0.01563,
+      "joints": {
+        "neck": {
+          "depth": 0.0282
+        },
+        "shoulderL": {
+          "depth": 0.0793
+        },
+        "elbowL": {
+          "depth": -1
+        },
+        "shoulderR": {
+          "depth": 0.0721
+        },
+        "elbowR": {
+          "depth": -1
+        },
+        "hipL": {
+          "depth": -0.0341
+        },
+        "kneeL": {
+          "depth": 0.113
+        },
+        "ankleL": {
+          "depth": -0.0392
+        },
+        "hipR": {
+          "depth": 0.012
+        },
+        "kneeR": {
+          "depth": 0.1153
+        },
+        "ankleR": {
+          "depth": -0.0259
+        }
+      },
+      "contacts": [
+        "footR"
+      ],
+      "weight": 0.814,
       "ease": "smooth",
       "travel": 0
     },
@@ -70,7 +118,7 @@
           "depth": 0.113
         },
         "ankleL": {
-          "depth": -0.1121
+          "depth": -0.0392
         },
         "hipR": {
           "depth": 0.012
@@ -79,10 +127,13 @@
           "depth": 0.1153
         },
         "ankleR": {
-          "depth": -0.089
+          "depth": -0.0259
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
+      "weight": 0.814,
       "ease": "smooth",
       "travel": 0
     },
@@ -111,60 +162,132 @@
           "depth": 0.0296
         },
         "ankleL": {
-          "depth": -0.0517
+          "depth": -0.0078
         },
         "kneeR": {
           "depth": 0.3214
-        },
-        "ankleR": {
-          "depth": -0.0341
         }
       },
       "contacts": [
         "footR"
       ],
+      "weight": 0.669,
       "ease": "snap",
       "travel": 0
     },
     {
-      "phase": 0.125,
+      "phase": 0.07813,
       "joints": {
         "neck": {
-          "depth": 0.0136
+          "depth": 0.022
         },
         "shoulderL": {
-          "depth": -0.2224
+          "depth": -0.0105
         },
         "elbowL": {
-          "depth": -0.3004
+          "depth": -0.8419
         },
         "shoulderR": {
-          "depth": -0.0226
+          "depth": 0.0299
         },
         "elbowR": {
-          "depth": -0.2358
+          "depth": -0.5278
         },
         "hipL": {
-          "depth": -0.0074
+          "depth": -0.0101
         },
         "kneeL": {
-          "depth": 0.0349
+          "depth": 0.0296
         },
         "ankleL": {
-          "depth": -0.0505
-        },
-        "hipR": {
-          "depth": -0.0432
+          "depth": -0.0078
         },
         "kneeR": {
-          "depth": 0.7066
-        },
-        "ankleR": {
-          "depth": -0.0172
+          "depth": 0.3214
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
+      "weight": 0.669,
       "ease": "smooth",
+      "travel": 0
+    },
+    {
+      "phase": 0.09375,
+      "joints": {
+        "neck": {
+          "depth": 0.0172
+        },
+        "shoulderL": {
+          "depth": -0.0877
+        },
+        "elbowL": {
+          "depth": -0.5562
+        },
+        "elbowR": {
+          "depth": -0.3378
+        },
+        "hipL": {
+          "depth": -0.0073
+        },
+        "kneeL": {
+          "depth": 0.0252
+        },
+        "hipR": {
+          "depth": -0.0148
+        },
+        "kneeR": {
+          "depth": 0.4912
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": -0.001,
+      "ease": "snap",
+      "travel": 0
+    },
+    {
+      "phase": 0.14063,
+      "joints": {
+        "neck": {
+          "depth": 0.0101
+        },
+        "shoulderL": {
+          "depth": -0.3768
+        },
+        "elbowL": {
+          "depth": -0.1322
+        },
+        "shoulderR": {
+          "depth": -0.1603
+        },
+        "elbowR": {
+          "depth": -0.1973
+        },
+        "hipL": {
+          "depth": -0.0095
+        },
+        "kneeL": {
+          "depth": 0.0593
+        },
+        "ankleL": {
+          "depth": -0.0176
+        },
+        "hipR": {
+          "depth": -0.0906
+        },
+        "kneeR": {
+          "depth": 0.9303
+        }
+      },
+      "contacts": [
+        "footL"
+      ],
+      "weight": -0.862,
+      "ease": "snap",
       "travel": 0
     },
     {
@@ -192,7 +315,7 @@
           "depth": 0.1181
         },
         "ankleL": {
-          "depth": -0.149
+          "depth": -0.0624
         },
         "hipR": {
           "depth": -0.2039
@@ -201,10 +324,13 @@
           "depth": 1
         },
         "ankleR": {
-          "depth": -0.0523
+          "depth": -0.0081
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL"
+      ],
+      "weight": -1,
       "ease": "smooth",
       "travel": 0
     },
@@ -233,7 +359,7 @@
           "depth": 0.1009
         },
         "ankleL": {
-          "depth": -0.1603
+          "depth": -0.0702
         },
         "hipR": {
           "depth": -0.2275
@@ -242,10 +368,56 @@
           "depth": 1
         },
         "ankleR": {
-          "depth": -0.0505
+          "depth": -0.0073
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": -0.572,
+      "ease": "smooth",
+      "travel": 0
+    },
+    {
+      "phase": 0.26563,
+      "joints": {
+        "neck": {
+          "depth": 0.0186
+        },
+        "shoulderL": {
+          "depth": -0.5042
+        },
+        "elbowL": {
+          "depth": -0.0508
+        },
+        "shoulderR": {
+          "depth": -0.2582
+        },
+        "elbowR": {
+          "depth": -0.4199
+        },
+        "hipL": {
+          "depth": -0.0057
+        },
+        "kneeL": {
+          "depth": 0.0606
+        },
+        "ankleL": {
+          "depth": -0.0474
+        },
+        "hipR": {
+          "depth": -0.1879
+        },
+        "kneeR": {
+          "depth": 0.83
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": -0.115,
       "ease": "smooth",
       "travel": 0
     },
@@ -274,19 +446,20 @@
           "depth": 0.0606
         },
         "ankleL": {
-          "depth": -0.1253
+          "depth": -0.0474
         },
         "hipR": {
           "depth": -0.1879
         },
         "kneeR": {
           "depth": 0.83
-        },
-        "ankleR": {
-          "depth": -0.0311
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": -0.115,
       "ease": "smooth",
       "travel": 0
     },
@@ -315,105 +488,67 @@
           "depth": 0.0108
         },
         "ankleL": {
-          "depth": -0.0645
+          "depth": -0.0134
         },
         "hipR": {
           "depth": -0.0841
         },
         "kneeR": {
           "depth": 0.3559
+        },
+        "ankleR": {
+          "depth": 0.0115
         }
       },
       "contacts": [
         "footR"
       ],
+      "weight": 0.776,
       "ease": "snap",
       "travel": 0
     },
     {
-      "phase": 0.32813,
+      "phase": 0.34375,
       "joints": {
         "chest": {
-          "depth": 0.0073
+          "depth": 0.0074
         },
         "neck": {
-          "depth": 0.0241
+          "depth": 0.027
         },
         "shoulderL": {
-          "depth": -0.1896
+          "depth": -0.0489
         },
         "elbowL": {
-          "depth": -0.2663
+          "depth": -0.4852
         },
         "shoulderR": {
-          "depth": -0.054
+          "depth": -0.0082
         },
         "elbowR": {
-          "depth": -0.8222
-        },
-        "kneeL": {
-          "depth": 0.0108
-        },
-        "ankleL": {
-          "depth": -0.0645
-        },
-        "hipR": {
-          "depth": -0.0841
-        },
-        "kneeR": {
-          "depth": 0.3559
-        }
-      },
-      "contacts": [
-        "footR"
-      ],
-      "ease": "smooth",
-      "travel": 0
-    },
-    {
-      "phase": 0.39063,
-      "joints": {
-        "chest": {
-          "depth": 0.0056
-        },
-        "neck": {
-          "depth": 0.0387
-        },
-        "shoulderL": {
-          "depth": 0.0576
-        },
-        "elbowL": {
-          "depth": -1
-        },
-        "shoulderR": {
-          "depth": 0.0641
-        },
-        "elbowR": {
-          "depth": -1
+          "depth": -0.9932
         },
         "hipL": {
-          "depth": 0.0306
-        },
-        "kneeL": {
-          "depth": 0.0057
+          "depth": 0.0065
         },
         "ankleL": {
-          "depth": -0.0936
+          "depth": -0.0092
         },
         "hipR": {
-          "depth": -0.0226
+          "depth": -0.0501
         },
         "kneeR": {
-          "depth": 0.1089
+          "depth": 0.207
         },
         "ankleR": {
-          "depth": -0.0073
+          "depth": 0.0142
         }
       },
       "contacts": [
         "footR"
       ],
-      "ease": "smooth",
+      "weight": 0.976,
+      "ease": "snap",
       "travel": 0
     },
     {
@@ -441,7 +576,7 @@
           "depth": 0.0128
         },
         "ankleL": {
-          "depth": -0.1815
+          "depth": -0.0845
         },
         "hipR": {
           "depth": -0.0232
@@ -450,10 +585,13 @@
           "depth": 0.1438
         },
         "ankleR": {
-          "depth": -0.0523
+          "depth": -0.0081
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
+      "weight": 1,
       "ease": "smooth",
       "travel": 0
     },
@@ -482,7 +620,7 @@
           "depth": 0.0171
         },
         "ankleL": {
-          "depth": -0.189
+          "depth": -0.0902
         },
         "hipR": {
           "depth": -0.0191
@@ -491,10 +629,13 @@
           "depth": 0.1367
         },
         "ankleR": {
-          "depth": -0.068
+          "depth": -0.0151
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
+      "weight": 1,
       "ease": "smooth",
       "travel": 0
     },
@@ -523,7 +664,7 @@
           "depth": 0.0197
         },
         "ankleL": {
-          "depth": -0.1657
+          "depth": -0.0736
         },
         "hipR": {
           "depth": -0.0104
@@ -532,10 +673,13 @@
           "depth": 0.1031
         },
         "ankleR": {
-          "depth": -0.0617
+          "depth": -0.0121
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
+      "weight": 1,
       "ease": "smooth",
       "travel": 0
     },
@@ -564,18 +708,16 @@
           "depth": 0.048
         },
         "ankleL": {
-          "depth": -0.1163
+          "depth": -0.0418
         },
         "kneeR": {
           "depth": 0.0613
-        },
-        "ankleR": {
-          "depth": -0.0365
         }
       },
       "contacts": [
         "footR"
       ],
+      "weight": 1,
       "ease": "smooth",
       "travel": 0
     },
@@ -594,20 +736,14 @@
         "kneeL": {
           "depth": 0.2416
         },
-        "ankleL": {
-          "depth": -0.0373
-        },
         "kneeR": {
           "depth": 0.0144
-        },
-        "ankleR": {
-          "depth": -0.0063
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
+      "weight": 1,
       "ease": "snap",
       "travel": 0
     },
@@ -626,20 +762,14 @@
         "kneeL": {
           "depth": 0.2416
         },
-        "ankleL": {
-          "depth": -0.0373
-        },
         "kneeR": {
           "depth": 0.0144
-        },
-        "ankleR": {
-          "depth": -0.0063
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
+      "weight": 1,
       "ease": "smooth",
       "travel": 0
     },
@@ -670,151 +800,15 @@
         "kneeL": {
           "depth": 0.6828
         },
-        "ankleL": {
-          "depth": -0.0146
-        },
         "kneeR": {
           "depth": 0.0188
-        },
-        "ankleR": {
-          "depth": -0.0053
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
+      "weight": 1,
       "ease": "snap",
-      "travel": 0
-    },
-    {
-      "phase": 0.625,
-      "joints": {
-        "chest": {
-          "depth": 0.0068
-        },
-        "neck": {
-          "depth": 0.0193
-        },
-        "shoulderL": {
-          "depth": -0.1522
-        },
-        "elbowL": {
-          "depth": -0.2842
-        },
-        "shoulderR": {
-          "depth": -0.048
-        },
-        "elbowR": {
-          "depth": -0.8924
-        },
-        "hipL": {
-          "depth": -0.0589
-        },
-        "kneeL": {
-          "depth": 0.6828
-        },
-        "ankleL": {
-          "depth": -0.0146
-        },
-        "kneeR": {
-          "depth": 0.0188
-        },
-        "ankleR": {
-          "depth": -0.0053
-        }
-      },
-      "contacts": [
-        "footL",
-        "footR"
-      ],
-      "ease": "smooth",
-      "travel": 0
-    },
-    {
-      "phase": 0.64063,
-      "joints": {
-        "chest": {
-          "depth": 0.0074
-        },
-        "neck": {
-          "depth": 0.0172
-        },
-        "shoulderL": {
-          "depth": -0.343
-        },
-        "elbowL": {
-          "depth": -0.1116
-        },
-        "shoulderR": {
-          "depth": -0.1205
-        },
-        "elbowR": {
-          "depth": -0.7354
-        },
-        "hipL": {
-          "depth": -0.1181
-        },
-        "kneeL": {
-          "depth": 0.9402
-        },
-        "ankleL": {
-          "depth": -0.0131
-        },
-        "kneeR": {
-          "depth": 0.0323
-        },
-        "ankleR": {
-          "depth": -0.0108
-        }
-      },
-      "contacts": [
-        "footR"
-      ],
-      "ease": "snap",
-      "travel": 0
-    },
-    {
-      "phase": 0.65625,
-      "joints": {
-        "chest": {
-          "depth": 0.0074
-        },
-        "neck": {
-          "depth": 0.0172
-        },
-        "shoulderL": {
-          "depth": -0.343
-        },
-        "elbowL": {
-          "depth": -0.1116
-        },
-        "shoulderR": {
-          "depth": -0.1205
-        },
-        "elbowR": {
-          "depth": -0.7354
-        },
-        "hipL": {
-          "depth": -0.1181
-        },
-        "kneeL": {
-          "depth": 0.9402
-        },
-        "ankleL": {
-          "depth": -0.0131
-        },
-        "kneeR": {
-          "depth": 0.0323
-        },
-        "ankleR": {
-          "depth": -0.0108
-        }
-      },
-      "contacts": [
-        "footR"
-      ],
-      "ease": "smooth",
       "travel": 0
     },
     {
@@ -844,22 +838,17 @@
         "kneeL": {
           "depth": 1
         },
-        "ankleL": {
-          "depth": -0.0112
-        },
         "hipR": {
           "depth": -0.0051
         },
         "kneeR": {
           "depth": 0.071
-        },
-        "ankleR": {
-          "depth": -0.0365
         }
       },
       "contacts": [
         "footR"
       ],
+      "weight": 1,
       "ease": "smooth",
       "travel": 0
     },
@@ -890,14 +879,59 @@
         "kneeL": {
           "depth": 1
         },
+        "ankleL": {
+          "depth": 0.0053
+        },
         "kneeR": {
           "depth": 0.0691
-        },
-        "ankleR": {
-          "depth": -0.0435
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footR"
+      ],
+      "weight": 0.712,
+      "ease": "smooth",
+      "travel": 0
+    },
+    {
+      "phase": 0.76563,
+      "joints": {
+        "chest": {
+          "depth": 0.0086
+        },
+        "neck": {
+          "depth": 0.0241
+        },
+        "shoulderL": {
+          "depth": -0.4741
+        },
+        "elbowL": {
+          "depth": -0.0751
+        },
+        "shoulderR": {
+          "depth": -0.2615
+        },
+        "elbowR": {
+          "depth": -0.2947
+        },
+        "hipL": {
+          "depth": -0.2502
+        },
+        "kneeL": {
+          "depth": 0.8626
+        },
+        "ankleL": {
+          "depth": 0.0141
+        },
+        "kneeR": {
+          "depth": 0.0415
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": 0.296,
       "ease": "smooth",
       "travel": 0
     },
@@ -928,16 +962,18 @@
         "kneeL": {
           "depth": 0.8626
         },
+        "ankleL": {
+          "depth": 0.0141
+        },
         "kneeR": {
           "depth": 0.0415
-        },
-        "ankleR": {
-          "depth": -0.0326
         }
       },
       "contacts": [
+        "footL",
         "footR"
       ],
+      "weight": 0.296,
       "ease": "smooth",
       "travel": 0
     },
@@ -968,17 +1004,18 @@
         "kneeL": {
           "depth": 0.343
         },
+        "ankleL": {
+          "depth": 0.0287
+        },
         "kneeR": {
           "depth": 0.0094
-        },
-        "ankleR": {
-          "depth": -0.0193
         }
       },
       "contacts": [
         "footL",
         "footR"
       ],
+      "weight": -0.569,
       "ease": "snap",
       "travel": 0
     },
@@ -1009,17 +1046,18 @@
         "kneeL": {
           "depth": 0.343
         },
+        "ankleL": {
+          "depth": 0.0287
+        },
         "kneeR": {
           "depth": 0.0094
-        },
-        "ankleR": {
-          "depth": -0.0193
         }
       },
       "contacts": [
         "footL",
         "footR"
       ],
+      "weight": -0.569,
       "ease": "smooth",
       "travel": 0
     },
@@ -1047,20 +1085,20 @@
         "kneeL": {
           "depth": 0.21
         },
+        "ankleL": {
+          "depth": 0.0136
+        },
         "hipR": {
           "depth": 0.0123
         },
         "kneeR": {
           "depth": 0.0071
-        },
-        "ankleR": {
-          "depth": -0.0228
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
+      "weight": -0.892,
       "ease": "snap",
       "travel": 0
     },
@@ -1088,20 +1126,20 @@
         "kneeL": {
           "depth": 0.21
         },
+        "ankleL": {
+          "depth": 0.0136
+        },
         "hipR": {
           "depth": 0.0123
         },
         "kneeR": {
           "depth": 0.0071
-        },
-        "ankleR": {
-          "depth": -0.0228
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
+      "weight": -0.892,
       "ease": "smooth",
       "travel": 0
     },
@@ -1133,7 +1171,7 @@
           "depth": 0.163
         },
         "ankleL": {
-          "depth": -0.0556
+          "depth": -0.0095
         },
         "hipR": {
           "depth": 0.0311
@@ -1142,59 +1180,18 @@
           "depth": 0.0195
         },
         "ankleR": {
-          "depth": -0.0782
+          "depth": -0.0199
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL"
+      ],
+      "weight": -1,
       "ease": "smooth",
       "travel": 0
     },
     {
-      "phase": 0.90625,
-      "joints": {
-        "chest": {
-          "depth": 0.0058
-        },
-        "neck": {
-          "depth": 0.0232
-        },
-        "shoulderL": {
-          "depth": 0.0817
-        },
-        "elbowL": {
-          "depth": -1
-        },
-        "shoulderR": {
-          "depth": 0.0543
-        },
-        "elbowR": {
-          "depth": -1
-        },
-        "hipL": {
-          "depth": -0.0533
-        },
-        "kneeL": {
-          "depth": 0.163
-        },
-        "ankleL": {
-          "depth": -0.0556
-        },
-        "hipR": {
-          "depth": 0.0311
-        },
-        "kneeR": {
-          "depth": 0.0195
-        },
-        "ankleR": {
-          "depth": -0.0782
-        }
-      },
-      "contacts": [],
-      "ease": "smooth",
-      "travel": 0
-    },
-    {
-      "phase": 0.9375,
+      "phase": 0.95313,
       "joints": {
         "chest": {
           "depth": 0.006
@@ -1221,7 +1218,7 @@
           "depth": 0.2339
         },
         "ankleL": {
-          "depth": -0.1652
+          "depth": -0.0732
         },
         "hipR": {
           "depth": 0.0387
@@ -1230,10 +1227,61 @@
           "depth": 0.0412
         },
         "ankleR": {
-          "depth": -0.1619
+          "depth": -0.071
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL"
+      ],
+      "weight": -0.731,
+      "ease": "smooth",
+      "travel": 0
+    },
+    {
+      "phase": 0.96875,
+      "joints": {
+        "chest": {
+          "depth": 0.0058
+        },
+        "neck": {
+          "depth": 0.0245
+        },
+        "shoulderL": {
+          "depth": 0.1873
+        },
+        "elbowL": {
+          "depth": -1
+        },
+        "shoulderR": {
+          "depth": 0.1053
+        },
+        "elbowR": {
+          "depth": -1
+        },
+        "hipL": {
+          "depth": -0.0593
+        },
+        "kneeL": {
+          "depth": 0.2352
+        },
+        "ankleL": {
+          "depth": -0.0825
+        },
+        "hipR": {
+          "depth": 0.0346
+        },
+        "kneeR": {
+          "depth": 0.0495
+        },
+        "ankleR": {
+          "depth": -0.0691
+        }
+      },
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": -0.266,
       "ease": "smooth",
       "travel": 0
     },
@@ -1265,7 +1313,7 @@
           "depth": 0.2352
         },
         "ankleL": {
-          "depth": -0.1786
+          "depth": -0.0825
         },
         "hipR": {
           "depth": 0.0346
@@ -1274,10 +1322,14 @@
           "depth": 0.0495
         },
         "ankleR": {
-          "depth": -0.1592
+          "depth": -0.0691
         }
       },
-      "contacts": [],
+      "contacts": [
+        "footL",
+        "footR"
+      ],
+      "weight": -0.266,
       "ease": "smooth",
       "travel": 0
     }

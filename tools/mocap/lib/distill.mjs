@@ -1,3 +1,4 @@
+import { contactsFromWeight } from './weight.mjs';
 // Distill a cycle-averaged loop (64-bin channels) into the STANDARD move
 // table (MODULE_ABI.md): keys at extrema + inflection points, contacts from
 // foot-height minima + low velocity, `travel` from pelvis drift.
@@ -118,6 +119,8 @@ export function distillMove(avg, opts) {
   for (const [nm, dp] of Object.entries(avg.depths ?? {})) {
     if (Math.max(...dp) - Math.min(...dp) > 0.03) keyed[`dp:${nm}`] = dp;
   }
+  // weight (17.6): a channel like any other — its swings choose keys too
+  if (avg.weight && Math.max(...avg.weight) - Math.min(...avg.weight) > 0.1) keyed.wt = avg.weight;
   const phases = thinKeys(candidatePhases(keyed, bins, minRange), keyed, bins, maxKeys, errBudget);
 
   // contacts: a foot is planted where its height is near the cycle low AND
@@ -195,13 +198,23 @@ export function distillMove(avg, opts) {
       if (rng <= 0.12) continue;
       (jk[nm] ??= {}).yaw = +Math.max(-0.6, Math.min(0.6, yw[b])).toFixed(3);
     }
-    const contacts = [];
-    if (contactMask.L[b]) contacts.push('footL');
-    if (contactMask.R[b]) contacts.push('footR');
+    // weight (17.6) is the ONE source of support: contacts are derived from
+    // it (|w| ≥ 0.6 → the free foot is unplanted; airborne → none). Tables
+    // without a weight channel keep the FK-height contacts.
+    let contacts = [], wKey;
+    if (avg.weight) {
+      const airborne = (avg.air?.[b] ?? 0) > 0.5;
+      wKey = airborne ? null : +Math.max(-1, Math.min(1, avg.weight[b])).toFixed(3);
+      contacts = contactsFromWeight(wKey);
+    } else {
+      if (contactMask.L[b]) contacts.push('footL');
+      if (contactMask.R[b]) contacts.push('footR');
+    }
     return {
       phase: +(b / bins).toFixed(5),
       joints: jk,
       contacts,
+      ...(avg.weight ? { weight: wKey } : {}),
       ease: speed[b] > snapLim ? 'snap' : 'smooth',
       travel: +travelAt(b).toFixed(4),
     };

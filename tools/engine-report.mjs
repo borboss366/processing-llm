@@ -75,10 +75,15 @@ if (DB.length) {
   }
 } else console.log("  depth            (table carries no depth)");
 const clamps = {}, yields = new Set();
-for (const f of F) {
-  for (const [nm, n2] of Object.entries(f.flags?.clamps ?? {})) clamps[nm] = Math.max(clamps[nm] ?? 0, n2);
-  for (const [nm, l] of Object.entries(f.flags?.lock ?? {})) if (l.lift) yields.add(nm);
+// clamp hits inside the window (the engine counter is cumulative)
+{
+  const c0 = F[0].flags?.clamps ?? {}, c1 = F.at(-1).flags?.clamps ?? {};
+  for (const nm of new Set([...Object.keys(c0), ...Object.keys(c1)])) {
+    const d = (c1[nm] ?? 0) - (c0[nm] ?? 0);
+    if (d > 0) clamps[nm] = d;
+  }
 }
+for (const f of F) for (const [nm, l] of Object.entries(f.flags?.lock ?? {})) if (l.lift) yields.add(nm);
 // POSITION rung (19.2 review): table FK'd vs engine joints, pelvis-
 // normalized — theta ladders can read ~0 while FK sign/pivot errors splay
 const pr = posRms(F, D.meta, "lockP");
