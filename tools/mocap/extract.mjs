@@ -61,6 +61,7 @@ import { MP, buildRig, detectYSign, deYaw3, boneTwists, retargetFrame, fkPose, c
 import { cycleSpread, angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove, sampleTableAt } from "./lib/distill.mjs";
 import { weightSeries, legLength, weightFromContacts, contactsFromWeight } from "./lib/weight.mjs";
+import { scaleToAngles } from "./lib/channel-scale.mjs";
 import { renderExplorer } from "./lib/explorer.mjs";
 import { sideSigns } from "./lib/retarget.mjs";
 
@@ -473,7 +474,9 @@ async function processView(vk, primary) {
   // each foot = its ankle x (the brief's axis) and its LOWEST point (ankle or
   // toe) — a flat foot and a foot drawn at the rest tilt must both read down
   const footOf = (q, s2) => [q[`ankle${s2}`][0], Math.max(q[`ankle${s2}`][1], q[`foot${s2}`][1])];
-  const ws = weightSeries(fkFrames.map((q) => ({ pelvis: q.pelvis, footL: footOf(q, "L"), footR: footOf(q, "R") })), legL);
+  // a contradicting lift must persist half the smoothing window (addendum A)
+  const ws = weightSeries(fkFrames.map((q) => ({ pelvis: q.pelvis, footL: footOf(q, "L"), footR: footOf(q, "R") })), legL,
+    { persist: Math.max(1, Math.floor(sg.window / 2)) });
   {
     let prev = 0;
     var weightFrames = ws.weight.map((w) => (w == null ? prev : (prev = w)));
@@ -481,7 +484,7 @@ async function processView(vk, primary) {
     var airFrames = ws.weight.map((w) => (w == null ? 1 : 0));
     const sh = (v) => (v < -0.6 ? "L" : v > 0.6 ? "R" : "·");
     const runs = weightFrames.map(sh).join("").replace(/(.)\1+/g, "$1");
-    console.log(`[mocap] weight (17.6): L ${legL.toFixed(3)} u · lifted L ${ws.liftL.filter(Boolean).length} / R ${ws.liftR.filter(Boolean).length} · airborne ${airFrames.filter(Boolean).length} of ${weightFrames.length} frames · support runs ${runs.slice(0, 60)}`);
+    console.log(`[mocap] weight (17.6): L ${legL.toFixed(3)} u · lifted L ${ws.liftL.filter(Boolean).length} / R ${ws.liftR.filter(Boolean).length} · airborne ${airFrames.filter(Boolean).length} of ${weightFrames.length} frames · lift overruled by pelvis ${ws.overruled} frames · support runs ${runs.slice(0, 60)}`);
   }
   const channels = {};
   for (const nm of ARTICULATED) channels[`th:${nm}`] = uni(thetaFrames.map((f) => f[nm] ?? 0));
@@ -547,9 +550,24 @@ async function processView(vk, primary) {
   // stride halved (the table ghost's lost amplitude). Direct evidence test:
   // re-bin at 2× and adopt it when the cycle spread collapses.
   if (cycles.length >= 2) {
-    // judge on the THETA channels only — footVX/pelvisU are different units
-    // and dilute the ratio
-    const thOnly = (cys) => cys.map((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k.startsWith("th:"))));
+    // judge on the THETA channels plus weight and depth (17.6 addendum B) —
+    // footVX/pelvisU are different units and dilute the ratio. On a frontal
+    // kick the in-plane legs barely move, so θ alone saw even ≡ odd while the
+    // standing leg swapped every kick (weight ±1) and the lifted shin's depth
+    // alternated sides. Weight and depth enter on the angles' scale: one
+    // factor for weight, one for the whole depth family (from its most
+    // active channel, so quiet depth noise is not blown up to an angle).
+    const thArr = Object.entries(channels).filter(([k]) => k.startsWith("th:")).map(([, v]) => Array.from(v));
+    const wtK = scaleToAngles(thArr, Array.from(channels.wt));
+    const dpNames = Object.keys(channels).filter((k) => k.startsWith("dp:"));
+    const sdOf = (v) => { const m = v.reduce((a, b) => a + b, 0) / v.length; return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length); };
+    const dpTop = dpNames.reduce((best, k) => (sdOf(Array.from(channels[k])) > sdOf(Array.from(channels[best] ?? [0]))) ? k : best, dpNames[0]);
+    const dpK = dpTop ? scaleToAngles(thArr, Array.from(channels[dpTop])) : 0;
+    const guardK = (k) => k.startsWith("th:") ? 1 : k === "wt" ? wtK : k.startsWith("dp:") ? dpK : 0;
+    console.log(`[mocap] octave/parity guard channels: θ ×1 · weight ×${wtK.toFixed(2)} · depth ×${dpK.toFixed(2)} (most active ${dpTop ?? "—"})`);
+    const thOnly = (cys) => cys.map((c) => Object.fromEntries(Object.entries(c)
+      .filter(([k]) => guardK(k) > 0)
+      .map(([k, v]) => [k, guardK(k) === 1 ? v : Float64Array.from(v, (x) => x * guardK(k))])));
     const s1 = cycleSpread(thOnly(cycles));
     // anchor mod the base period — a late anchor leaves too little window
     // for 2 doubled cycles; which HALF leads is then ambiguous, and the
@@ -558,6 +576,7 @@ async function processView(vk, primary) {
     const cyc2 = binCycles(channels, fsHz, period * 2, anchor2, BINS);
     if (cyc2.length >= 2) {
       const s2 = cycleSpread(thOnly(cyc2));
+      console.log(`[mocap] octave guard: spread ×1 ${s1.toFixed(3)} vs ×2 ${s2.toFixed(3)} (doubles below ${(0.6 * s1).toFixed(3)})`);
       if (s2 < 0.6 * s1) {
         console.log(`[mocap] loop DOUBLED by cycle-consistency: spread ${s1.toFixed(3)} → ${s2.toFixed(3)} rad · period ${period.toFixed(3)} → ${(period * 2).toFixed(3)} s · anchor ${anchorSec.toFixed(3)} → ${anchor2.toFixed(3)}`);
         period *= 2;
@@ -572,8 +591,8 @@ async function processView(vk, primary) {
       const chNames = Object.keys(cycles[0]);
       const dist = (a2, b2) => {
         let s3 = 0, k3 = 0;
-        for (const nm of chNames) { if (!nm.startsWith("th:")) continue;
-          for (let b3 = 0; b3 < BINS; b3++) { s3 += (a2[nm][b3] - b2[nm][b3]) ** 2; k3++; } }
+        for (const nm of chNames) { const g = guardK(nm); if (!g) continue;
+          for (let b3 = 0; b3 < BINS; b3++) { s3 += (g * (a2[nm][b3] - b2[nm][b3])) ** 2; k3++; } }
         return Math.sqrt(s3 / k3);
       };
       let same = 0, cross = 0, nS = 0, nC = 0;
@@ -1419,6 +1438,17 @@ function selfTest() {
     console.log(`[self-test] weight: L up → ${a1} (want +1) · R up → ${a2} (want −1) · pelvis over L → ${b1} (want −1) · centred → ${b2} (want 0)`);
     if (a1 !== 1 || a2 !== -1) fails.push("weight: a raised foot must put all weight on the other");
     if (b1 !== -1 || b2 !== 0) fails.push("weight: pelvis-between-feet rule wrong");
+    // (e) addendum A: pelvis over the LEFT foot; the left foot flicks up.
+    //     A 2-frame flick contradicts the pelvis → no flip; held past
+    //     `persist` frames it is a real step → the weight goes right.
+    {
+      const down = P(0.45, [0.45, 0.9], [0.6, 0.9]), flick = P(0.45, [0.45, 0.85], [0.6, 0.9]);
+      const blip = weightSeries([down, flick, flick, down, down], L, { persist: 4 }).weight;
+      const held = weightSeries([down, flick, flick, flick, flick, flick], L, { persist: 4 }).weight;
+      console.log(`[self-test] weight sign agreement: 2-frame flick [${blip}] (want no +) · held lift [${held}] (want + from frame 4)`);
+      if (blip.some((v) => v > 0)) fails.push("weight: a short lift contradicting the pelvis must not flip the sign");
+      if (held.at(-1) !== 1 || held[2] > 0) fails.push("weight: a lift held past `persist` frames must carry the weight over");
+    }
     // (c) the same clip with --mirror gives the negated channel (through
     //     the real retarget + FK)
     const front = (wl) => {

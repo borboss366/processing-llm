@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scaleToAngles } from "./lib/channel-scale.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
@@ -149,31 +150,48 @@ if (files.length === 1 && !flag("mirror")) {
   process.exit(0);
 }
 
-let Rkeys;
-if (flag("mirror")) {
-  Rkeys = L.keys.map(mirrorKey);
-} else {
-  const R = JSON.parse(fs.readFileSync(files[1], "utf8"));
-  // align: rotate R's key ring so its start best matches mirror(L) at phase 0
-  // (both extractions anchored independently at their own calm point)
-  const target = mirrorKey(L.keys[0]);
-  const dist = (a, b) => {
-    const names = new Set([...Object.keys(a.joints), ...Object.keys(b.joints)]);
-    let s = 0;
-    for (const nm of names) s += ((a.joints[nm]?.rot ?? 0) - (b.joints[nm]?.rot ?? 0)) ** 2;
-    return s;
-  };
-  let best = 0, bestD = Infinity;
-  for (let r = 0; r < R.keys.length; r++) {
-    const d = dist(R.keys[r], target);
-    if (d < bestD) { bestD = d; best = r; }
+// SEAM (17.6 addendum A): each half is a closed loop (cycle-averaged: it
+// ends where it starts), so the joins are L[cut] → R[cut] and back. The old
+// alignment rotated R to start at mirror(L[0]) — but L ends at L[0], not at
+// its mirror, so any lateral lean popped at both joins (tstep: 0.82 rad rms
+// across the body and weight −0.97 → +1 in one key step, 9× a normal step).
+// Now BOTH rings are cut where the two halves are most alike: angles plus
+// weight as a GATE: a pose match with the weight on the other foot is not a
+// match (scored as one channel among 13 the weight barely counted, and the
+// first rebuild cut tstep mid-transfer: −0.98 → +0.73). Candidates must keep
+// |Δweight| ≤ SEAM_DW; among them the angles (+ weight on their scale) pick.
+const Rsrc = flag("mirror") ? L.keys.map(mirrorKey) : JSON.parse(fs.readFileSync(files[1], "utf8")).keys;
+const jointNames = [...new Set([...L.keys, ...Rsrc].flatMap((k) => Object.keys(k.joints)))];
+const wScale = scaleToAngles(
+  jointNames.map((nm) => [...L.keys, ...Rsrc].map((k) => k.joints[nm]?.rot ?? 0)),
+  [...L.keys, ...Rsrc].map((k) => k.weight));
+const seamDist = (a, b) => {
+  let s2 = 0;
+  for (const nm of jointNames) s2 += ((a.joints[nm]?.rot ?? 0) - (b.joints[nm]?.rot ?? 0)) ** 2;
+  if (a.weight != null && b.weight != null) s2 += (wScale * (a.weight - b.weight)) ** 2;
+  return Math.sqrt(s2 / (jointNames.length + 1));
+};
+const SEAM_DW = 0.5;
+const dW = (a, b) => (a.weight == null || b.weight == null ? 0 : Math.abs(a.weight - b.weight));
+let cutL = 0, cutR = 0, bestD = Infinity;
+for (const gated of [true, false]) {          // no candidate inside the gate → best overall, said loudly
+  for (let i = 0; i < L.keys.length; i++) for (let r = 0; r < Rsrc.length; r++) {
+    if (gated && dW(L.keys[i], Rsrc[r]) > SEAM_DW) continue;
+    const d = seamDist(L.keys[i], Rsrc[r]);
+    if (d < bestD) { bestD = d; cutL = i; cutR = r; }
   }
-  const shift = R.keys[best].phase;
-  Rkeys = R.keys.map((k, i) => ({ ...R.keys[(best + i) % R.keys.length] }))
+  if (bestD < Infinity) break;
+  console.warn(`[stitch] WARNING: no seam keeps |Δweight| ≤ ${SEAM_DW} — the join transfers weight in one key step`);
+}
+const ring = (keys, at) => {
+  const shift = keys[at].phase;
+  return keys.map((_, i) => ({ ...keys[(at + i) % keys.length] }))
     .map((k) => ({ ...k, phase: +((((k.phase - shift) % 1) + 1) % 1).toFixed(5) }))
     .sort((a, b) => a.phase - b.phase);
-  console.log(`[stitch] aligned R half: rotated by ${shift} (key ${best}, dist ${bestD.toFixed(3)})`);
-}
+};
+const Lkeys = ring(L.keys, cutL);
+const Rkeys = ring(Rsrc, cutR);
+console.log(`[stitch] seam: cut L @${L.keys[cutL].phase} · R @${Rsrc[cutR].phase} · seam distance ${bestD.toFixed(3)} rad rms (weight ×${wScale.toFixed(2)}; weight ${L.keys[cutL].weight ?? "—"} → ${Rsrc[cutR].weight ?? "—"})`);
 
 const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offset + k.phase / 2).toFixed(5) }));
 const table = {
@@ -182,10 +200,11 @@ const table = {
   beatsPerLoop: (L.beatsPerLoop ?? 2) * 2,
   overlay: L.overlay ?? 0.3,
   verticalContent: L.verticalContent ?? 0.7,
-  keys: [...half(L.keys, 0), ...half(Rkeys, 0.5)],
+  keys: [...half(Lkeys, 0), ...half(Rkeys, 0.5)],
   provenance: {
     halves: files.map((f) => path.basename(f)),
     mode: flag("mirror") ? "L + mirror(L)" : "L + aligned real R",
+    seam: { cutL: L.keys[cutL].phase, cutR: Rsrc[cutR].phase, dist: +bestD.toFixed(4) },
     exaggerate: exagMap ?? exag,
     L: L.provenance ?? null,
     pipeline: "tools/mocap/stitch.mjs",

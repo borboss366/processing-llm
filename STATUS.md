@@ -69,6 +69,7 @@ creature rig). Full guide in `README.md`.
 | Brief 18.2 overlays + diagnostics | 8 on-frame layers (rig/rest/gonio/foreshorten/contacts/raw/velocity/table) + heatmap/onion/filmstrip/key-ghosts; PNG+webm export; smoke 0 errors; 3 acceptance stills | reports/2026-09-28-brief-18-2-overlays.md + 182-still-*.png |
 | Weight signal (17.6 T1) | weight ∈ [−1,1] per frame from FK feet → per key, contacts derived; runningman alternates ±1 per step, 0 keys with no foot planted (was 14); round-trip 141 authored keys exact; mirrored clip negates; profile foot zero restored | reports/2026-10-15-weight-t1.md + self-test |
 | Weight T1 owner check (rating page, before/after) | runningman side ✓ front ✓ (wants a bob); tstep ~ (tilt flips too fast); bodyroll ✗ (feet still leave the floor — root, not contacts: every key now plants a foot); kick ✗ expected | reports/2026-10-18-user-gates.md |
+| Weight continuity + parity guard (17.6 addendum A/B) | weight-rate (max Σ\|Δweight\| per 0.1 beat ≤ 1.5): 12 captured tables PASS, worst 1.22; tstep 2.00 → 0.70 (stitch seam cut on weight agreement; pose jump 0.82 → 0.57 rad, still open); runningman 1.55 → 1.11 (lift must agree with pelvis or persist 4 frames); guard judges θ + weight + depth — kick does not double (no repeat in the window) | tools/weight-rate.mjs (verify) + reports/2026-10-19-weight-addendum-ab.md |
 | Move roster (captured-only stage) | moves/roster.json `active: captured` — puppet list = 12 captured tables, groove rotation = 6 natural-view captures (equal weight); authored tables kept on disk (harnesses), `active: all` restores; live probe 60 s: only the 6 played, spikes 0; drop-check + view-switch PASS | /moves-list + roster probe |
 | Depth stress + ladder (17.5 T3) | depth-stress PASS at slow/beat/snap (spikes 0, components 1, no pop at zero, overlap ≤4 flips/loop); depth reaches the engine within 0.002–0.005; kick shin toward camera 76/77 lifted frames; runningman right leg reads up to 0.2 (open, Task 4) | tools/depth-stress.mjs + reports/2026-10-13-depth-t3-stress-fidelity.md |
 | Depth cues (17.5 T2) | size/draw-length/brightness/arm-overlap from depth, gains on the shape, `exaggerateDepth` dial; depth-0 tables exactly neutral at dials 0/1/2; module 2.1 ms; engine-fidelity/mxs/fk/transition PASS | reports/2026-10-13-depth-cues-t2.md |
@@ -91,6 +92,12 @@ mod-octave so regressions still surface.
 
 ## Open (user)
 
+- **fk-check FAILED on battery 2026-10-19** (heel-pivot toe drift 7.0 px
+  > 6; the Verified row above says 0.0). Inputs unchanged since it passed
+  (authored tables + engine identical); same symptom as the 2026-10-13
+  low-battery run. Re-run on AC; if it fails there, it is a real
+  regression to chase before Task 2.
+
 - **Phone gate E11** (deferred twice; web UI suffices for testing —
   must run before a real event). Protocol in `docs/USER_GATES.md`.
 - **For the reviewer** (sculpt session #4,
@@ -112,7 +119,9 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-**Brief 17.6 Task 2 — the engine weight layer**, on the owner's go:
+**Brief 17.6 Task 2 — the engine weight layer**, on the owner's go
+(addendum A/B done; fk-check to re-run on AC first; report the root's
+vertical range after 2.1, before the sink — addendum C):
 the root solved from the support foot (the body-roll "feet leave the
 floor" verdict is its first test), pelvis shift + tilt blended through
 zero (the T-step "tilt flips immediately" verdict sets the rate check),
@@ -120,7 +129,9 @@ spine counter, sink on transfer (the front running man's missing bob),
 one `exaggerateWeight` dial; then Task 3 (weight-ground verify row,
 stress row) and Task 4 (owner judgment + docs/explained/weight.md).
 
-Owner items still open: kick recapture with a one-kick window (7a);
+Owner items still open: the kick window has no repeating kick (addendum B
+— the standing leg changes irregularly; no period fits), finding 6
+(left-forearm depth sign stuck on the kick);
 goo exaggeration "like in cartoons" (idea, not a brief yet); A7
 rotation polish (low priority); explain-it backfill (director, clocks,
 goo render, authored moves, FSM, audience pipeline); phone gate E11;

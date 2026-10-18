@@ -17,8 +17,17 @@
 //     snaps |w| < dead to 0 so a standing figure reads steady;
 //   - both up → null.
 // L is the shape's leg length (hip→knee→ankle at rest).
+//
+// The two branches must agree before the sign flips (17.6 addendum A): a
+// lift CONFIRMS the pelvis branch (same sign, or the pelvis inside the dead
+// band); a lift that CONTRADICTS a pelvis outside the dead band counts only
+// once it has persisted `persist` frames — before that the pelvis branch
+// speaks. Without this a heel pivot or a toe flick clearing liftOn·L for a
+// frame or two threw the weight to the other foot and back (runningman's
+// −1 → +0.78 → −1 blips). `persist` comes from the caller's smoothing
+// window (half of it), never from a clip.
 
-export const WEIGHT_DEFAULTS = { liftOn: 0.06, liftOff: 0.035, minSpread: 0.05, dead: 0.15 };
+export const WEIGHT_DEFAULTS = { liftOn: 0.06, liftOff: 0.035, minSpread: 0.05, dead: 0.15, persist: 1 };
 
 export function legLength(rig) {
   const j = rig.joints;
@@ -34,24 +43,32 @@ export function legLength(rig) {
 export function weightSeries(poses, L, opts = {}) {
   const o = { ...WEIGHT_DEFAULTS, ...opts };
   const weight = [], liftL = [], liftR = [];
-  let upL = false, upR = false;
+  let upL = false, upR = false, liftRun = 0, liftSign = 0, overruled = 0;
   for (const p of poses) {
     const low = Math.max(p.footL[1], p.footR[1]);                 // y-down: larger = lower
     const hL = low - p.footL[1], hR = low - p.footR[1];
     upL = upL ? hL > o.liftOff * L : hL > o.liftOn * L;
     upR = upR ? hR > o.liftOff * L : hR > o.liftOn * L;
     liftL.push(upL); liftR.push(upR);
-    if (upL && upR) { weight.push(null); continue; }
-    if (upL) { weight.push(1); continue; }                         // left is up → all on the right
-    if (upR) { weight.push(-1); continue; }
+    if (upL && upR) { weight.push(null); liftRun = 0; liftSign = 0; continue; }
+    // pelvis branch, always measured (the lifted foot's x is still known)
     const spread = p.footR[0] - p.footL[0];
-    if (Math.abs(spread) < o.minSpread * L) { weight.push(0); continue; }
-    const t = (p.pelvis[0] - p.footL[0]) / spread;
-    let w = Math.max(-1, Math.min(1, 2 * t - 1));
-    if (Math.abs(w) < o.dead) w = 0;
-    weight.push(w);
+    let wp = 0;
+    if (Math.abs(spread) >= o.minSpread * L) {
+      wp = Math.max(-1, Math.min(1, 2 * ((p.pelvis[0] - p.footL[0]) / spread) - 1));
+      if (Math.abs(wp) < o.dead) wp = 0;
+    }
+    // lift branch: left up → all on the right (+1), right up → −1
+    const s = upL ? 1 : upR ? -1 : 0;
+    liftRun = s && s === liftSign ? liftRun + 1 : s ? 1 : 0;
+    liftSign = s;
+    if (!s) { weight.push(wp); continue; }
+    const agrees = wp === 0 || Math.sign(wp) === s;
+    if (agrees || liftRun >= o.persist) { weight.push(s); continue; }
+    overruled++;
+    weight.push(wp);
   }
-  return { weight, liftL, liftR };
+  return { weight, liftL, liftR, overruled };
 }
 
 // authored tables: weight from contacts (one planted → ±1 toward it; both

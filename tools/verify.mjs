@@ -135,6 +135,12 @@ const CHECKS = [
     desc: "brief 17.5: depth −1→+1 on every limb at slow/beat/snap — spikes 0, components 1, no NaN, no pop at zero, overlap flips ≤ 4 per loop",
   },
   {
+    name: "weight-rate",
+    tier: "fast",
+    cmd: ["node", "tools/weight-rate.mjs"],
+    desc: "brief 17.6 addendum A: on every weight-carrying table the fastest swing (Σ|Δweight| over 0.1 beat) ≤ 1.5 — no one-frame transfer",
+  },
+  {
     name: "engine-fidelity",
     tier: "full",
     skip: () => needStack() ?? (hasMusic ? null : "no files in music/"),
