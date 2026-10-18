@@ -250,29 +250,29 @@ stance lock (stage 6) operates after this stage.
 `exaggerateWeight` is more than 0 (default 0 — the explain-it gate). All
 lengths are fractions of the leg length `L` of the shape (sidecar
 `weightLayer`).
-- Two springs smooth the weight. The slow spring (wn 8, about 0.25 s)
-  drives the visible transfer. The fast spring (wn 30) selects the
-  support foot for grounding.
-- **Tilt:** The support hip goes up by `tilt` (4°) × weight. The tilt
-  is 0 when the hips overlap (profile view).
+- One spring smooths the weight: the table's own follow spring
+  (`followWn` — 60 for a captured table, 10 for an authored table), the
+  same spring as every other channel.
+- **Grounding:** The whole body moves vertically until the lowest point
+  (ankle or toe) of the support foot is on the floor. The stage measures
+  the support leg with its REST bone lengths and the FK angles. Thus a
+  depth cue that draws a leg shorter cannot lower the body. In shared
+  stance (|weight| < 0.3) the stage uses the weighted average of the two
+  feet. The root is solved from the foot. The feet are not pulled to a
+  root.
+- **Tilt:** The support hip goes up by `tilt` (4°) × weight. The view of
+  the SHAPE decides: a front shape tilts, a profile shape does not.
 - **Spine counter:** The upper body turns by (1 + `counter`) × tilt, with
   `counter` = −0.5. The head stays over the base.
 - **Shift:** The pelvis moves toward the support foot by `shift` (0.06) ×
   L × |weight|, along the axis of the view. The support ankle and foot
   stay. The knee is solved again from the hip and the ankle.
-- **Grounding:** The whole body moves vertically until the lowest point
-  (ankle or toe) of the support foot is on the floor. In shared stance
-  (|weight| < 0.3) the stage uses the weighted average of the two feet.
-  The root is solved from the foot. The feet are not pulled to a root.
-- A free foot that goes below the floor is lifted to the floor, and its
-  knee bends.
 - **Sink:** When the support side changes, the body drops by `sink` (0.03)
   × L into the landing foot over about 0.3 beat.
-- The beat bounce returns after the grounding. Under a table that
-  transfers weight, the bounce is 0.5 of its value.
-- Grounding operates only for a table with weight content (a captured
-  table, or an authored table with a key on one foot). A table with
-  weight 0 at all keys renders exactly as before.
+- The beat bounce returns after the grounding. During a sink, the bounce
+  decreases by the same amount as the sink increases.
+- The rules are the same for all tables. No table has a flag that
+  changes this stage.
 
 **Known failure:** Before this stage, the root did not follow the feet.
 A captured table can lift both feet in FK; the lock held only the planted

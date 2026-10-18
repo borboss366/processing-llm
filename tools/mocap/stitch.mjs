@@ -25,6 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scaleToAngles } from "./lib/channel-scale.mjs";
+import { contactsFromWeight } from "./lib/weight.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
@@ -160,7 +161,9 @@ if (files.length === 1 && !flag("mirror")) {
 // match (scored as one channel among 13 the weight barely counted, and the
 // first rebuild cut tstep mid-transfer: −0.98 → +0.73). Candidates must keep
 // |Δweight| ≤ SEAM_DW; among them the angles (+ weight on their scale) pick.
-const Rsrc = flag("mirror") ? L.keys.map(mirrorKey) : JSON.parse(fs.readFileSync(files[1], "utf8")).keys;
+const Rjson = flag("mirror") ? null : JSON.parse(fs.readFileSync(files[1], "utf8"));
+const Rsrc = flag("mirror") ? L.keys.map(mirrorKey) : Rjson.keys;
+const RloopSec = Rjson?.provenance?.loopSec ?? null;
 const jointNames = [...new Set([...L.keys, ...Rsrc].flatMap((k) => Object.keys(k.joints)))];
 const wScale = scaleToAngles(
   jointNames.map((nm) => [...L.keys, ...Rsrc].map((k) => k.joints[nm]?.rot ?? 0)),
@@ -194,19 +197,80 @@ const Rkeys = ring(Rsrc, cutR);
 console.log(`[stitch] seam: cut L @${L.keys[cutL].phase} · R @${Rsrc[cutR].phase} · seam distance ${bestD.toFixed(3)} rad rms (weight ×${wScale.toFixed(2)}; weight ${L.keys[cutL].weight ?? "—"} → ${Rsrc[cutR].weight ?? "—"})`);
 
 const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offset + k.phase / 2).toFixed(5) }));
+
+// JOIN CROSSFADE (owner 2026-10-19): the best cut still left a 0.57 rad
+// pose jump on tstep — the halves never pass through the same pose with
+// the same weight. Each half is a closed loop, so L can play on past its
+// cut and R can start before its own: around each join the two are blended
+// with the engine's move blend — smoothstep over blendBeats 0.75 beat
+// (creature.js params.blendBeats default) — instead of cut. Contacts follow
+// the blended weight (the distill rule).
+const BLEND_BEATS = 0.75;
+const CH = ["rot", "depth", "twist", "yaw", "dx", "dy"];
+function sampleRing(keys, u) {               // keys: phases in [0,1), u wraps
+  const x = ((u % 1) + 1) % 1;
+  let i = keys.length - 1;
+  for (let k = 0; k < keys.length; k++) if (keys[k].phase <= x) i = k;
+  const a = keys[i], b = keys[(i + 1) % keys.length];
+  const span = (((b.phase - a.phase) % 1) + 1) % 1 || 1;
+  const t = ((((x - a.phase) % 1) + 1) % 1) / span;
+  const lerp = (p, q) => (p ?? 0) + ((q ?? 0) - (p ?? 0)) * t;
+  const joints = {};
+  for (const nm of new Set([...Object.keys(a.joints), ...Object.keys(b.joints)])) {
+    const o = {};
+    for (const c of CH) { const v = lerp(a.joints[nm]?.[c], b.joints[nm]?.[c]); if (a.joints[nm]?.[c] != null || b.joints[nm]?.[c] != null) o[c] = v; }
+    joints[nm] = o;
+  }
+  return { joints, travel: lerp(a.travel, b.travel), weight: a.weight == null || b.weight == null ? null : lerp(a.weight, b.weight) };
+}
+function mixPose(p, q, m) {
+  const joints = {};
+  for (const nm of new Set([...Object.keys(p.joints), ...Object.keys(q.joints)])) {
+    const o = {};
+    for (const c of CH) {
+      const a = p.joints[nm]?.[c], b = q.joints[nm]?.[c];
+      if (a != null || b != null) o[c] = +((a ?? 0) * (1 - m) + (b ?? 0) * m).toFixed(4);
+    }
+    joints[nm] = o;
+  }
+  const weight = p.weight == null || q.weight == null ? null : +(p.weight * (1 - m) + q.weight * m).toFixed(4);
+  return { joints, travel: +((p.travel ?? 0) * (1 - m) + (q.travel ?? 0) * m).toFixed(4), weight, contacts: contactsFromWeight(weight), ease: "linear" };
+}
+// stitched timeline T ∈ [0,1): L on [0, 0.5) at u = 2T, R on [0.5, 1) at u = 2T − 1
+function crossfaded(Lk, Rk, bplTotal) {
+  const h = BLEND_BEATS / bplTotal / 2;      // half-window, stitched phase
+  const inWin = (T) => Math.abs(T - 0.5) < h || T < h || T > 1 - h;
+  const out = [...half(Lk, 0), ...half(Rk, 0.5)].filter((k) => !inWin(k.phase));
+  const STEP = 0.05 / bplTotal;              // one sample per 0.05 beat
+  for (const [J, from, to] of [[0.5, Lk, Rk], [1, Rk, Lk]]) {
+    for (let T = J - h; T < J + h - 1e-9; T += STEP) {
+      const sm = (T - (J - h)) / (2 * h), m = sm * sm * (3 - 2 * sm);
+      // the outgoing half keeps playing past its end, the incoming one
+      // starts before its start — both loops, so both are defined here
+      const uOut = 2 * (T - (J - 0.5)), uIn = 2 * (T - J);
+      const k = mixPose(sampleRing(from, uOut), sampleRing(to, uIn), m);
+      out.push({ ...scaleKey({ ...k, phase: 0 }), phase: +(((T % 1) + 1) % 1).toFixed(5) });
+    }
+  }
+  return out.sort((a, b) => a.phase - b.phase);
+}
 const table = {
   name,
   view: L.view ?? 'front',
   beatsPerLoop: (L.beatsPerLoop ?? 2) * 2,
   overlay: L.overlay ?? 0.3,
   verticalContent: L.verticalContent ?? 0.7,
-  keys: [...half(Lkeys, 0), ...half(Rkeys, 0.5)],
+  keys: crossfaded(Lkeys, Rkeys, (L.beatsPerLoop ?? 2) * 2),
   provenance: {
     halves: files.map((f) => path.basename(f)),
     mode: flag("mirror") ? "L + mirror(L)" : "L + aligned real R",
-    seam: { cutL: L.keys[cutL].phase, cutR: Rsrc[cutR].phase, dist: +bestD.toFixed(4) },
+    seam: { cutL: L.keys[cutL].phase, cutR: Rsrc[cutR].phase, dist: +bestD.toFixed(4), crossfadeBeats: BLEND_BEATS },
     exaggerate: exagMap ?? exag,
     L: L.provenance ?? null,
+    // two real halves: the loop lasts both halves' source time
+    loopSec: L.provenance?.loopSec != null && RloopSec != null ? +(L.provenance.loopSec + RloopSec).toFixed(4)
+      : flag("mirror") && L.provenance?.loopSec != null ? +(2 * L.provenance.loopSec).toFixed(4) : null,
+    fps: L.provenance?.fps ?? null,
     pipeline: "tools/mocap/stitch.mjs",
   },
 };

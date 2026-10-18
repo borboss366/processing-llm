@@ -1357,6 +1357,8 @@
     "cyclesKept": 1,
     "cyclesDropped": 0,
     "netDriftUnits": -0.0069,
+    "loopSec": 2.2112,
+    "fps": 29.967,
     "pipeline": "tools/mocap/stitch.mjs",
     "mode": "single full loop",
     "exaggerate": 1

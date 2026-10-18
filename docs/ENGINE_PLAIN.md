@@ -188,15 +188,15 @@ Both feet move, and the body seems to hang in the air.
 **Comparison:** A person who stands on one leg. The hip of that leg goes
 up and the body moves over the foot.
 
-**What can go wrong:** The first version used a slow signal to find the
-support foot. During a fast step, the kicking foot stayed on the floor
-and the standing foot was in the air. Now a fast signal finds the
-support foot. A slow signal moves the pelvis, so the movement stays
-smooth.
+**What can go wrong:** A depth cue draws a leg shorter when the leg comes
+toward the camera. The first version measured the support foot as drawn,
+so the body went down with the short leg, and the other foot went
+through the floor. Now the stage measures the support leg with its real
+length. The depth cue changes only the drawing.
 
 **How to see it:** Use the render mode "goo-bones" on stage. Change
 `exaggerateWeight` on the puppet page: 0 stops this stage, 1 is normal,
-1.5 is stronger. A move that has no weight looks the same at each value.
+1.5 is stronger.
 
 ## 8 · Depth cues
 

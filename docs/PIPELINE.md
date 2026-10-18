@@ -242,6 +242,12 @@ the pelvis sits between the ankles). Contacts are DERIVED from it
 (|w| ≥ 0.6 → the free foot is unplanted) — one source of truth. The
 running man's 14 keys with no foot planted (the "hanging") are gone.
 
+**Future table kind — one-shot move (noted 2026-10-19, not built).** A
+move that plays ONCE on a cue instead of looping. The kick clip has no
+repeating kick (17.6 addendum B), so its loop average is the wrong kind;
+it is excluded from the roster (`moves/roster.json` `exclude`) until the
+one-shot kind exists.
+
 ## 8 · Table
 
 **Out:** `moves/<name>.json` — view tag, keys with rot/dx/dy/twist/yaw,

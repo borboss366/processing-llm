@@ -1,5 +1,10 @@
 {
   "active": "captured",
-  "about": "Which move tables the stage uses. 'captured' = only tables made from video (provenance tools/mocap/*): the puppet move list shows them, and the groove rotation picks from the natural-view ones (not the -x variants, not the converted other-view tables). 'all' = every table, with the built-in authored rotation. Nothing is deleted or moved — authored tables stay in this folder (harnesses load them by name). To add an authored table to the captured roster anyway, put its name in 'include'.",
-  "include": []
+  "about": "Which move tables the stage uses. 'captured' = only tables made from video (provenance tools/mocap/*): the puppet move list shows them, and the groove rotation picks from the natural-view ones (not the -x variants, not the converted other-view tables). 'all' = every table, with the built-in authored rotation. Nothing is deleted or moved — authored tables stay in this folder (harnesses load them by name). To add an authored table to the captured roster anyway, put its name in 'include'; 'exclude' takes a table out of the move list and the rotation.",
+  "include": [],
+  "exclude": [
+    "basic_kick_1-captured",
+    "basic_kick_1-captured-front"
+  ],
+  "excludeReason": "owner 2026-10-19: stop looping the kick. The clip has no repeating kick (17.6 addendum B: the standing leg changes irregularly, no period fits) — looping its average is the wrong table kind. Future table kind: a ONE-SHOT move (played once on a cue, not looped) — not built. Tables stay on disk; a forced move param still plays them by name."
 }

@@ -142,10 +142,11 @@ export async function startControllerServer(): Promise<void> {
   app.get("/moves-list", async (req, res) => {
     try {
       const files = (await fs.readdir(MOVES_DIR)).filter((f) => f.endsWith(".json") && f !== "roster.json");
-      let roster: { active?: string; include?: string[] } = {};
+      let roster: { active?: string; include?: string[]; exclude?: string[] } = {};
       try { roster = JSON.parse(await fs.readFile(path.join(MOVES_DIR, "roster.json"), "utf8")); } catch { /* no roster: all */ }
       const active = String(req.query.roster ?? roster.active ?? "all");
       const include = new Set(roster.include ?? []);
+      const exclude = new Set(roster.exclude ?? []);
       const info = await Promise.all(files.map(async (f) => {
         const name = f.slice(0, -5);
         try {
@@ -154,10 +155,11 @@ export async function startControllerServer(): Promise<void> {
           return { name, captured, natural: !j.reinterpreted, variant: /-x$/.test(name) };
         } catch { return { name, captured: false, natural: true, variant: false }; }
       }));
-      const inRoster = (m: { name: string; captured: boolean }) => active !== "captured" || m.captured || include.has(m.name);
+      const inRoster = (m: { name: string; captured: boolean }) =>
+        !exclude.has(m.name) && (active !== "captured" || m.captured || include.has(m.name));
       const moves = info.filter(inRoster).map((m) => m.name).sort();
       const rotation = active === "captured"
-        ? info.filter((m) => (m.captured && m.natural && !m.variant) || include.has(m.name)).map((m) => m.name).sort()
+        ? info.filter((m) => !exclude.has(m.name) && ((m.captured && m.natural && !m.variant) || include.has(m.name))).map((m) => m.name).sort()
         : null;
       res.json({ ok: true, roster: active, moves, rotation });
     } catch {

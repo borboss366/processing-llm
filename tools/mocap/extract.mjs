@@ -764,7 +764,12 @@ async function processView(vk, primary) {
   }
   moveOut.provenance = { clip: path.basename(video), clipSha: clipHash, window: [winA, winB],
                          mirror, cyclesKept: kept.length, cyclesDropped: dropped.length,
-                         netDriftUnits: _netDriftUnits, pipeline: "tools/mocap/extract.mjs" };
+                         netDriftUnits: _netDriftUnits,
+                         // source time of one emitted loop: lets a check state a
+                         // rule in SOURCE milliseconds (weight-rate), whatever
+                         // tempo the stage later plays the table at
+                         loopSec: +period.toFixed(4), fps: +fsHz.toFixed(3),
+                         pipeline: "tools/mocap/extract.mjs" };
   fs.writeFileSync(`${vBase}.move.json`, JSON.stringify(moveOut, null, 2));
   console.log(`[mocap] wrote ${path.basename(vBase)}.poses.json + .move.json (clip sha ${clipHash})`);
 
