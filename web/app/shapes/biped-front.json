@@ -219,6 +219,7 @@
   "hip": 0.9
  },
  "dominantSide": "R",
+ "weightLayer": { "L": 0.3044 },
  "depthCues": {
   "gains": {
    "foot": 0.6,

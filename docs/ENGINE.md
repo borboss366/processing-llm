@@ -237,6 +237,53 @@ stage `lockP` to see the change that the lock makes. The ladder row
 `FK position` gives the distance between the table skeleton and the
 engine skeleton.
 
+## Stage 7a · Weight (brief 17.6)
+
+**Function:** The stage puts the body on the foot that carries it.
+
+**Input:** The FK pose and the `weight` of the table (−1 = all on the
+left foot, +1 = all on the right foot). An authored table without
+`weight` gets it from `contacts`. **Output:** New joint positions. The
+stance lock (stage 6) operates after this stage.
+
+**Rule (comment "weight layer"):** The stage operates only when the dial
+`exaggerateWeight` is more than 0 (default 0 — the explain-it gate). All
+lengths are fractions of the leg length `L` of the shape (sidecar
+`weightLayer`).
+- Two springs smooth the weight. The slow spring (wn 8, about 0.25 s)
+  drives the visible transfer. The fast spring (wn 30) selects the
+  support foot for grounding.
+- **Tilt:** The support hip goes up by `tilt` (4°) × weight. The tilt
+  is 0 when the hips overlap (profile view).
+- **Spine counter:** The upper body turns by (1 + `counter`) × tilt, with
+  `counter` = −0.5. The head stays over the base.
+- **Shift:** The pelvis moves toward the support foot by `shift` (0.06) ×
+  L × |weight|, along the axis of the view. The support ankle and foot
+  stay. The knee is solved again from the hip and the ankle.
+- **Grounding:** The whole body moves vertically until the lowest point
+  (ankle or toe) of the support foot is on the floor. In shared stance
+  (|weight| < 0.3) the stage uses the weighted average of the two feet.
+  The root is solved from the foot. The feet are not pulled to a root.
+- A free foot that goes below the floor is lifted to the floor, and its
+  knee bends.
+- **Sink:** When the support side changes, the body drops by `sink` (0.03)
+  × L into the landing foot over about 0.3 beat.
+- The beat bounce returns after the grounding. Under a table that
+  transfers weight, the bounce is 0.5 of its value.
+- Grounding operates only for a table with weight content (a captured
+  table, or an authored table with a key on one foot). A table with
+  weight 0 at all keys renders exactly as before.
+
+**Known failure:** Before this stage, the root did not follow the feet.
+A captured table can lift both feet in FK; the lock held only the planted
+foot, and the body seemed to hang (body roll: support foot up to 0.2 L
+above the floor).
+
+**How to examine:** `node tools/weight-probe.mjs` gives the support-foot
+height, the foot below the floor, the root range and the displacement of
+the layer, at each dial value. The trace row `wl` gives `w`, the tilt,
+the shift, the grounding and the sink for each frame.
+
 ## Stage 8 · Depth
 
 **Function:** The stage shows the movement toward or away from the

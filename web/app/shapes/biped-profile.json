@@ -222,6 +222,7 @@
   "head": 1.15,
   "spine": 1.15
  },
+ "weightLayer": { "L": 0.2952 },
  "depthCues": {
   "gains": {
    "foot": 0.6,

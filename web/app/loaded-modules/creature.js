@@ -508,6 +508,8 @@ function buildFromShape(state, params, shape) {
     nodeBone,
     depthCues: { ...DEPTH_CUES_DEFAULT, ...(json.depthCues ?? {}),
                  gains: { ...DEPTH_CUES_DEFAULT.gains, ...(json.depthCues?.gains ?? {}) } },
+    weightLayer: { ...WEIGHT_LAYER_DEFAULT, ...(json.weightLayer ?? {}),
+                   L: Number(json.weightLayer?.L) || legRestLength(joints) },
     // rot limits per chain position (brief 15 B2) — SIGNED, symmetric.
     // 2D design note: a 3D hinge's apparent bend flips with pose in
     // projection, so elbows/knees are signed by design ("always convex"
@@ -846,6 +848,74 @@ const DEPTH_CUES_DEFAULT = {
   overlapOn: 0.3,          // |arm depth| past this switches draw order
   overlapHyst: 0.1,        // …and must fall back below on − hyst to release
 };
+// weight layer (brief 17.6 T2): one signal (`weight` ∈ [−1,1], −1 all on
+// the left foot) drives grounding, pelvis shift/tilt, spine counter and the
+// transfer sink. Amplitudes are fractions of the shape's leg length L
+// (sidecar `weightLayer.L`, else measured from the rest skeleton); the
+// sidecar may override any fraction — never a table (generality guard).
+const WEIGHT_LAYER_DEFAULT = {
+  shift: 0.06,             // pelvis toward the support foot, × L × |weight|
+  tilt: 4,                 // pelvis tilt, degrees × weight (support hip up)
+  counter: -0.5,           // chest leans against the pelvis: × tilt
+  sink: 0.03,              // drop into the landing foot, × L, per transfer
+  shared: 0.3,             // |weight| below this = shared stance (both pinned)
+};
+const WEIGHT_WN = 8;       // the layer's own spring on weight (≈0.25 s settle):
+                           // a table may transfer in 1/16 beat (authored snap),
+                           // the body must not (T-step verdict 2026-10-18)
+// weight for a key: its own channel, else derived from contacts (the
+// extractor's rule — one planted → ±1, both → 0, neither → null)
+const keyWeight = (k) => {
+  if (k.weight !== undefined) return k.weight;
+  const c = k.contacts ?? [], L = c.includes('footL'), R = c.includes('footR');
+  return L && R ? 0 : L ? -1 : R ? 1 : null;
+};
+// does a table carry weight content? Grounding applies only to those: a
+// captured table (it has the channel — the kick's averaged weight never
+// leaves ±0.22 but it hangs like the rest) or an authored one with a
+// one-foot key. A table whose weight is 0 throughout (authored groove,
+// procedural) renders exactly as before (T2.5 identity)
+const hasSupport = (move) => {
+  if (move.wSupport !== undefined) return move.wSupport;
+  return (move.wSupport = move.keys.some((k) => k.weight !== undefined)
+    || move.keys.some((k) => Math.abs(keyWeight(k) ?? 0) >= WEIGHT_LAYER_DEFAULT.shared));
+};
+// does a table hand the weight from one foot to the other at all? (the
+// beat bounce ducks only under tables that do)
+const hasTransfer = (move) => {
+  if (move.wTransfer !== undefined) return move.wTransfer;
+  const ws = move.keys.map(keyWeight).filter((w) => w != null);
+  return (move.wTransfer = ws.some((w) => w <= -WEIGHT_LAYER_DEFAULT.shared) && ws.some((w) => w >= WEIGHT_LAYER_DEFAULT.shared));
+};
+
+// hip→knee→ankle at rest, both legs averaged (the extractor's legLength)
+function legRestLength(joints) {
+  const by = (nm) => joints.find((J) => J.name === nm);
+  const d = (a, b) => (a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0);
+  let sum = 0, n2 = 0;
+  for (const sd of ['L', 'R']) {
+    const h = by('hip' + sd), k = by('knee' + sd), a = by('ankle' + sd);
+    if (h && k && a) { sum += d(h, k) + d(k, a); n2++; }
+  }
+  return n2 ? sum / n2 : 0.3;
+}
+
+// two-bone knee solve: hip R → ankle M with bone lengths [L1, L2]; the
+// bend side follows the knee's current position. Moves K only.
+function solveKnee(R, K, M, [L1, L2], w = 1) {
+  const dx2 = M.ax - R.ax, dy2 = M.ay - R.ay;
+  const d = Math.max(Math.abs(L1 - L2) + 1e-4, Math.min(L1 + L2 - 1e-4, Math.hypot(dx2, dy2)));
+  const a1 = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))));
+  const base = Math.atan2(dy2, dx2);
+  const cA = [R.ax + Math.cos(base + a1) * L1, R.ay + Math.sin(base + a1) * L1];
+  const cB = [R.ax + Math.cos(base - a1) * L1, R.ay + Math.sin(base - a1) * L1];
+  const dA = (cA[0] - K.ax) ** 2 + (cA[1] - K.ay) ** 2;
+  const dB = (cB[0] - K.ax) ** 2 + (cB[1] - K.ay) ** 2;
+  const [kx2, ky2] = dA <= dB ? cA : cB;
+  K.ax += (kx2 - K.ax) * w;
+  K.ay += (ky2 - K.ay) * w;
+}
+
 // the part a bone (P→J) belongs to, by the joint it ENDS at
 const cueRoleOf = (J) => J.role === 'knee' ? (J.limb >= 2 ? 'upperArm' : 'thigh')
   : J.role === 'ankle' ? 'shin'
@@ -975,8 +1045,11 @@ function sampleMove(move, moveAcc) {
       yaw: (A.yaw ?? 0) + ((B.yaw ?? 0) - (A.yaw ?? 0)) * u,
     };
   }
+  const wa = keyWeight(a), wb = keyWeight(b);
   return { joints, contacts: new Set(a.contacts ?? []), ease: a.ease ?? 'smooth', seg: i,
-    travel: (a.travel ?? 0) + ((b.travel ?? 0) - (a.travel ?? 0)) * u };
+    travel: (a.travel ?? 0) + ((b.travel ?? 0) - (a.travel ?? 0)) * u,
+    // 17.6: null = airborne (out of scope — the layer stands down)
+    weight: wa == null || wb == null ? null : wa + (wb - wa) * u };
 }
 
 // Move repertoire per FSM state (brief 12.6): weighted tables the rotation
@@ -1094,6 +1167,8 @@ export default {
     moveSpringWn: 10,          // table-channel spring stiffness (R2 rung; halve it to feel the lag)
     viewForce: 0,              // 1 = keep the active view even for mismatched tables (inspect reinterpretation)
     exaggerateDepth: 1,        // 17.5 depth cues dial: 0 off · 1 shape defaults · up to 2
+    exaggerateWeight: 0,       // 17.6 weight layer dial: 0 off (= today's engine) · 1 shape defaults · up to 2.
+                               // Default OFF until docs/explained/weight.md exists (explain-it gate)
     gooThreshold: 0.18,        // d0: body surface threshold (unsaturated density scale)
     shadeD1: 0.55,             // d1: core/specular threshold
     shadeNz: 0.6,              // pseudo-normal flatness
@@ -1543,7 +1618,7 @@ export default {
     // engine taps (brief 19.1): per-stage theta/position record, OFF unless
     // params.engineTrace — the live path pays one boolean check
     const tracing = Number(params.engineTrace) === 1;
-    const engRow = tracing ? { t: Math.round(t0), ph: +((((state.moveAcc % (state.activeMoveBpl ?? 1)) + (state.activeMoveBpl ?? 1)) % (state.activeMoveBpl ?? 1)) / (state.activeMoveBpl ?? 1)).toFixed(4) } : null;
+    const engRow = tracing ? { t: Math.round(t0), mv: state.activeMove ?? null, ph: +((((state.moveAcc % (state.activeMoveBpl ?? 1)) + (state.activeMoveBpl ?? 1)) % (state.activeMoveBpl ?? 1)) / (state.activeMoveBpl ?? 1)).toFixed(4) } : null;
     const slotRots = (mp) => {
       const o = {};
       if (mp) for (const [nm, ch] of Object.entries(mp.joints)) if (ch.rot) o[nm] = ch.rot;
@@ -1580,6 +1655,7 @@ export default {
         state.xfadeStart = undefined;
       } else {
         const wIn = xf * xf * (3 - 2 * xf);
+        if (mvPose) mvPose.weight = mvPose.weight == null ? null : mvPose.weight * wIn;
         if (mvPose) {
           for (const nm of Object.keys(mvPose.joints)) {
             const tk = mvPose.joints[nm];
@@ -1591,6 +1667,7 @@ export default {
         if (prevPose) {
           mvPose ??= { joints: {}, contacts: prevPose.contacts, travel: 0 };
           mvPose.travel = (mvPose.travel ?? 0) * wIn + (prevPose.travel ?? 0) * (1 - wIn);
+          mvPose.weight = (mvPose.weight ?? 0) + (prevPose.weight ?? 0) * (1 - wIn);
           for (const nm of Object.keys(prevPose.joints)) {
             const pk = prevPose.joints[nm];
             const tk = (mvPose.joints[nm] ??= { dx: 0, dy: 0, rot: 0, twist: 0, depth: 0, yaw: 0 });
@@ -1924,6 +2001,167 @@ export default {
       }
     }
 
+    // ── weight layer (brief 17.6 T2) ─────────────────────────────────────
+    // One signal — `weight`, sprung so a transfer can't pop — drives, in
+    // order: pelvis tilt (support hip up) + spine counter, pelvis shift over
+    // the support foot (the support leg's ankle/foot stay, the knee re-solves),
+    // GROUNDING (the body is placed so the support foot's lowest point is on
+    // the floor: root solved from the foot, not the feet pulled under a
+    // floating root), then the beat bounce comes back — ducked under tables
+    // that transfer weight — plus a sink into each landing foot. Dial 0 =
+    // skipped entirely (today's engine). Runs before the stance lock, which
+    // is unchanged (lift-yield included).
+    {
+      const wS = (state.wSpring ??= { x: 0, v: 0 });
+      const wT = mvPose?.weight;
+      springStep(wS, wT ?? 0, WEIGHT_WN, dt);
+      // grounding follows the TABLE's support almost at once (≈50 ms, only
+      // enough to not pop); the slow wS drives what the eye reads as the
+      // transfer (shift, tilt, counter, sink). Grounding on wS lagged a
+      // snap transfer by ~0.25 s: the kicking foot was held on the floor
+      // and the planted one hung (measured 2026-10-19, tstep-placeholder)
+      const wF = (state.wFast ??= { x: 0, v: 0 });
+      springStep(wF, wT ?? 0, 30, dt);
+      // airborne (null) stands the layer down smoothly instead of grounding
+      const gS = (state.wGround ??= { x: 1, v: 0 });
+      springStep(gS, wT === null || !move || !hasSupport(move) ? 0 : 1, WEIGHT_WN, dt);
+      if (engRow) { engRow.wt = +wS.x.toFixed(3); engRow.wtT = wT == null ? null : +wT.toFixed(3); }
+      const kW = Math.max(0, Math.min(2, Number.isFinite(+params.exaggerateWeight) ? +params.exaggerateWeight : 0));
+      if (kW > 0 && state.hasFeet && stEff !== 'walk' && stEff !== 'hop') {
+        const WL = state.weightLayer, Lg = WL.L;
+        const w = Math.max(-1, Math.min(1, wS.x));
+        const by = (state.wlIdx ??= (() => {
+          const ix = (nm) => joints.findIndex((J) => J.name === nm);
+          const kids = (root) => {           // all descendants of joint index root
+            const out = [];
+            const walk = (pi) => joints.forEach((J, ci) => { if (J.parent === pi) { out.push(ci); walk(ci); } });
+            walk(root);
+            return out;
+          };
+          const o = { pelvis: ix('pelvis'), chest: ix('chest') };
+          for (const sd of ['L', 'R']) {
+            o['hip' + sd] = ix('hip' + sd); o['knee' + sd] = ix('knee' + sd);
+            o['ankle' + sd] = ix('ankle' + sd); o['foot' + sd] = ix('foot' + sd);
+            o['below' + sd] = o['knee' + sd] >= 0 ? [o['knee' + sd], ...kids(o['knee' + sd])] : [];
+            o['distal' + sd] = o['ankle' + sd] >= 0 ? [o['ankle' + sd], ...kids(o['ankle' + sd])] : [];
+          }
+          o.upper = o.chest >= 0 ? [o.chest, ...kids(o.chest)] : [];
+          o.ok = ['pelvis', 'hipL', 'hipR', 'kneeL', 'kneeR', 'ankleL', 'ankleR', 'footL', 'footR'].every((k3) => o[k3] >= 0);
+          return o;
+        })());
+        if (by.ok) {
+          const Jn = (i3) => joints[i3];
+          const before = engRow ? joints.map((J3) => [J3.ax, J3.ay]) : null;
+          const P0 = Jn(by.pelvis);
+          // support share: 0 = all on L, 1 = all on R; shared stance blends
+          // both (|w| < WL.shared), smoothstepped so the split never pops
+          const shareOf = (w2) => {
+            const u0 = Math.max(0, Math.min(1, (w2 + WL.shared) / (2 * WL.shared)));
+            const r = u0 * u0 * (3 - 2 * u0);
+            return { L: 1 - r, R: r };
+          };
+          const share = shareOf(w), gShare = shareOf(Math.max(-1, Math.min(1, wF.x)));
+          const sR = share.R;
+          // FK leg lengths as drawn (depth cues may foreshorten them — the
+          // knee re-solve must keep that, not snap back to rest)
+          const legLen = {}, legVec = {};
+          for (const sd of ['L', 'R']) {
+            const H2 = Jn(by['hip' + sd]), K2 = Jn(by['knee' + sd]), A2 = Jn(by['ankle' + sd]);
+            legLen[sd] = [Math.hypot(K2.ax - H2.ax, K2.ay - H2.ay), Math.hypot(A2.ax - K2.ax, A2.ay - K2.ay)];
+            legVec[sd] = [A2.ax - H2.ax, A2.ay - H2.ay];
+          }
+          const rotAbout = (i3, cx, cy, a3) => {
+            const J3 = Jn(i3), ox = J3.ax - cx, oy = J3.ay - cy, c3 = Math.cos(a3), s3 = Math.sin(a3);
+            J3.ax = cx + ox * c3 - oy * s3; J3.ay = cy + ox * s3 + oy * c3;
+          };
+          // 1) pelvis tilt: frontal-plane only — fades to 0 as the hips
+          //    overlap (profile hips sit 0.006 apart, front ≈ 0.026)
+          const hdx = Jn(by.hipR).ax - Jn(by.hipL).ax;
+          const hu = Math.max(0, Math.min(1, (Math.abs(hdx) - 0.008) / 0.008));
+          const frontK = Math.sign(hdx) * hu * hu * (3 - 2 * hu);
+          // support hip UP (y-down: the right hip at +x rises for θ < 0)
+          const theta = -(WL.tilt * Math.PI / 180) * w * kW * frontK;
+          for (const sd of ['L', 'R']) {
+            const H2 = Jn(by['hip' + sd]), hx = H2.ax, hy = H2.ay;
+            rotAbout(by['hip' + sd], P0.ax, P0.ay, theta);
+            // the free leg hangs from its hip; the support leg's knee
+            // re-solves below (its ankle/foot stay)
+            const fr = 1 - share[sd];
+            for (const i3 of by['below' + sd]) { Jn(i3).ax += (H2.ax - hx) * fr; Jn(i3).ay += (H2.ay - hy) * fr; }
+          }
+          // 2) spine counter: the upper body turns with the pelvis by
+          //    (1 + counter)·θ — leaning against the shift, head over the base
+          const phi = theta * (1 + WL.counter);
+          if (phi) for (const i3 of by.upper) rotAbout(i3, P0.ax, P0.ay, phi);
+          // 3) pelvis shift toward the support point along the view's axis
+          //    (lateral in front, fore/aft in profile — the feet's own x)
+          const xs = share.L * Jn(by.ankleL).ax + share.R * Jn(by.ankleR).ax;
+          const shiftX = WL.shift * Lg * Math.abs(w) * kW * Math.tanh((xs - P0.ax) / (0.05 * Lg));
+          if (shiftX) {
+            for (const J3 of joints) J3.ax += shiftX;
+            for (const sd of ['L', 'R']) for (const i3 of by['distal' + sd]) Jn(i3).ax -= shiftX * share[sd];
+          }
+          // 4) knees: hip → ankle with the drawn bone lengths, bend side of
+          //    the current knee (the table's own bend survives)
+          //    — only where hip→ankle actually changed: on a straight leg
+          //    the solver's 1e-4 reach clamp alone moves the knee ~√(2L·1e-4)
+          for (const sd of ['L', 'R']) {
+            const H2 = Jn(by['hip' + sd]), A2 = Jn(by['ankle' + sd]);
+            if (Math.hypot(A2.ax - H2.ax - legVec[sd][0], A2.ay - H2.ay - legVec[sd][1]) > 1e-6) {
+              solveKnee(H2, Jn(by['knee' + sd]), A2, legLen[sd]);
+            }
+          }
+          // 5) GROUNDING: the body is placed so the SUPPORT foot's lowest
+          //    point is on the floor — support by weight share (shared
+          //    stance: the weighted average). Measured 2026-10-19 against
+          //    "the lower foot": that left the weighted foot 0.24 L up on
+          //    the front running man (the depth cue foreshortens its leg)
+          const gK = Math.min(1, kW) * Math.max(0, Math.min(1, gS.x));
+          let dyG = 0;
+          for (const sd of ['L', 'R']) {
+            const A2 = Jn(by['ankle' + sd]), F2 = Jn(by['foot' + sd]);
+            dyG += gShare[sd] * (Math.max(A2.y, F2.y) - Math.max(A2.ay, F2.ay));
+          }
+          // 6) transfer sink: the support side flips → the body drops into
+          //    the landing foot over ~0.3 beat (t² attack: no velocity step)
+          const side = w >= WL.shared ? 1 : w <= -WL.shared ? -1 : 0;
+          if (side && state.wSide && side !== state.wSide) state.sinkAt = state.moveAcc;
+          if (side) state.wSide = side;
+          const age = state.sinkAt == null ? Infinity : (state.moveAcc - state.sinkAt) / 0.1;
+          const env = age >= 0 && age < 8 ? age * age * Math.exp(2 * (1 - age)) : 0;
+          const sinkY = WL.sink * Lg * kW * env;
+          // the beat bounce: grounding removed it with the root — put it
+          // back, ducked under tables that hand weight between the feet
+          // (the step owns the vertical there), and yielding to the sink
+          const dk = (state.wDuck ??= { x: 1, v: 0 });
+          springStep(dk, move && hasTransfer(move) ? 0.5 : 1, 4, dt);
+          // grounding took (bounce + rear bob) out with the root (feet ride
+          // the root in FK); add it back × duck: no transfer + feet on the
+          // floor → dyG = −bob, net 0 → today's figure exactly
+          const bob = (bounceY + rearBob) * dk.x * (1 - Math.min(1, env));
+          const dyAll = (dyG + bob) * gK + sinkY;
+          for (const J3 of joints) J3.ay += dyAll;
+          // the floor holds the FREE foot too: grounding by weight can push a
+          // foot that is lower in FK than the support foot through the floor
+          // (front running man: the depth cue draws the bent support leg
+          // shorter — measured 0.16 L under). Lift it to the floor, knee bends.
+          for (const sd of ['L', 'R']) {
+            const A2 = Jn(by['ankle' + sd]), F2 = Jn(by['foot' + sd]);
+            const under = (Math.max(A2.ay, F2.ay) - Math.max(A2.y, F2.y)) * gK;
+            if (under > 0 && gShare[sd] < 0.5) {
+              for (const i3 of by['distal' + sd]) Jn(i3).ay -= under;
+              solveKnee(Jn(by['hip' + sd]), Jn(by['knee' + sd]), A2, legLen[sd]);
+            }
+          }
+          // how far the layer moved any joint this frame (the weight ≡ 0
+          // identity check reads this, exact — no run-to-run noise)
+          const maxDisp = before ? Math.max(...joints.map((J3, i3) => Math.hypot(J3.ax - before[i3][0], J3.ay - before[i3][1]))) : 0;
+          if (engRow) engRow.wl = { w: +w.toFixed(3), sR: +sR.toFixed(3), tilt: +theta.toFixed(4), shift: +shiftX.toFixed(4), maxDisp: +maxDisp.toFixed(5),
+            ground: +(dyG * gK).toFixed(4), sink: +sinkY.toFixed(4), rootY: +P0.ay.toFixed(4), rootYpreSink: +(P0.ay - sinkY).toFixed(4) };
+        }
+      }
+    }
+
     // walking feet override the rotation chain (ground-contact tips only —
     // arms/hands keep their swing from the joint chain above)
     let slidePx = 0;
@@ -2047,20 +2285,7 @@ export default {
           // table's own bend direction survives the lock.
           const R = joints[K.parent];
           const M = A ?? T;
-          const L1 = Math.hypot(K.x - R.x, K.y - R.y);
-          const L2 = Math.hypot(M.x - K.x, M.y - K.y);
-          const dx2 = M.ax - R.ax, dy2 = M.ay - R.ay;
-          const d = Math.max(Math.abs(L1 - L2) + 1e-4,
-                    Math.min(L1 + L2 - 1e-4, Math.hypot(dx2, dy2)));
-          const a1 = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))));
-          const base = Math.atan2(dy2, dx2);
-          const cA = [R.ax + Math.cos(base + a1) * L1, R.ay + Math.sin(base + a1) * L1];
-          const cB = [R.ax + Math.cos(base - a1) * L1, R.ay + Math.sin(base - a1) * L1];
-          const dA = (cA[0] - K.ax) ** 2 + (cA[1] - K.ay) ** 2;
-          const dB = (cB[0] - K.ax) ** 2 + (cB[1] - K.ay) ** 2;
-          const [kx2, ky2] = dA <= dB ? cA : cB;
-          K.ax += (kx2 - K.ax) * w;
-          K.ay += (ky2 - K.ay) * w;
+          solveKnee(R, K, M, [Math.hypot(K.x - R.x, K.y - R.y), Math.hypot(M.x - K.x, M.y - K.y)], w);
           K.theta *= 1 - w;
           K.accRot = (K.accRot ?? 0) * (1 - w);
         }

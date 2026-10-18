@@ -146,3 +146,8 @@ way). Re-run on AC before Task 2; its captures were not committed.
 **Re-run on AC (same day):** `fk-check` PASS — heel-pivot toe drift
 0.0 px, ankle swing 11.7 px, spikes 0. The battery failure was
 throttling, not a regression.
+
+**Correction (Task 2, same day):** fk-check later failed with exactly
+7.0 px on AC as well, and passed with 0.0 on re-runs — on both the old
+and the new engine. The battery was not the cause; the heel-pivot test
+is intermittent (two discrete outcomes). See reports/2026-10-19-weight-t2.md.

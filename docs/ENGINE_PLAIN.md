@@ -19,7 +19,7 @@ old move. A **spring** smooths each value, so that no value jumps. The
 **liveness** step adds small variations. **Limits** stop each joint at
 its natural range. The **stance lock** keeps a planted foot on the
 floor. **FK** calculates the position of each joint from the angles.
-**Depth cues** show movement toward the camera. The **tissue** is a
+**Weight** puts the body on the foot that carries it. **Depth cues** show movement toward the camera. The **tissue** is a
 cloud of soft points that follows the skeleton. The **goo** step makes
 one smooth body from the cloud.
 
@@ -34,6 +34,7 @@ Each stage answers one question:
 | 5 Limits | Is a bend too large? |
 | 6 Stance lock | Do the feet stay on the floor? |
 | 7 FK | Where is each joint? |
+| 7a Weight | Which foot carries the body? |
 | 8 Depth | Does a movement toward the camera show? |
 | 9 Tissue | Does the soft body follow the bones? |
 | 10 Goo | Is the body one smooth shape? |
@@ -173,6 +174,29 @@ direct parent. A kick moved the thigh, but the foot stayed behind.
 **How to see it:** The skeleton panel at "FK positions". The "FK
 position" rung on the ladder gives the distance between the table
 skeleton and the engine skeleton.
+
+## 7a · Weight
+
+**What it does:** It finds the foot that carries the body. It puts that
+foot on the floor and puts the body above it. The pelvis moves over the
+foot and tilts a little. The chest leans back a little. At each step the
+body drops a little into the new foot.
+
+**Why it is necessary:** Without it, the body does not stand on a foot.
+Both feet move, and the body seems to hang in the air.
+
+**Comparison:** A person who stands on one leg. The hip of that leg goes
+up and the body moves over the foot.
+
+**What can go wrong:** The first version used a slow signal to find the
+support foot. During a fast step, the kicking foot stayed on the floor
+and the standing foot was in the air. Now a fast signal finds the
+support foot. A slow signal moves the pelvis, so the movement stays
+smooth.
+
+**How to see it:** Use the render mode "goo-bones" on stage. Change
+`exaggerateWeight` on the puppet page: 0 stops this stage, 1 is normal,
+1.5 is stronger. A move that has no weight looks the same at each value.
 
 ## 8 · Depth cues
 
