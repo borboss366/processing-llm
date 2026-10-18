@@ -12,4 +12,4 @@ Backfill queue (flagged, not removed):
 - [ ] goo render (density → shader)
 - [ ] authored moves + FSM rotation
 - [ ] audience pipeline (phone draw → stage)
-- [ ] captured moves (video → table — the 16–19 arc)
+- [x] captured moves (video → table — the 16–19 arc) → [captured-moves.md](captured-moves.md), 2026-10-18

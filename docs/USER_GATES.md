@@ -42,8 +42,9 @@ verdict moves to the report and gets a ✓ + date here.
    table within 0.04 rad, amplitude rung added to moves-x-shapes).
    ✓ 2026-10-14: side view PASS — plain and -x "quite fun and
    cartoonish"; front version "weird, body nailed in the center" (no
-   support-leg/root motion — same gap as 7a); rotation re-check pending
-   (the setup was broken, fixed). — `runningman-captured`
+   support-leg/root motion — same gap as 7a). ~ 2026-10-18 rotation
+   re-check PARTLY: "quite funny… nice cartoonish effect. can work on
+   this but low priority" (reports/2026-10-18-user-gates.md). — `runningman-captured`
    (profile-tagged, rebuilt through the full 2026-09-21 pipeline:
    measured rest, heel→toe feet, per-side sign, plane-select) is in the
    groove rotation at 0.1; picking it switches the stage to the PROFILE
@@ -66,13 +67,17 @@ verdict moves to the report and gets a ✓ + date here.
    live): can you find the stage that loses a given joint WITHOUT
    reading any report? (The ladder names R2 = springs at 0.355 rad on
    the running man — judge whether that softness is what you still see,
-   and judge R4 in the render-mode strip.) → ____
+   and judge R4 in the render-mode strip.) → ~ 2026-10-18 PARTLY:
+   found **S5 limits** ("the foot started looking a bit weird") —
+   reports/2026-10-18-user-gates.md.
 
 6. **Explain-it gate (brief 19.2, PERMANENT)** — the party set only
    contains features with an owner-written paragraph in
    `docs/explained/`. Backfill queue: director · PLL/grid clocks ·
    goo render · authored moves · FSM · audience pipeline. First
-   paragraph (your pick) opens the gate. → ____
+   paragraph (your pick) opens the gate. → ✓ 2026-10-18 gate OPENED:
+   first paragraph = captured moves (docs/explained/captured-moves.md).
+   Remaining backfill listed in docs/explained/README.md.
 
 7. **Depth cues (brief 17.5 Task 4)** — goo+bones at 3 m,
    `exaggerateDepth` 0 / 1 / 1.5 (puppet param), stills in
@@ -85,6 +90,15 @@ verdict moves to the report and gets a ✓ + date here.
    leg. (b) PASS in substance — "depth cues do not change nothing";
    running man "looks the best", goo too thick hides the movement.
    (c) ✓ PASS 2026-10-14 — "looks rather good, we can accept this one".
+
+8. **Weight signal (brief 17.6 Task 1)** — before/after on the rating
+   page → **2026-10-18 (reports/2026-10-18-user-gates.md):**
+   runningman side ✓ "actually quite good"; runningman front ✓ but
+   "body is static… should go up and down a bit"; tstep ~ "transition
+   from left to right is too fast… the tilt changes immediately";
+   bodyroll ✗ "still jumps with the feet to the air"; kick ✗ (expected,
+   recapture). The engine layer (17.6 Task 2) is the re-check trigger
+   for all five.
 
 ## Standing re-check triggers
 

@@ -68,6 +68,7 @@ creature rig). Full guide in `README.md`.
 | ABSOLUTE retarget (root cause: collapsed arms) | measured rest erased habitual pose (elbows −1.4 rad!) → theta = obsAbs − rigRestAbs(view); arms-forward anti-test renders 0.00° abs; QA overlay panel tracks dancer bone-for-bone; 0 clamps (runningman) | reports/2026-09-28-absolute-retarget.md + self-test |
 | Brief 18.2 overlays + diagnostics | 8 on-frame layers (rig/rest/gonio/foreshorten/contacts/raw/velocity/table) + heatmap/onion/filmstrip/key-ghosts; PNG+webm export; smoke 0 errors; 3 acceptance stills | reports/2026-09-28-brief-18-2-overlays.md + 182-still-*.png |
 | Weight signal (17.6 T1) | weight ∈ [−1,1] per frame from FK feet → per key, contacts derived; runningman alternates ±1 per step, 0 keys with no foot planted (was 14); round-trip 141 authored keys exact; mirrored clip negates; profile foot zero restored | reports/2026-10-15-weight-t1.md + self-test |
+| Weight T1 owner check (rating page, before/after) | runningman side ✓ front ✓ (wants a bob); tstep ~ (tilt flips too fast); bodyroll ✗ (feet still leave the floor — root, not contacts: every key now plants a foot); kick ✗ expected | reports/2026-10-18-user-gates.md |
 | Move roster (captured-only stage) | moves/roster.json `active: captured` — puppet list = 12 captured tables, groove rotation = 6 natural-view captures (equal weight); authored tables kept on disk (harnesses), `active: all` restores; live probe 60 s: only the 6 played, spikes 0; drop-check + view-switch PASS | /moves-list + roster probe |
 | Depth stress + ladder (17.5 T3) | depth-stress PASS at slow/beat/snap (spikes 0, components 1, no pop at zero, overlap ≤4 flips/loop); depth reaches the engine within 0.002–0.005; kick shin toward camera 76/77 lifted frames; runningman right leg reads up to 0.2 (open, Task 4) | tools/depth-stress.mjs + reports/2026-10-13-depth-t3-stress-fidelity.md |
 | Depth cues (17.5 T2) | size/draw-length/brightness/arm-overlap from depth, gains on the shape, `exaggerateDepth` dial; depth-0 tables exactly neutral at dials 0/1/2; module 2.1 ms; engine-fidelity/mxs/fk/transition PASS | reports/2026-10-13-depth-cues-t2.md |
@@ -111,30 +112,16 @@ creature.js math/render/telemetry split: trigger = spider brief
 
 ## Next
 
-BRIEF 18.1 COMPLETE: schema + pluggable worker (T1), 2D depth (T2 +
-T2.3 fore-vs-world overlay), A/B explorer (T3:
-corpus/*.explorer-ab.html), cards + VERDICT (T4: rtmpose default,
-mediapipe for fast passes — USER_GATES item 4 ✓ 2026-09-27). De-yaw
-REMOVED entirely (user directive): stage 3 selects a view, never
-rotates; mismatched view = rot→twist reinterpretation
-(reports/2026-09-27-deyaw-removal.md). All three clips re-extracted on
-rtmpose = brief 19's R0; runningman stage tables rebuilt from it
-(halves near-symmetric pre-symmetrize now). ABSOLUTE RETARGET landed
-(2026-09-28): habitual pose transfers; all R0 re-extracted again;
-tstep front-view ankle clamps = known foot-convention gap (parked with
-tstep); bodyroll elbowR exceeds engine limit 18/180 frames (real
-finding). WAITING: A7 stage verdict (item 3). Brief 18.2 DONE. Brief 19
-Task 3.1 DONE (R1 rung green on the distill component; averaging
-floor = rep-to-rep variation, DTW alignment is the named next rung).
-Brief 18 Task 3 + acceptance: WAITING ON USER (the reading loop —
-can't-follow list + three predictions; PIPELINE.md refreshed
-2026-09-28 to absolute retarget / no de-yaw / 2D depth / rtmpose /
-overlays-as-reading-instrument specifically for this). A7 FIRST VIEWING: FAIL
-(knees) → engine convention remap + lock fix landed same day; brief
-19.1 (engine explorer) BUILT on top — taps, explorers, live puppet
-view, engine-fidelity verify row. OPEN (all
-owner's): A7 RE-VIEW (item 3) · engine-explorer gate (item 5) ·
-explain-it first paragraph (item 6) · the 19.2 reading loop (three
-predictions + both can't-follow lists — template in reports/). R2
-springs (0.355 rad) is the named next engineering rung, waits on the
-review. Brief 20 (halloween freeze) is written AFTER 19.2 closes.
+**Brief 17.6 Task 2 — the engine weight layer**, on the owner's go:
+the root solved from the support foot (the body-roll "feet leave the
+floor" verdict is its first test), pelvis shift + tilt blended through
+zero (the T-step "tilt flips immediately" verdict sets the rate check),
+spine counter, sink on transfer (the front running man's missing bob),
+one `exaggerateWeight` dial; then Task 3 (weight-ground verify row,
+stress row) and Task 4 (owner judgment + docs/explained/weight.md).
+
+Owner items still open: kick recapture with a one-kick window (7a);
+goo exaggeration "like in cartoons" (idea, not a brief yet); A7
+rotation polish (low priority); explain-it backfill (director, clocks,
+goo render, authored moves, FSM, audience pipeline); phone gate E11;
+the 19.2 reading loop.
