@@ -13,7 +13,7 @@
   "items": [
     {
       "id": "w1-runningman-side",
-      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "gate": "brief 17.6 Task 1 — weight is in the tables; the stage uses it only to pick the planted foot (pelvis shift + sink = Task 2)",
       "title": "Running man (side) — does the stance foot hold?",
       "look": "Before: 14 of 31 key poses had NO foot planted, so the body floated and the feet drifted. Now every pose has its support foot planted, alternating once per step. The side-view feet were also drawn ~11° toe-up before; now a flat foot is flat. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
       "question": "Does the body hang less — does a foot hold the floor on each step? Are the feet flat on the floor now? Anything worse?",
@@ -43,7 +43,7 @@
     },
     {
       "id": "w2-runningman-front",
-      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "gate": "brief 17.6 Task 1 — weight is in the tables; the stage uses it only to pick the planted foot (pelvis shift + sink = Task 2)",
       "title": "Running man (front) — same check",
       "look": "Same capture, front view. You called it 'nailed in the center' last time; the pinned foot may change that a little, the pelvis shift (Task 2) is what should really fix it. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
       "question": "Any difference? Does a foot hold the floor each step?",
@@ -73,7 +73,7 @@
     },
     {
       "id": "w3-tstep",
-      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "gate": "brief 17.6 Task 1 — weight is in the tables; the stage uses it only to pick the planted foot (pelvis shift + sink = Task 2)",
       "title": "T-step — weight rocking side to side",
       "look": "The weight rocks left ↔ right through the shuffle; the support foot now stays down on each rock. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
       "question": "Does a planted foot read on each side? Does it look more grounded than before?",
@@ -103,7 +103,7 @@
     },
     {
       "id": "w4-bodyroll",
-      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "gate": "brief 17.6 Task 1 — weight is in the tables; the stage uses it only to pick the planted foot (pelvis shift + sink = Task 2)",
       "title": "Body roll — standing on the floor",
       "look": "No foot lifts here; the weight shifts forward and back. Both feet should stay on the floor in both versions — this is a check that nothing got worse. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
       "question": "Does it stand on the floor, same as or better than before?",
@@ -133,7 +133,7 @@
     },
     {
       "id": "w5-kick",
-      "gate": "brief 17.6 Task 1 — weight signal (engine layer not built yet)",
+      "gate": "brief 17.6 Task 1 — weight is in the tables; the stage uses it only to pick the planted foot (pelvis shift + sink = Task 2)",
       "title": "Kick — expected: NO improvement yet",
       "look": "The kick capture covers several kicks with different standing legs; averaged into one loop, the weight cancels out (−0.09…+0.33), so both feet stay planted as before. The fix is a recapture with one kick. Shown so you can confirm the finding, not to judge the look. What changed is only WHICH foot is pinned to the floor (now from the weight: the foot carrying the body is planted, the free one may leave). The pelvis does not move over the foot yet and there is no sink — that is Task 2. Flip between 'before' and 'now' a few times.",
       "question": "Do you agree it looks the same and still lacks a standing leg?",
