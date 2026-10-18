@@ -92,12 +92,6 @@ mod-octave so regressions still surface.
 
 ## Open (user)
 
-- **fk-check FAILED on battery 2026-10-19** (heel-pivot toe drift 7.0 px
-  > 6; the Verified row above says 0.0). Inputs unchanged since it passed
-  (authored tables + engine identical); same symptom as the 2026-10-13
-  low-battery run. Re-run on AC; if it fails there, it is a real
-  regression to chase before Task 2.
-
 - **Phone gate E11** (deferred twice; web UI suffices for testing —
   must run before a real event). Protocol in `docs/USER_GATES.md`.
 - **For the reviewer** (sculpt session #4,
@@ -120,7 +114,7 @@ creature.js math/render/telemetry split: trigger = spider brief
 ## Next
 
 **Brief 17.6 Task 2 — the engine weight layer**, on the owner's go
-(addendum A/B done; fk-check to re-run on AC first; report the root's
+(addendum A/B done, fk-check PASS on AC; report the root's
 vertical range after 2.1, before the sink — addendum C):
 the root solved from the support foot (the body-roll "feet leave the
 floor" verdict is its first test), pelvis shift + tilt blended through

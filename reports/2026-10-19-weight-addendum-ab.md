@@ -142,3 +142,7 @@ depth-stress, weight-rate: **7 PASS**. `fk-check` FAIL — planted toe drift
 (engine, shapes, that table identical to HEAD); the machine was on
 battery at 17% (the 2026-10-13 battery run failed this same check the same
 way). Re-run on AC before Task 2; its captures were not committed.
+
+**Re-run on AC (same day):** `fk-check` PASS — heel-pivot toe drift
+0.0 px, ankle swing 11.7 px, spikes 0. The battery failure was
+throttling, not a regression.
