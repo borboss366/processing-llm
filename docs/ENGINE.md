@@ -250,16 +250,21 @@ stance lock (stage 6) operates after this stage.
 `exaggerateWeight` is more than 0 (default 0 — the explain-it gate). All
 lengths are fractions of the leg length `L` of the shape (sidecar
 `weightLayer`).
-- One spring smooths the weight: the table's own follow spring
-  (`followWn` — 60 for a captured table, 10 for an authored table), the
-  same spring as every other channel.
+- The table's own follow spring (`followWn` — 60 for a captured table,
+  10 for an authored table) smooths the weight and each foot's contact,
+  the same spring as every other channel.
 - **Grounding:** The whole body moves vertically until the lowest point
-  (ankle or toe) of the support foot is on the floor. The stage measures
-  the support leg with its REST bone lengths and the FK angles. Thus a
-  depth cue that draws a leg shorter cannot lower the body. In shared
-  stance (|weight| < 0.3) the stage uses the weighted average of the two
-  feet. The root is solved from the foot. The feet are not pulled to a
-  root.
+  (ankle or toe) of the support foot is on the floor. The stage uses the
+  DRAWN bones: a leg that a depth cue draws shorter leans out of the
+  plane, and the body is lower. In shared stance (|weight| < 0.3) the
+  stage uses the weighted average of the two feet. The root is solved
+  from the foot. The feet are not pulled to a root.
+- **Floor:** At the end, no TOUCHING foot (a foot in `contacts`) is below
+  the floor: the body rises until the lowest touching foot is on it.
+  `contacts` and `weight` are two facts: a foot can touch with no load.
+  The hang of the other touching foot (leg-depth inconsistency) and a
+  LIFTED foot below the floor (a capture error) are printed, not
+  corrected.
 - **Tilt:** The support hip goes up by `tilt` (4°) × weight. The view of
   the SHAPE decides: a front shape tilts, a profile shape does not.
 - **Spine counter:** The upper body turns by (1 + `counter`) × tilt, with

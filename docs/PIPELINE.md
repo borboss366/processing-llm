@@ -238,9 +238,10 @@ accents; and the constant-channel exclusion above.
 [−1, +1] per key (−1 all on the left foot, +1 right, 0 shared, null
 airborne), measured per frame from the rig's own FK feet (a foot higher
 than the other by > 0.06 leg-lengths carries nothing; both down → where
-the pelvis sits between the ankles). Contacts are DERIVED from it
-(|w| ≥ 0.6 → the free foot is unplanted) — one source of truth. The
-running man's 14 keys with no foot planted (the "hanging") are gone.
+the pelvis sits between the ankles). `contacts` are a SEPARATE fact
+(17.6 rev 2): a foot touches where the lift detector says it is not
+lifted — a foot can touch with no load (the t-step's free foot, the
+running man's sliding trailing foot). Neither is derived from the other.
 
 **Future table kind — one-shot move (noted 2026-10-19, not built).** A
 move that plays ONCE on a cue instead of looping. The kick clip has no

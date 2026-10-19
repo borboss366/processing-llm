@@ -71,18 +71,10 @@ export function weightSeries(poses, L, opts = {}) {
   return { weight, liftL, liftR, overruled };
 }
 
-// authored tables: weight from contacts (one planted → ±1 toward it; both
-// → 0; neither → null = airborne). Exact inverse below: round-trip identity.
+// authored tables without a `weight` channel: the default from contacts
+// (one planted → ±1 toward it; both → 0; neither → null = airborne). The
+// reverse does not exist (17.6 rev 2): touching and carrying are two facts.
 export function weightFromContacts(contacts) {
   const L = contacts?.includes("footL"), R = contacts?.includes("footR");
   return L && R ? 0 : L ? -1 : R ? 1 : null;
-}
-
-// the engine's contacts, DERIVED from weight: |w| ≥ 0.6 → the free foot is
-// unplanted; otherwise both are planted; null → neither
-export function contactsFromWeight(w) {
-  if (w == null) return [];
-  if (w <= -0.6) return ["footL"];
-  if (w >= 0.6) return ["footR"];
-  return ["footL", "footR"];
 }

@@ -493,7 +493,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.947,
       "ease": "snap",
@@ -554,7 +555,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.796,
       "ease": "smooth",

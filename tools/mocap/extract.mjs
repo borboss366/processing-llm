@@ -60,7 +60,7 @@ import { foreshortenAll, frontnessRatio, depthFromTwist, gatedBones } from "./li
 import { MP, buildRig, detectYSign, deYaw3, boneTwists, retargetFrame, fkPose, calibMasks, measureRest } from "./lib/retarget.mjs";
 import { cycleSpread, angularSpeed, detectPeriod, decideLoop, binCycles, averageCycles } from "./lib/timing.mjs";
 import { distillMove, sampleTableAt } from "./lib/distill.mjs";
-import { weightSeries, legLength, weightFromContacts, contactsFromWeight } from "./lib/weight.mjs";
+import { weightSeries, legLength } from "./lib/weight.mjs";
 import { scaleToAngles } from "./lib/channel-scale.mjs";
 import { renderExplorer } from "./lib/explorer.mjs";
 import { sideSigns } from "./lib/retarget.mjs";
@@ -496,6 +496,12 @@ async function processView(vk, primary) {
   channels.pelvisU = uni(pelvisU);
   channels.wt = uni(weightFrames);
   channels.air = uni(airFrames);
+  // contacts (17.6 rev 2): TOUCHING is the lift detector's own per-frame
+  // verdict, kept as its own channel — never derived from weight (a foot
+  // can touch with no load: the t-step free foot, the running man's
+  // sliding trailing foot)
+  channels.lfL = uni(ws.liftL.map((v) => (v ? 1 : 0)));
+  channels.lfR = uni(ws.liftR.map((v) => (v ? 1 : 0)));
   for (const s of ["L", "R"]) {
     channels[`footY${s}`] = uni(footY[s]);
     const fx = uni(footX[s]);
@@ -672,7 +678,7 @@ async function processView(vk, primary) {
   const table = distillMove({
     thetas: thetasAvg,
     depths: depthAvg,
-    weight: weightAvg, air: airAvg,
+    weight: weightAvg, air: airAvg, lift: mean.lfL && mean.lfR ? { L: mean.lfL, R: mean.lfR } : null,
     yaws: yawAvg,
     pelvisU: pelvisAvg,
     footY: { L: fkFY.L, R: fkFY.R },
@@ -1518,19 +1524,14 @@ function selfTest() {
       console.log(`[self-test] weight, profile sole-to-camera foot: gated ${gatedT[10].has("ankleR")} · lifted L ${wd.liftL[0]} R ${wd.liftR[0]} (want both false) · weight ${wd.weight[0]}`);
       if (wd.liftR[0] || wd.liftL[0]) fails.push("weight: a gated sole-to-camera foot on the floor must not break the lift rule");
     }
-    // round trip on EVERY authored table: contacts → weight → contacts = identity
-    let keysN = 0, bad = [];
-    for (const f2 of fs.readdirSync(path.join(ROOT, "web/app/moves")).filter((x) => x.endsWith(".json") && x !== "roster.json")) {
-      const t = JSON.parse(fs.readFileSync(path.join(ROOT, "web/app/moves", f2), "utf8"));
-      if (String(t.provenance?.pipeline ?? "").startsWith("tools/mocap") || !t.keys) continue;
-      for (const k of t.keys) {
-        keysN++;
-        const a = [...(k.contacts ?? [])].sort().join("+"), b2 = contactsFromWeight(weightFromContacts(k.contacts ?? [])).sort().join("+");
-        if (a !== b2) bad.push(`${f2}@${k.phase}: ${a || "∅"} → ${b2 || "∅"}`);
-      }
+    // (f) rev 2: touching ≠ carrying. Both feet on the floor, pelvis over
+    //     the RIGHT ankle: the left foot touches (not lifted → in contacts)
+    //     and carries nothing (weight +1). The old derivation dropped it.
+    {
+      const r = weightSeries([P(0.6, [0.45, 0.9], [0.6, 0.9])], L);
+      console.log(`[self-test] touching ≠ carrying: weight ${r.weight[0]} (want +1) · left lifted ${r.liftL[0]} (want false → touching)`);
+      if (r.weight[0] !== 1 || r.liftL[0]) fails.push("rev 2: an unloaded foot on the floor must stay touching");
     }
-    console.log(`[self-test] weight round-trip on authored tables: ${keysN} keys, ${bad.length} mismatches`);
-    if (bad.length) fails.push(`weight round-trip: ${bad.slice(0, 3).join("; ")}`);
   }
   for (const f of fails) console.error(`[self-test] FAIL: ${f}`);
   console.log(`VERIFY:${fails.length ? "FAIL" : "PASS"} mocap-self-test`);

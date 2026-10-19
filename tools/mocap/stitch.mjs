@@ -25,7 +25,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scaleToAngles } from "./lib/channel-scale.mjs";
-import { contactsFromWeight } from "./lib/weight.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
@@ -203,8 +202,8 @@ const half = (keys, offset) => keys.map((k) => ({ ...scaleKey(k), phase: +(offse
 // the same weight. Each half is a closed loop, so L can play on past its
 // cut and R can start before its own: around each join the two are blended
 // with the engine's move blend — smoothstep over blendBeats 0.75 beat
-// (creature.js params.blendBeats default) — instead of cut. Contacts follow
-// the blended weight (the distill rule).
+// (creature.js params.blendBeats default) — instead of cut. Contacts come
+// from the dominant half (touching is discrete, never derived from weight).
 const BLEND_BEATS = 0.75;
 const CH = ["rot", "depth", "twist", "yaw", "dx", "dy"];
 function sampleRing(keys, u) {               // keys: phases in [0,1), u wraps
@@ -221,7 +220,8 @@ function sampleRing(keys, u) {               // keys: phases in [0,1), u wraps
     for (const c of CH) { const v = lerp(a.joints[nm]?.[c], b.joints[nm]?.[c]); if (a.joints[nm]?.[c] != null || b.joints[nm]?.[c] != null) o[c] = v; }
     joints[nm] = o;
   }
-  return { joints, travel: lerp(a.travel, b.travel), weight: a.weight == null || b.weight == null ? null : lerp(a.weight, b.weight) };
+  return { joints, travel: lerp(a.travel, b.travel), weight: a.weight == null || b.weight == null ? null : lerp(a.weight, b.weight),
+    contacts: a.contacts ?? [] };
 }
 function mixPose(p, q, m) {
   const joints = {};
@@ -234,7 +234,8 @@ function mixPose(p, q, m) {
     joints[nm] = o;
   }
   const weight = p.weight == null || q.weight == null ? null : +(p.weight * (1 - m) + q.weight * m).toFixed(4);
-  return { joints, travel: +((p.travel ?? 0) * (1 - m) + (q.travel ?? 0) * m).toFixed(4), weight, contacts: contactsFromWeight(weight), ease: "linear" };
+  // contacts are discrete (touching or not): the dominant half's
+  return { joints, travel: +((p.travel ?? 0) * (1 - m) + (q.travel ?? 0) * m).toFixed(4), weight, contacts: m < 0.5 ? p.contacts : q.contacts, ease: "linear" };
 }
 // stitched timeline T ∈ [0,1): L on [0, 0.5) at u = 2T, R on [0.5, 1) at u = 2T − 1
 function crossfaded(Lk, Rk, bplTotal) {

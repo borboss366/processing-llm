@@ -1,4 +1,3 @@
-import { contactsFromWeight } from './weight.mjs';
 // Distill a cycle-averaged loop (64-bin channels) into the STANDARD move
 // table (MODULE_ABI.md): keys at extrema + inflection points, contacts from
 // foot-height minima + low velocity, `travel` from pelvis drift.
@@ -94,7 +93,9 @@ function thinKeys(phasesIdx, channels, bins, maxKeys, errBudget = null) {
 
 /**
  * @param avg        { thetas: {joint: Float64Array(bins)}, pelvisU: Float64Array,
- *                     footY: {L,R: Float64Array}, footVX: {L,R: Float64Array} }
+ *                     footY: {L,R: Float64Array}, footVX: {L,R: Float64Array},
+ *                     weight?, air?, lift?: {L,R: Float64Array} — fraction of
+ *                     cycles the foot is lifted at each bin (→ contacts) }
  * @param opts       { bins, bpl, name, overlay, verticalContent, maxKeys,
  *                     minRange (rad), snapSpeed (rad/loop-fraction) }
  */
@@ -198,17 +199,18 @@ export function distillMove(avg, opts) {
       if (rng <= 0.12) continue;
       (jk[nm] ??= {}).yaw = +Math.max(-0.6, Math.min(0.6, yw[b])).toFixed(3);
     }
-    // weight (17.6) is the ONE source of support: contacts are derived from
-    // it (|w| ≥ 0.6 → the free foot is unplanted; airborne → none). Tables
-    // without a weight channel keep the FK-height contacts.
+    // two facts, two channels (17.6 rev 2): `contacts` = the foot TOUCHES
+    // (the lift detector: lifted less than half the cycles at this bin),
+    // `weight` = the foot CARRIES (pelvis between the ankles). Neither is
+    // derived from the other. Without the lift channel: the FK-height mask.
     let contacts = [], wKey;
     if (avg.weight) {
       const airborne = (avg.air?.[b] ?? 0) > 0.5;
       wKey = airborne ? null : +Math.max(-1, Math.min(1, avg.weight[b])).toFixed(3);
-      contacts = contactsFromWeight(wKey);
-    } else {
-      if (contactMask.L[b]) contacts.push('footL');
-      if (contactMask.R[b]) contacts.push('footR');
+    }
+    for (const side of ['L', 'R']) {
+      const touching = avg.lift ? avg.lift[side][b] < 0.5 : contactMask[side][b];
+      if (touching) contacts.push(`foot${side}`);
     }
     return {
       phase: +(b / bins).toFixed(5),

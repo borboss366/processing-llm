@@ -84,7 +84,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.649,
       "ease": "smooth",
@@ -116,7 +117,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "weight": -0.496,
@@ -185,8 +185,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "weight": -0.35,
       "ease": "snap",
@@ -303,8 +302,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "weight": -0.518,
       "ease": "smooth",
@@ -513,6 +511,7 @@
         }
       },
       "contacts": [
+        "footL",
         "footR"
       ],
       "weight": 1,
@@ -729,6 +728,7 @@
         }
       },
       "contacts": [
+        "footL",
         "footR"
       ],
       "weight": 0.69,
@@ -809,7 +809,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.62,
       "ease": "smooth",

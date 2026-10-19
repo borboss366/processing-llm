@@ -188,11 +188,11 @@ Both feet move, and the body seems to hang in the air.
 **Comparison:** A person who stands on one leg. The hip of that leg goes
 up and the body moves over the foot.
 
-**What can go wrong:** A depth cue draws a leg shorter when the leg comes
-toward the camera. The first version measured the support foot as drawn,
-so the body went down with the short leg, and the other foot went
-through the floor. Now the stage measures the support leg with its real
-length. The depth cue changes only the drawing.
+**What can go wrong:** A foot can touch the floor and carry no weight.
+The first version said "no weight, no touch", and a free foot that
+touched the floor went through it. Now the table keeps two facts: which
+foot touches and which foot carries. A foot that touches never goes
+below the floor.
 
 **How to see it:** Use the render mode "goo-bones" on stage. Change
 `exaggerateWeight` on the puppet page: 0 stops this stage, 1 is normal,

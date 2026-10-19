@@ -2,15 +2,17 @@
 /**
  * weight-probe (brief 17.6 T2 report): one render page, each move at each
  * `exaggerateWeight` dial value, engine-trace rows read back. Per case:
+ *   - touching-foot penetration: a foot in the table's contacts below the
+ *     floor (rev 2: must be 0 by construction);
+ *   - leg-depth inconsistency: the layer's hang of the other touching foot
+ *     (how much the legs' drawn depth disagrees) — printed, not corrected;
+ *   - lifted foot under the floor: a capture error — printed, not clamped;
  *   - hang: how far the SUPPORT foot's lowest point (ankle or toe) sits
  *     above its rest floor after the whole engine (lock included), in leg
  *     lengths L — "the figure hangs" in numbers. Support = the TABLE's
  *     weight at that instant (|w| ≥ 0.6, the contacts rule); shared stance
  *     → the lower foot. (Not the layer's sprung weight: it lags ~0.25 s
  *     and would score a foot that is legitimately still kicking.)
- *   - sink-in: how far any foot goes BELOW its floor (grounding by weight
- *     puts the weighted foot on the floor; if the free foot is lower in FK
- *     it is pushed through) — L;
  *   - root range: pelvis vertical travel over the window (the bob), and the
  *     same before the transfer sink (addendum C: grounding's own bob);
  *   - layer displacement: the largest joint move the layer made in a frame
@@ -45,29 +47,32 @@ function score(tr) {
     return a + (d("hip" + sd, "knee" + sd) + d("knee" + sd, "ankle" + sd)) / 2;
   }, 0);
   const floor = (sd) => Math.max(rest["ankle" + sd][1], rest["foot" + sd][1]);
-  const pen = [], hang = [], rootY = [], preSink = [], disp = [], ws = [];
+  const hang = [], touchPen = [], layerPen = [], liftedUnder = [], incons = [], rootY = [], preSink = [], disp = [], ws = [];
   for (const f of tr.frames) {
     const P = f.lockP;
     if (!P) continue;
-    const lowest = (sd) => Math.max(P[ix("ankle" + sd)][1], P[ix("foot" + sd)][1]);
-    const hL = floor("L") - lowest("L"), hR = floor("R") - lowest("R");
+    // FINAL positions (after the stance lock): > 0 above the floor
+    const up = (sd) => floor(sd) - Math.max(P[ix("ankle" + sd)][1], P[ix("foot" + sd)][1]);
+    const touching = (sd) => (f.ct ?? ["footL", "footR"]).includes("foot" + sd);
     const w = f.wtT ?? 0;
-    hang.push(w >= 0.6 ? hR : w <= -0.6 ? hL : Math.min(hL, hR));
-    pen.push(Math.max(0, -hL, -hR));
+    hang.push(w >= 0.6 ? up("R") : w <= -0.6 ? up("L") : Math.min(up("L"), up("R")));
+    for (const sd of ["L", "R"]) (touching(sd) ? touchPen : liftedUnder).push(Math.max(0, -up(sd)));
     rootY.push(P[iP][1]);
-    if (f.wl) { preSink.push(f.wl.rootYpreSink); disp.push(f.wl.maxDisp); }
+    if (f.wl) { preSink.push(f.wl.rootYpreSink); disp.push(f.wl.maxDisp); incons.push(f.wl.incons ?? 0); layerPen.push(f.wl.touchPen ?? 0); }
     ws.push(f.wt ?? 0);
   }
   const rng = (a) => (a.length ? Math.max(...a) - Math.min(...a) : 0);
   const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const mx = (a) => (a.length ? Math.max(...a) : 0);
+  const L3 = (v) => +(v / legL).toFixed(3);
   const sp = tr.frames.map((f) => f.flags?.spikes ?? 0);
   return {
     played: [...new Set(tr.frames.map((f) => f.mv ?? tr.meta.move))].join("+"), frames: tr.frames.length, legL: +legL.toFixed(4),
     w: ws.length ? [+Math.min(...ws).toFixed(2), +Math.max(...ws).toFixed(2)] : null,
-    hangMaxL: +(Math.max(...hang) / legL).toFixed(3), hangMeanL: +(mean(hang) / legL).toFixed(3),
-    sinkInL: +(Math.max(...pen) / legL).toFixed(3),
-    rootRangeL: +(rng(rootY) / legL).toFixed(3), preSinkRangeL: preSink.length ? +(rng(preSink) / legL).toFixed(3) : null,
-    maxDispL: disp.length ? +(Math.max(...disp) / legL).toFixed(4) : 0,
+    touchPenL: L3(mx(touchPen)), layerPenL: layerPen.length ? L3(mx(layerPen)) : null, hangMaxL: L3(mx(hang)), hangMeanL: L3(mean(hang)),
+    inconsMaxL: incons.length ? L3(mx(incons)) : null, liftedUnderL: L3(mx(liftedUnder)),
+    rootRangeL: L3(rng(rootY)), preSinkRangeL: preSink.length ? L3(rng(preSink)) : null,
+    maxDispL: disp.length ? +(mx(disp) / legL).toFixed(4) : 0,
     spikes: sp.length ? sp[sp.length - 1] - sp[0] : 0,
   };
 }
@@ -113,6 +118,6 @@ try {
 } finally {
   await browser.close();
 }
-console.log("\n| move (played) | dial | weight range | support-foot hang max / mean (L) | foot below floor max (L) | root range (L) | before sink (L) | layer max move (L) | spikes | ms/frame |");
-console.log("|---|---|---|---|---|---|---|---|---|---|");
-for (const r of rows) console.log(`| ${r.move}${r.played !== r.move ? ` (${r.played})` : ""} | ${r.dial} | ${r.w?.join("…")} | ${r.hangMaxL} / ${r.hangMeanL} | ${r.sinkInL} | ${r.rootRangeL} | ${r.preSinkRangeL ?? "—"} | ${r.maxDispL} | ${r.spikes} | ${r.ms ?? "—"} |`);
+console.log("\n| move (played) | dial | weight range | touching-foot penetration final / at the layer (L) | support hang max / mean (L) | leg-depth inconsistency (L) | lifted foot under floor (L) | root range / before sink (L) | layer max move (L) | spikes | ms/frame |");
+console.log("|---|---|---|---|---|---|---|---|---|---|---|");
+for (const r of rows) console.log(`| ${r.move}${r.played !== r.move ? ` (${r.played})` : ""} | ${r.dial} | ${r.w?.join("…")} | ${r.touchPenL} / ${r.layerPenL ?? "—"} | ${r.hangMaxL} / ${r.hangMeanL} | ${r.inconsMaxL ?? "—"} | ${r.liftedUnderL} | ${r.rootRangeL} / ${r.preSinkRangeL ?? "—"} | ${r.maxDispL} | ${r.spikes} | ${r.ms ?? "—"} |`);

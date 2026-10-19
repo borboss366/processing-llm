@@ -10,7 +10,10 @@ Ollama up; open `localhost:5173/` (render, `?audio=file:/music/x.mp3`
 for file input — a `<file>.beatgrid.json` sidecar auto-selects the grid
 tier), `controller.html` (pads, director, audience queue),
 `bench.html` (click track + instruments), `puppet.html` (hands-on
-creature rig). Full guide in `README.md`.
+creature rig), `judge.html` (rating page). The stage's move list comes
+from `web/app/moves/roster.json`; an edit to its `exclude` (or the
+`/moves-list` code) takes effect only after a SERVER RESTART
+(`npm run server` is plain tsx, no watch). Full guide in `README.md`.
 
 ## Verified
 
@@ -70,7 +73,7 @@ creature rig). Full guide in `README.md`.
 | Weight signal (17.6 T1) | weight ∈ [−1,1] per frame from FK feet → per key, contacts derived; runningman alternates ±1 per step, 0 keys with no foot planted (was 14); round-trip 141 authored keys exact; mirrored clip negates; profile foot zero restored | reports/2026-10-15-weight-t1.md + self-test |
 | Weight T1 owner check (rating page, before/after) | runningman side ✓ front ✓ (wants a bob); tstep ~ (tilt flips too fast); bodyroll ✗ (feet still leave the floor — root, not contacts: every key now plants a foot); kick ✗ expected | reports/2026-10-18-user-gates.md |
 | Weight continuity + parity guard (17.6 addendum A/B) | weight-rate (max Σ\|Δweight\| per 0.1 beat ≤ 1.5): 12 captured tables PASS, worst 1.22; tstep 2.00 → 0.70 (stitch seam cut on weight agreement; pose jump 0.82 → 0.57 rad, still open); runningman 1.55 → 1.11 (lift must agree with pelvis or persist 4 frames); guard judges θ + weight + depth — kick does not double (no repeat in the window) | tools/weight-rate.mjs (verify) + reports/2026-10-19-weight-addendum-ab.md |
-| Weight layer (17.6 T2 + owner revision), dial `exaggerateWeight` (default 0) | grounding on the support leg's rest lengths, one spring (table followWn), tilt by shape view, no per-table flags, no free-foot clamp; dial 1: bodyroll hang 0.19 → 0.007 L; penetration max 0.22 L (tstep-placeholder), 0.12 (tstep); weight-free figures move ≤ 0.10 L; spikes 0; 2.5 ms/frame at every dial | tools/weight-probe.mjs + reports/2026-10-19-weight-t2-revision.md |
+| Weight layer (17.6 T2 + revisions 1–2), dial `exaggerateWeight` (default 0) | contacts (touching) and weight (carrying) are separate table channels; grounding on drawn bones: support foot on the floor, no touching foot below it; dial 1: touching penetration 0 on every table, support hang mean ≤ 0.02 L (bodyroll 0.071 → 0.006); leg-depth inconsistency printed (front runningman 0.41 L — finding 7); weight-free figures move ≤ 0.11 L (mechanism: their FK feet are off the floor); spikes 0; ≤ 2.4 ms/frame | tools/weight-probe.mjs + reports/2026-10-19-weight-rev2.md |
 | weight-rate (derived bound) | no full transfer inside 133.5 ms of source time (extractor's persist rule): 12 tables PASS, worst runningman 1.70 of 2 | tools/weight-rate.mjs (verify) |
 | Stitch join crossfade | tstep joins blended over 0.75 beat: max 2.88 rad/beat inside the windows (was a 0.573 rad one-step jump) | reports/2026-10-19-weight-t2-revision.md |
 | Move roster (captured-only stage) | moves/roster.json `active: captured` — puppet list = 12 captured tables, groove rotation = 6 natural-view captures (equal weight); authored tables kept on disk (harnesses), `active: all` restores; live probe 60 s: only the 6 played, spikes 0; drop-check + view-switch PASS | /moves-list + roster probe |
@@ -128,6 +131,9 @@ judgment at `exaggerateWeight` 0 / 1 / 1.5 + docs/explained/weight.md
 to fix when convenient: fk-check heel pivot (0.0 or 7.0 px), drop-check
 re-pick may draw the same move.
 
+Finding 7 (rev 2): leg depth disagrees between legs on in-plane moves
+(sign resolution at the source) — owner's check on the stage-6
+foreshortening overlay of the running man's right shin.
 Owner items still open: the kick is out of the roster (not looped) until
 a one-shot move kind exists (server restart needed to apply the exclude), finding 6
 (left-forearm depth sign stuck on the kick);

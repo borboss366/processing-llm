@@ -1981,16 +1981,16 @@ export default {
     }
 
     // ── weight layer (brief 17.6 T2) ─────────────────────────────────────
-    // One signal — `weight`, through the table's own follow spring like
-    // every other channel — drives, in order: GROUNDING (the body is placed
-    // so the support foot's lowest point is on the floor, measured on the
-    // support leg's REST lengths so a depth cue drawing the leg shorter
-    // cannot lower the body: root solved from the foot, not the feet pulled
-    // under a floating root), pelvis tilt (support hip up, front view only)
-    // + spine counter, pelvis shift over the support foot (its ankle/foot
-    // stay, the knee re-solves), a sink into each landing foot, and the beat
-    // bounce put back, yielding to the sink. Dial 0 = skipped entirely
-    // (today's engine). Runs before the stance lock, which is unchanged.
+    // Two facts from the table, each through its own follow spring: WEIGHT
+    // (which foot carries) and CONTACTS (which feet touch — never derived
+    // from weight, rev 2). In order: GROUNDING (the support foot on the
+    // floor, drawn bones — root solved from the foot, not the feet pulled
+    // under a floating root), pelvis tilt (support hip up, front shapes
+    // only) + spine counter, pelvis shift over the support foot (its
+    // ankle/foot stay, the knee re-solves), a sink into each landing foot,
+    // the beat bounce put back, and last the floor: no TOUCHING foot below
+    // it (the body rises). Dial 0 = skipped entirely (today's engine). Runs
+    // before the stance lock, which is unchanged.
     {
       const wS = (state.wSpring ??= { x: 0, v: 0 });
       const wT = mvPose?.weight;
@@ -1998,7 +1998,7 @@ export default {
       // airborne (null) stands the grounding down instead of popping it off
       const gS = (state.wGround ??= { x: 1, v: 0 });
       springStep(gS, wT === null ? 0 : 1, FOLLOW_WN, dt);
-      if (engRow) { engRow.wt = +wS.x.toFixed(3); engRow.wtT = wT == null ? null : +wT.toFixed(3); }
+      if (engRow) { engRow.wt = +wS.x.toFixed(3); engRow.wtT = wT == null ? null : +wT.toFixed(3); engRow.ct = mvPose ? [...mvPose.contacts] : null; }
       const kW = Math.max(0, Math.min(2, Number.isFinite(+params.exaggerateWeight) ? +params.exaggerateWeight : 0));
       if (kW > 0 && state.hasFeet && stEff !== 'walk' && stEff !== 'hop') {
         const WL = state.weightLayer, Lg = WL.L;
@@ -2030,22 +2030,24 @@ export default {
           // both (|w| < WL.shared), smoothstepped so the split never pops
           const u0 = Math.max(0, Math.min(1, (w + WL.shared) / (2 * WL.shared)));
           const sR = u0 * u0 * (3 - 2 * u0), share = { L: 1 - sR, R: sR };
-          // 1) GROUNDING on rest lengths: the leg re-walked from its hip with
-          //    the FK angles (accRot) and the REST offsets — the drawn FK
-          //    shortens a bone with depth (cue 2), and grounding on the drawn
-          //    foot dropped the body by that shortening (front running man)
+          // 1) GROUNDING, drawn bones (17.6 rev 2 — physically faithful: a leg
+          //    drawn shorter leans out of the plane, and the body is lower):
+          //    the support foot (weight share; shared stance = weighted
+          //    average) goes on the floor. The touching-foot constraint is
+          //    applied at the end, after bounce and sink.
           const gK = Math.min(1, kW) * Math.max(0, Math.min(1, gS.x));
-          let dyG = 0;
+          const gap = {};                    // > 0: the foot's lowest point is above its floor
           for (const sd of ['L', 'R']) {
-            let px = Jn(by['hip' + sd]).ax, py = Jn(by['hip' + sd]).ay, low = -Infinity, restLow = -Infinity;
-            for (const nm of ['knee', 'ankle', 'foot']) {
-              const J3 = Jn(by[nm + sd]), P3 = joints[J3.parent];
-              const ox = J3.x - P3.x, oy = J3.y - P3.y, c3 = Math.cos(J3.accRot ?? 0), s3 = Math.sin(J3.accRot ?? 0);
-              px += ox * c3 - oy * s3; py += ox * s3 + oy * c3;
-              if (nm !== 'knee') { low = Math.max(low, py); restLow = Math.max(restLow, J3.y); }
-            }
-            dyG += share[sd] * (restLow - low);
+            const A2 = Jn(by['ankle' + sd]), F2 = Jn(by['foot' + sd]);
+            gap[sd] = Math.max(A2.y, F2.y) - Math.max(A2.ay, F2.ay);
           }
+          const dyG = share.L * gap.L + share.R * gap.R;
+          // touching (contacts) is its own fact, never weight — and the floor
+          // takes it as the table states it (no spring): a sprung contact
+          // let a landing foot sit under the floor while the spring caught
+          // up (layer-measured 0.058 L, tstep-placeholder). A foot turns
+          // touching AT the floor, so the constraint engages without a pop.
+          const touching = { L: mvPose ? mvPose.contacts.has('footL') : true, R: mvPose ? mvPose.contacts.has('footR') : true };
           // FK leg lengths as drawn — the knee re-solve keeps the depth
           // foreshortening, it does not snap back to rest
           const legLen = {}, legVec = {};
@@ -2105,12 +2107,34 @@ export default {
           //    the root (the feet ride the root in FK); put it back, yielding
           //    to the sink. Feet on the floor + no transfer → net 0
           const bob = (bounceY + rearBob) * (1 - Math.min(1, env));
-          const dyAll = (dyG + bob) * gK + sinkY;
+          let dyAll = (dyG + bob) * gK + sinkY;
+          // 7) TOUCHING feet never penetrate, by construction: if one would
+          //    end below the floor, the body rises until the lowest touching
+          //    foot is on it (weighted by its sprung contact)
+          //    (feet measured again here: the tilt moved the free leg with its hip)
+          for (const sd of ['L', 'R']) {
+            const A2 = Jn(by['ankle' + sd]), F2 = Jn(by['foot' + sd]);
+            gap[sd] = Math.max(A2.y, F2.y) - Math.max(A2.ay, F2.ay);
+          }
+          let raise = 0;
+          for (const sd of ['L', 'R']) if (touching[sd]) raise = Math.max(raise, dyAll - gap[sd]);
+          dyAll -= raise;
           for (const J3 of joints) J3.ay += dyAll;
+          // printed, not corrected (rev 2): the other touching foot's hang =
+          // how much the two legs' drawn depth disagrees; a LIFTED foot under
+          // the floor = a capture error
+          let legDepthIncons = 0, liftedUnder = 0, touchPen = 0;
+          for (const sd of ['L', 'R']) {
+            const after = gap[sd] - dyAll;     // > 0 above the floor, < 0 under it
+            if (touching[sd]) { legDepthIncons = Math.max(legDepthIncons, after); touchPen = Math.max(touchPen, -after); }
+            else liftedUnder = Math.max(liftedUnder, -after);
+          }
           // how far the layer moved any joint this frame (exact, per frame)
           const maxDisp = before ? Math.max(...joints.map((J3, i3) => Math.hypot(J3.ax - before[i3][0], J3.ay - before[i3][1]))) : 0;
           if (engRow) engRow.wl = { w: +w.toFixed(3), sR: +sR.toFixed(3), tilt: +theta.toFixed(4), shift: +shiftX.toFixed(4), maxDisp: +maxDisp.toFixed(5),
-            ground: +(dyG * gK).toFixed(4), sink: +sinkY.toFixed(4), rootY: +P0.ay.toFixed(4), rootYpreSink: +(P0.ay - sinkY).toFixed(4) };
+            ground: +(dyG * gK).toFixed(4), raise: +raise.toFixed(4), sink: +sinkY.toFixed(4), rootY: +P0.ay.toFixed(4), rootYpreSink: +(P0.ay - sinkY).toFixed(4),
+            incons: +legDepthIncons.toFixed(4), liftedUnder: +liftedUnder.toFixed(4), touchPen: +touchPen.toFixed(4),
+            touch: [touching.L ? 1 : 0, touching.R ? 1 : 0] };
         }
       }
     }

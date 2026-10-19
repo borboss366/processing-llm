@@ -62,7 +62,7 @@
         }
       },
       "contacts": [
-        "footL"
+        "footR"
       ],
       "weight": -0.94,
       "ease": "smooth",
@@ -126,7 +126,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "weight": -0.592,
@@ -191,7 +190,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "weight": -0.592,
@@ -255,7 +253,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "weight": -0.246,
@@ -513,8 +510,7 @@
         }
       },
       "contacts": [
-        "footL",
-        "footR"
+        "footL"
       ],
       "weight": -0.572,
       "ease": "smooth",
@@ -1154,6 +1150,7 @@
         }
       },
       "contacts": [
+        "footL",
         "footR"
       ],
       "weight": 1,
@@ -1218,6 +1215,7 @@
         }
       },
       "contacts": [
+        "footL",
         "footR"
       ],
       "weight": 1,
@@ -1538,7 +1536,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "weight": 0.296,
@@ -1603,7 +1600,6 @@
         }
       },
       "contacts": [
-        "footL",
         "footR"
       ],
       "weight": 0.296,
@@ -1798,7 +1794,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.892,
       "ease": "snap",
@@ -1862,7 +1859,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.892,
       "ease": "smooth",
@@ -1926,7 +1924,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -0.894,
       "ease": "smooth",
@@ -1990,7 +1989,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -1,
       "ease": "smooth",
@@ -2054,7 +2054,8 @@
         }
       },
       "contacts": [
-        "footL"
+        "footL",
+        "footR"
       ],
       "weight": -1,
       "ease": "smooth",
